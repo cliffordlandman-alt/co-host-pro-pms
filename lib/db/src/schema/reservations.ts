@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, timestamp, boolean, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { propertiesTable } from "./properties";
@@ -11,7 +11,9 @@ export const reservationsTable = pgTable("reservations", {
   channelPercent: numeric("channel_percent", {precision:5,scale:2}),
   channelAmount: numeric("channel_amount", {precision:10,scale:2}),
   tourismRate: numeric("tourism_rate", {precision:10,scale:2}),
-  externalId: text("external_id").unique(),
+  // Channel id of the booking/event. Unique per property (feed), never globally: Airbnb reuses the same
+  // "Not available" event UID across different listings, so a global key silently dropped blocks.
+  externalId: text("external_id"),
   guestName: text("guest_name").notNull(),
   platform: text("platform").notNull().default("direct"),
   propertyId: integer("property_id").notNull().references(() => propertiesTable.id),
@@ -35,7 +37,10 @@ export const reservationsTable = pgTable("reservations", {
   notes: text("notes"),
   status: text("status").notNull().default("confirmed"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, t => [
+  uniqueIndex("reservations_property_external_id_unique").on(t.propertyId, t.externalId),
+  index("reservations_external_id_idx").on(t.externalId),
+]);
 
 export const insertReservationSchema = createInsertSchema(reservationsTable).omit({ id: true, createdAt: true });
 export type InsertReservation = z.infer<typeof insertReservationSchema>;

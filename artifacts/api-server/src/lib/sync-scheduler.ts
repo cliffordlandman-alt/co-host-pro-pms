@@ -56,7 +56,7 @@ export async function syncPropertyIcal(propertyId: number, platform: Platform) {
     const [fees] = await tx.select({ cleaningFee: propertySettingsTable.cleaningFee }).from(propertySettingsTable).where(eq(propertySettingsTable.propertyId, propertyId));
     for (const row of plan.inserts) {
       const { flag, ...values } = row;
-      const [inserted] = await tx.insert(reservationsTable).values({ ...values, propertyId, cleaningFee: values.status === "blocked" ? null : fees?.cleaningFee ?? null } as any).onConflictDoNothing({ target: reservationsTable.externalId }).returning();
+      const [inserted] = await tx.insert(reservationsTable).values({ ...values, propertyId, cleaningFee: values.status === "blocked" ? null : fees?.cleaningFee ?? null } as any).onConflictDoNothing({ target: [reservationsTable.propertyId, reservationsTable.externalId] }).returning();
       if (!inserted) continue;
       created++;
       if (inserted.status !== "blocked" && inserted.checkOut >= today) await tx.insert(cleaningTasksTable).values({ propertyId, reservationId: inserted.id, status: "dirty", scheduledDate: inserted.checkOut, scheduledTime: "11:00" });

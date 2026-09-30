@@ -53,7 +53,7 @@ router.post('/airbnb-data/import',asyncHandler(async(req,res)=>{
     if(twin){await tx.update(reservationsTable).set({externalId:booking.externalId,notes:`${twin.notes ? twin.notes+' ' : ''}Linked to Airbnb ${r.code}.`}).where(eq(reservationsTable.id,twin.id));linked++;continue;}
    }
    if(known)continue;
-   const [row] = await tx.insert(reservationsTable).values(booking).onConflictDoNothing({target:reservationsTable.externalId}).returning();
+   const [row] = await tx.insert(reservationsTable).values(booking).onConflictDoNothing({target:[reservationsTable.propertyId,reservationsTable.externalId]}).returning();
    if(row){created++;if(isCancelled)cancelled++;}
    if(row && !isCancelled && row.checkOut>=today) await tx.insert(cleaningTasksTable).values({propertyId:row.propertyId,reservationId:row.id,status:"dirty",scheduledDate:row.checkOut,scheduledTime:"11:00"});
   }
