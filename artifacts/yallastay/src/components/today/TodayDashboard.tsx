@@ -1,4 +1,4 @@
-import { guestIdComplete, airbnbIdAssumed } from "../../../../../lib/guest-id.mjs";
+import { guestIdComplete } from "../../../../../lib/guest-id.mjs";
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { ArrowUpRight, Check, CheckCircle2, ChevronRight, Circle, Clock3, RefreshCw, Search, Sparkles, Building2, ArrowDownLeft, ArrowUpRight as Arrival, Wrench, X } from 'lucide-react';

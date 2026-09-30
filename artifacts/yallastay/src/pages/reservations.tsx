@@ -1,6 +1,6 @@
 import { ReservationMoney, ServerBookingTotals } from "@/components/ReservationMoney";
 import { Pager, usePagedList } from "@/components/Pager";
-import { guestIdComplete, airbnbIdAssumed } from "../../../../lib/guest-id.mjs";
+import { guestIdComplete, idVerifiedByChannel } from "../../../../lib/guest-id.mjs";
 import { useLocation } from "wouter";
 import { DirectBookingDialog } from "@/components/DirectBookingDialog";
 import { useState, useEffect } from "react";
@@ -221,9 +221,11 @@ export default function Reservations() {
                           <div className="font-semibold text-sm flex items-center gap-1.5">
                             {FLAG[res.guestCountry] ?? <Globe className="h-3 w-3" />}
                             {res.guestName}
-                            {!guestIdComplete(res) && (
+                            {!guestIdComplete(res) ? (
                               <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full">ID PENDING</span>
-                            )}
+                            ) : !res.idCollected && idVerifiedByChannel(res) ? (
+                              <span className="text-[9px] font-medium px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded-full whitespace-nowrap">Verified by {idVerifiedByChannel(res)}</span>
+                            ) : null}
                           </div>
                           <div className="text-[11px] text-muted-foreground font-mono">{res.externalId}</div>
                           {isHovered && (
@@ -282,7 +284,7 @@ export default function Reservations() {
       <div className="text-xs text-muted-foreground flex items-center gap-2">
         <span className="flex items-center gap-1"><span className="font-mono bg-muted px-1.5 py-0.5 rounded">TD</span> = Tourism Dirham collected</span>
         <span>·</span>
-        <span className="flex items-center gap-1"><span className="font-mono bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px]">ID PENDING</span> = Passport/ID not yet collected</span>
+        <span className="flex items-center gap-1"><span className="font-mono bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px]">ID PENDING</span> = Passport/ID not yet collected (Airbnb bookings are verified by Airbnb)</span>
       </div>
     </div>
   );

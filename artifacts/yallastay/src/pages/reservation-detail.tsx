@@ -1,11 +1,11 @@
 import { BookingFinanceEditor } from "@/components/BookingFinanceEditor";
 import { ReservationMoney, BookingExpenses } from "@/components/ReservationMoney";
-import { guestIdComplete, airbnbIdAssumed } from "../../../../lib/guest-id.mjs";
+import { guestIdComplete, idVerifiedByChannel, dtcmPassportNeeded } from "../../../../lib/guest-id.mjs";
 import { apiFetch } from "@/lib/api-fetch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { useLocation, useRoute } from "wouter";
-import { useGetReservations } from "@workspace/api-client-react";
+import { useGetReservations, useGetProperties } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -79,6 +79,9 @@ export default function ReservationDetail() {
 
   const id = params?.id ? parseInt(params.id) : null;
   const reservation = (reservations as any[])?.find((r: any) => r.id === id);
+  const { data: properties } = useGetProperties();
+  const property = (properties as any[])?.find((p: any) => p.id === reservation?.propertyId);
+  const idChannel = reservation && !reservation.idCollected ? idVerifiedByChannel(reservation) : null;
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<any>(null);
@@ -234,11 +237,15 @@ export default function ReservationDetail() {
             <div className="flex items-center justify-end gap-1.5">
               <span>{FLAG[reservation.guestCountry] ?? <Globe className="h-3 w-3" />}</span>
               <span>{reservation.guestName}</span>
-              {!guestIdComplete(reservation) && (
+              {!guestIdComplete(reservation) ? (
                 <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full ml-1">
                   ID PENDING
                 </span>
-              )}
+              ) : idChannel ? (
+                <span className="text-[9px] font-medium px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded-full ml-1 whitespace-nowrap">
+                  Verified by {idChannel}
+                </span>
+              ) : null}
             </div>
           </InfoRow>
           <InfoRow label="Guests">
@@ -314,7 +321,8 @@ export default function ReservationDetail() {
         </div>
 
         {editing && <div className="grid gap-3 sm:grid-cols-2">{["guestEmail","guestPhone"].map(key=><label key={key} className="text-sm">{key === "guestEmail" ? "Guest email" : "Guest phone"}<Input value={draft?.[key] ?? ""} onChange={e=>setDraft((d:any)=>({...d,[key]:e.target.value}))}/></label>)}{draft?.paymentStatus === "partial" && <label className="text-sm">Outstanding balance<Input type="number" min="0" step="0.01" value={draft?.balanceDue ?? ""} onChange={e=>setDraft((d:any)=>({...d,balanceDue:e.target.value}))}/></label>}</div>}
-        {airbnbIdAssumed(reservation) && <p className="text-sm text-emerald-700">ID collected · Assumed via Airbnb (confirmed and paid). No uploaded document is implied.</p>}
+        {idChannel && <p className="text-sm text-emerald-700">Guest ID verified by {idChannel}. No ID copy is stored here.</p>}
+        {dtcmPassportNeeded(reservation, property) && <p className="text-xs text-muted-foreground">DTCM registration: {idChannel} does not pass on the guest's passport copy, and Dubai guest registration still needs one. Once you have it, edit the booking and tick "ID / Passport Collected".</p>}
         {editing && (
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground font-medium flex items-center gap-1">
