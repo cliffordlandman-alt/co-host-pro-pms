@@ -289,39 +289,20 @@ function MaintenanceSection({ settings, onSave }: { settings: any; onSave: (v: a
   );
 }
 
-// ─── Financial ────────────────────────────────────────────────────────────────
-function FinancialSection({ settings, onSave }: { settings: any; onSave: (v: any) => void }) {
-  const defs = { cleaningMargin: 15, maintenanceMarkup: 10, payoutMethod: "net_revenue", vatEnabled: false, vatRate: 5, expenseCategories: "Cleaning\nMaintenance\nUtilities\nMarketing\nInsurance\nOther", revenueCategories: "Airbnb\nBooking.com\nDirect\nVRBO\nCorporate" };
-  const [form, setForm] = useState({ ...defs, ...settings?.financial });
-  const [saving, setSaving] = useState(false);
-  const { toast } = useToast();
-  function set(k: string, v: any) { setForm((f: any) => ({ ...f, [k]: v })); }
-  async function save() { setSaving(true); await onSave(form); setSaving(false); toast({ title: "Financial settings saved" }); }
+// ─── Financial ─────────────────────────────────────────────────────────────
+// The fields that used to be here (cleaningMargin, maintenanceMarkup, payoutMethod, vatEnabled, vatRate,
+// expenseCategories, revenueCategories) were saved under the "financial" settings key but never read by
+// any calculation, so they are hidden rather than shown as if they worked. Their saved values are kept
+// untouched in app_settings (key "financial"); nothing here writes to it.
+function FinancialSection(_props: { settings: any; onSave: (v: any) => void }) {
   return (
-    <SectionCard title="Financial Defaults" desc="Fee structures and payout calculation rules" onSave={save} saving={saving}>
-      <p className="text-sm text-muted-foreground">Management fee and cleaning fee are set per property in Accounting → Fee settings. The starting values for new properties are in Property Defaults.</p>
-      <div className="grid sm:grid-cols-2 gap-4">
-        <Field label="Cleaning Margin (%)"><div className="flex items-center gap-1"><Input type="number" value={form.cleaningMargin} onChange={e => set("cleaningMargin", +e.target.value)} /><span className="text-sm text-muted-foreground">%</span></div></Field>
-        <Field label="Maintenance Markup (%)"><div className="flex items-center gap-1"><Input type="number" value={form.maintenanceMarkup} onChange={e => set("maintenanceMarkup", +e.target.value)} /><span className="text-sm text-muted-foreground">%</span></div></Field>
-      </div>
-      <Field label="Payout Calculation">
-        <Select value={form.payoutMethod} onValueChange={v => set("payoutMethod", v)}>
-          <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="net_revenue">Gross - Management Fee</SelectItem>
-            <SelectItem value="after_expenses">After All Deductions</SelectItem>
-            <SelectItem value="custom">Custom Formula</SelectItem>
-          </SelectContent>
-        </Select>
-      </Field>
-      <Field label="VAT">
-        <div className="flex items-center gap-3">
-          <Switch checked={form.vatEnabled} onCheckedChange={v => set("vatEnabled", v)} />
-          {form.vatEnabled && <><Input type="number" value={form.vatRate} onChange={e => set("vatRate", +e.target.value)} className="w-20" /><span className="text-sm text-muted-foreground">%</span></>}
-        </div>
-      </Field>
-      <Field label="Expense Categories" hint="One per line"><Textarea value={form.expenseCategories} onChange={e => set("expenseCategories", e.target.value)} rows={5} className="font-mono text-sm" /></Field>
-      <Field label="Revenue Categories" hint="One per line"><Textarea value={form.revenueCategories} onChange={e => set("revenueCategories", e.target.value)} rows={4} className="font-mono text-sm" /></Field>
+    <SectionCard title="Financial" desc="Where financial rules are set">
+      <ul className="text-sm space-y-2 list-disc pl-5">
+        <li>Management fee, cleaning fee, channel fees, VAT and tourism fee: per property in <a className="underline" href="/accounting">Accounting → Fee settings</a>.</li>
+        <li>Cleaning company rate card and cleaning cost backfill: also in Accounting → Fee settings.</li>
+        <li>Starting fees for new properties: Settings → Property Defaults.</li>
+      </ul>
+      <p className="text-xs text-muted-foreground">Cleaning margin, maintenance markup, payout calculation method, a company-wide VAT switch and category lists are not used by the app yet, so they are not shown. Anything saved earlier is kept.</p>
     </SectionCard>
   );
 }

@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Building, CalendarDays, CalendarRange, BedDouble,
   Sparkles, Wrench, Users, UserCircle, CreditCard, BarChart2, Star,
   MessageCircle, BookOpen, KeyRound, Layers, Menu, X, Zap, FileText,
-  Settings2, Bot, Crown, MessageSquare, ChevronDown, LogOut, TrendingUp, Shield,
+  Settings2, Bot, Crown, MessageSquare, ChevronDown, LogOut, Shield,
   PieChart, Receipt, FileBarChart, Link2, Tv2, MapPin, Smartphone, DollarSign,
 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -48,7 +48,8 @@ const navGroups = [
   {
     label: "Revenue",
     items: [
-      { href: "/pricing",    icon: TrendingUp,    label: "Dynamic Pricing", mobile: false },
+      // Dynamic Pricing (/pricing) is hidden from navigation: its property list is hard-coded empty and its
+      // rules are not applied to any rate, so it does nothing yet. The page, route and API are kept.
       { href: "/reviews",    icon: Star,          label: "Reviews",         mobile: false },
       { href: "/inbox",      icon: MessageCircle, label: "Inbox",           mobile: false },
     ],

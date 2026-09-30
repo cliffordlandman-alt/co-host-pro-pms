@@ -726,7 +726,7 @@ export function BulkImportWizard({ onClose, onDone }: { onClose: () => void; onD
                       <p className="text-xs text-amber-200/70">
                         You've reached your {limit}-property limit on the current plan. Upgrade to add unlimited properties.
                       </p>
-                      <a href="/pricing" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-500/20 border border-teal-400/30 text-teal-300 text-xs font-semibold hover:bg-teal-500/30 transition-colors">
+                      <a href="/subscriptions" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-500/20 border border-teal-400/30 text-teal-300 text-xs font-semibold hover:bg-teal-500/30 transition-colors">
                         Upgrade plan →
                       </a>
                     </div>
