@@ -18,7 +18,7 @@ const PLATFORM_COLORS: Record<string, { bg: string; text: string; label: string 
   airbnb:      { bg: "#E0565B", text: "#fff", label: "Airbnb" },
   booking_com: { bg: "#003580", text: "#fff", label: "Booking.com" },
   direct:      { bg: "#059669", text: "#fff", label: "Direct" },
-  vrbo:        { bg: "#195591", text: "#fff", label: "VRBO" },
+  vrbo:        { bg: "#7c3aed", text: "#fff", label: "VRBO" },
   blocked:     { bg: "#6b7280", text: "#fff", label: "Blocked" },
 };
 
