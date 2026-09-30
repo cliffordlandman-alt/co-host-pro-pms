@@ -1,5 +1,7 @@
 import { ReservationMoney } from "@/components/ReservationMoney";
 import { CalendarBookingLabel, calendarBookingName } from "@/components/CalendarBookingLabel";
+import { CalendarBarsOverlay } from "@/components/CalendarBars";
+import { layoutBars } from "@/lib/calendar-bars";
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import {
@@ -31,7 +33,6 @@ import {
   isSameMonth,
   isSameDay,
   parseISO,
-  isWithinInterval,
   differenceInCalendarDays,
 } from "date-fns";
 
@@ -91,28 +92,7 @@ export default function Calendar() {
     });
   }, [reservations, selectedProperty]);
 
-  function getReservationsForDay(day: Date) {
-    return filteredReservations.filter((r) => {
-      const checkIn = parseISO(r.checkIn);
-      const checkOut = parseISO(r.checkOut);
-      return isWithinInterval(day, { start: checkIn, end: checkOut }) ||
-        isSameDay(day, checkIn) ||
-        isSameDay(day, checkOut);
-    });
-  }
-
-  function getReservationsForDayAndProperty(day: Date, propertyId: number) {
-    if (!reservations) return [];
-    return reservations.filter((r) => {
-      if (r.status === "cancelled") return false;
-      if (r.propertyId !== propertyId) return false;
-      const checkIn = parseISO(r.checkIn);
-      const checkOut = parseISO(r.checkOut);
-      return isWithinInterval(day, { start: checkIn, end: checkOut }) ||
-        isSameDay(day, checkIn) ||
-        isSameDay(day, checkOut);
-    });
-  }
+  const propRes = (propertyId: number) => (reservations ?? []).filter(r => r.status !== "cancelled" && r.propertyId === propertyId);
 
   function openNewBooking(day: Date) {
     setDialogCheckIn(format(day, "yyyy-MM-dd"));
@@ -201,35 +181,24 @@ export default function Calendar() {
     );
   }
 
-  function ReservationBar({ res, day }: { res: Reservation; day: Date }) {
-    const style = PLATFORM_STYLES[(res as any).platform] ?? PLATFORM_STYLES.direct;
-    const isCheckIn = isSameDay(parseISO((res as any).checkIn), day);
-    const isCheckOut = isSameDay(parseISO((res as any).checkOut), day);
-
-    const label = isCheckIn
-      ? calendarBookingName(res)
-      : isCheckOut
-      ? "Checkout"
-      : "···";
-
+  // One continuous bar per booking per week row (see lib/calendar-bars.ts), instead of one pill per day.
+  function renderWeekBars(week: Date[], items: Reservation[], top: number, laneHeight: number, barHeight: number) {
+    const { bars } = layoutBars(items as any[], week.map(d => format(d, "yyyy-MM-dd")));
     return (
-      <button
-        key={(res as any).id}
-        data-testid={`reservation-bar-${(res as any).id}`}
-        onClick={(e) => openDetail(res, e)}
-        className={[
-          "w-full text-left text-[10px] leading-tight px-1 py-0.5 rounded font-medium overflow-hidden",
-          style.bg,
-          style.text,
-          isCheckIn ? "rounded-l-full" : "",
-          isCheckOut ? "rounded-r-full" : "",
-        ].join(" ")}
-        title={`${calendarBookingName(res)} — ${(res as any).propertyName ?? ""}`}
-      >
-        <CalendarBookingLabel booking={res} label={label} />
-      </button>
+      <CalendarBarsOverlay
+        bars={bars}
+        top={top}
+        laneHeight={laneHeight}
+        barHeight={barHeight}
+        onOpen={(res: any, e) => openDetail(res, e)}
+        look={(res: any) => { const st = PLATFORM_STYLES[res.platform] ?? PLATFORM_STYLES.direct; return { className: `${st.bg} ${st.text}` }; }}
+        label={(res: any) => <CalendarBookingLabel booking={res} />}
+        title={(res: any) => `${calendarBookingName(res)} · ${res.propertyName ?? ""} · ${res.checkIn} → ${res.checkOut}`}
+        testId={(res: any) => `reservation-bar-${res.id}`}
+      />
     );
   }
+  const weekLanes = (week: Date[], items: Reservation[]) => layoutBars(items as any[], week.map(d => format(d, "yyyy-MM-dd"))).lanes;
 
   const hasNoBookingsForProperty =
     !loadingRes &&
@@ -362,39 +331,37 @@ export default function Calendar() {
                       </span>
                     </div>
 
-                    {/* Day cells */}
-                    {week.map((day, di) => {
-                      const inMonth = isSameMonth(day, currentMonth);
-                      const isToday = isSameDay(day, new Date());
-                      const dayRes = getReservationsForDayAndProperty(day, prop.id);
-
+                    {/* Day cells with continuous booking bars on top */}
+                    {(() => {
+                      const items = propRes(prop.id);
+                      const minHeight = Math.max(48, 16 + weekLanes(week, items) * 18 + 4);
                       return (
-                        <div
-                          key={di}
-                          data-testid={`multi-cal-${prop.id}-${format(day, "yyyy-MM-dd")}`}
-                          onClick={() => inMonth && openNewBooking(day)}
-                          className={[
-                            "border-r last:border-r-0 px-0.5 py-0.5 min-h-[48px] transition-colors",
-                            inMonth ? "cursor-pointer hover:bg-muted/40" : "bg-muted/20 opacity-40",
-                            isToday ? "ring-1 ring-inset ring-primary/50" : "",
-                          ].join(" ")}
-                        >
-                          <div className="text-[10px] font-medium text-center mb-0.5 text-muted-foreground/60">
-                            {format(day, "d")}
-                          </div>
-                          <div className="space-y-0.5">
-                            {dayRes.slice(0, 2).map((res) => (
-                              <ReservationBar key={(res as any).id} res={res as any} day={day} />
-                            ))}
-                            {dayRes.length > 2 && (
-                              <div className="text-[9px] text-muted-foreground pl-0.5">
-                                +{dayRes.length - 2}
+                        <div className="relative col-span-7 grid grid-cols-7">
+                          {week.map((day, di) => {
+                            const inMonth = isSameMonth(day, currentMonth);
+                            const isToday = isSameDay(day, new Date());
+                            return (
+                              <div
+                                key={di}
+                                data-testid={`multi-cal-${prop.id}-${format(day, "yyyy-MM-dd")}`}
+                                onClick={() => inMonth && openNewBooking(day)}
+                                style={{ minHeight }}
+                                className={[
+                                  "border-r last:border-r-0 px-0.5 py-0.5 transition-colors",
+                                  inMonth ? "cursor-pointer hover:bg-muted/40" : "bg-muted/20 text-muted-foreground/40",
+                                  isToday ? "ring-1 ring-inset ring-primary/50" : "",
+                                ].join(" ")}
+                              >
+                                <div className="text-[10px] font-medium text-center text-muted-foreground/60">
+                                  {format(day, "d")}
+                                </div>
                               </div>
-                            )}
-                          </div>
+                            );
+                          })}
+                          {renderWeekBars(week, items, 16, 18, 16)}
                         </div>
                       );
-                    })}
+                    })()}
                   </div>
                 ))}
               </div>
@@ -424,66 +391,36 @@ export default function Calendar() {
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-7">
-              {calendarDays.map((day, idx) => {
-                const inMonth = isSameMonth(day, currentMonth);
-                const isToday = isSameDay(day, new Date());
-                const dayReservations = getReservationsForDay(day);
-
+            <div>
+              {weeks.map((week, wi) => {
+                const minHeight = Math.max(112, 32 + weekLanes(week, filteredReservations) * 20 + 6);
                 return (
-                  <div
-                    key={idx}
-                    data-testid={`calendar-day-${format(day, "yyyy-MM-dd")}`}
-                    onClick={() => inMonth && openNewBooking(day)}
-                    className={[
-                      "min-h-28 border-b border-r p-1 transition-colors",
-                      inMonth ? "cursor-pointer hover:bg-muted/40" : "bg-muted/20 opacity-50",
-                      isToday ? "ring-2 ring-inset ring-primary" : "",
-                    ].join(" ")}
-                  >
-                    <div className={[
-                      "text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full",
-                      isToday ? "bg-primary text-primary-foreground" : "text-foreground",
-                    ].join(" ")}>
-                      {format(day, "d")}
-                    </div>
-
-                    <div className="space-y-0.5">
-                      {dayReservations.slice(0, 3).map((res) => {
-                        const style = PLATFORM_STYLES[(res as any).platform] ?? PLATFORM_STYLES.direct;
-                        const isCheckIn = isSameDay(parseISO((res as any).checkIn), day);
-                        const isCheckOut = isSameDay(parseISO((res as any).checkOut), day);
-
-                        const label = isCheckIn
-                          ? calendarBookingName(res)
-                          : isCheckOut
-                          ? "Checkout"
-                          : "···";
-
-                        return (
-                          <button
-                            key={(res as any).id}
-                            data-testid={`reservation-bar-${(res as any).id}`}
-                            onClick={(e) => openDetail(res as any, e)}
-                            className={[
-                              "w-full text-left text-[10px] leading-tight px-1 py-0.5 rounded font-medium overflow-hidden",
-                              style.bg,
-                              style.text,
-                              isCheckIn ? "rounded-l-full" : "",
-                              isCheckOut ? "rounded-r-full" : "",
-                            ].join(" ")}
-                            title={`${calendarBookingName(res)} — ${(res as any).propertyName ?? ""}`}
-                          >
-                            <CalendarBookingLabel booking={res} label={label} />
-                          </button>
-                        );
-                      })}
-                      {dayReservations.length > 3 && (
-                        <div className="text-[10px] text-muted-foreground pl-1">
-                          +{dayReservations.length - 3} more
+                  <div key={wi} className="relative grid grid-cols-7">
+                    {week.map((day, idx) => {
+                      const inMonth = isSameMonth(day, currentMonth);
+                      const isToday = isSameDay(day, new Date());
+                      return (
+                        <div
+                          key={idx}
+                          data-testid={`calendar-day-${format(day, "yyyy-MM-dd")}`}
+                          onClick={() => inMonth && openNewBooking(day)}
+                          style={{ minHeight }}
+                          className={[
+                            "border-b border-r p-1 transition-colors",
+                            inMonth ? "cursor-pointer hover:bg-muted/40" : "bg-muted/20 text-muted-foreground/50",
+                            isToday ? "ring-2 ring-inset ring-primary" : "",
+                          ].join(" ")}
+                        >
+                          <div className={[
+                            "text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full",
+                            isToday ? "bg-primary text-primary-foreground" : "",
+                          ].join(" ")}>
+                            {format(day, "d")}
+                          </div>
                         </div>
-                      )}
-                    </div>
+                      );
+                    })}
+                    {renderWeekBars(week, filteredReservations, 32, 20, 18)}
                   </div>
                 );
               })}

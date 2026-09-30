@@ -2,7 +2,9 @@ import { CalendarBookingLabel, calendarBookingName } from "@/components/Calendar
 import { BlockDatesDialog } from "@/components/BlockDatesDialog";
 import { DirectBookingDialog } from "@/components/DirectBookingDialog";
 import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { CalendarBarsOverlay } from "@/components/CalendarBars";
+import { layoutBars } from "@/lib/calendar-bars";
 import { useState, useMemo } from "react";
 import { useGetReservations, useGetProperties } from "@workspace/api-client-react";
 import { Input } from "@/components/ui/input";
@@ -26,6 +28,7 @@ type CalView = "multi" | "monthly" | "yearly";
 
 export default function MultiCalendar() {
   const [bookingOpen, setBookingOpen] = useState(false);
+  const [, navigate] = useLocation();
   const [view, setView] = useState<CalView>("multi");
   const [anchor, setAnchor] = useState(new Date());
   const [search, setSearch] = useState("");
@@ -59,16 +62,7 @@ export default function MultiCalendar() {
   }, [anchor]);
 
   const days = view === "monthly" ? monthDays : multiDays;
-
-  function getReservation(propId: number, day: Date) {
-    if (!reservations) return null;
-    const ds = format(day, "yyyy-MM-dd");
-    return reservations.find((r: any) =>
-      r.propertyId === propId &&
-      r.status !== "cancelled" &&
-      r.checkIn <= ds && r.checkOut > ds
-    ) ?? null;
-  }
+  const dayKeys = useMemo(() => days.map(d => format(d, "yyyy-MM-dd")), [days]);
 
   function prev() {
     if (view === "monthly") setAnchor(d => subMonths(d, 1));
@@ -98,7 +92,7 @@ export default function MultiCalendar() {
       <Link href="/airbnb-import" className="text-sm underline">Import Airbnb bookings & income</Link>
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
           <h1 className="text-2xl font-bold tracking-tight">Calendar</h1>
           <Button onClick={() => setBookingOpen(true)}>Add Direct Reservation</Button><BlockDatesDialog/>
           <div className="flex items-center border rounded-lg overflow-hidden text-sm">
@@ -180,7 +174,7 @@ export default function MultiCalendar() {
           {view === "yearly" ? (
             <YearlyView properties={filtered} reservations={reservations ?? []} anchor={anchor} isLoading={isLoading} />
           ) : (
-            <table className="w-full border-collapse" style={{ minWidth: `${Math.max(days.length * 48 + 200, 600)}px` }}>
+            <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: `${Math.max(days.length * 48 + 200, 600)}px` }}>
               <thead>
                 <tr className="border-b">
                   <th className="sticky left-0 z-10 bg-card text-left px-4 py-2 text-xs font-medium text-muted-foreground w-48 border-r">
@@ -226,41 +220,33 @@ export default function MultiCalendar() {
                         <div className="font-medium text-sm truncate max-w-[160px]" title={prop.name}>{prop.name}</div>
                         <div className="text-xs text-muted-foreground mt-0.5">{prop.id}</div>
                       </td>
-                      {days.map(day => {
-                        const res = getReservation(prop.id, day);
-                        const isToday = isSameDay(day, today);
-                        const isWeekend = [0, 6].includes(day.getDay());
-                        const colors = res ? ((res.status as string) === "blocked" ? PLATFORM_COLORS.blocked : PLATFORM_COLORS[res.platform] ?? PLATFORM_COLORS.direct) : null;
-                        const isCheckIn = res ? isSameDay(parseISO(res.checkIn), day) : false;
-                        const isCheckOut = res ? format(day, "yyyy-MM-dd") === res.checkOut : false;
-
+                      {/* One continuous bar per booking across the visible days (lib/calendar-bars.ts). */}
+                      {(() => {
+                        const items = (reservations ?? []).filter((r: any) => r.propertyId === prop.id && r.status !== "cancelled");
+                        const { bars, lanes } = layoutBars(items as any[], dayKeys);
                         return (
-                          <td key={day.toISOString()}
-                            className={`px-0 py-1.5 border-r last:border-r-0 ${isToday ? "bg-teal-50/50 dark:bg-teal-950/10" : isWeekend ? "bg-muted/10" : ""}`}>
-                            {res && colors ? (
-                              <div
-                                title={`${calendarBookingName(res)} (${res.checkIn} → ${res.checkOut})`}
-                                className="h-7 mx-0.5 flex items-center justify-center text-[10px] font-medium truncate px-1"
-                                style={{
-                                  background: colors.bg,
-                                  color: colors.text,
-                                  borderRadius: isCheckIn && isCheckOut ? "6px" : isCheckIn ? "6px 0 0 6px" : isCheckOut ? "0 6px 6px 0" : "0",
-                                  marginLeft: isCheckIn ? "2px" : "0",
-                                  marginRight: isCheckOut ? "2px" : "0",
-                                }}
-                              >
-                                {(isCheckIn || isSameDay(day, days[0])) && <CalendarBookingLabel booking={res} />}
-                              </div>
-                            ) : (
-                              <div className="h-7 mx-0.5 rounded flex items-center justify-center" style={{ background: "transparent" }}>
-                                {prop.status === "archived" && (
-                                  <Lock className="w-3 h-3 text-muted-foreground/30" />
-                                )}
-                              </div>
-                            )}
+                          <td colSpan={days.length} className="p-0">
+                            <div className="relative grid" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))`, minHeight: Math.max(44, 8 + lanes * 32 + 4) }}>
+                              {days.map(day => {
+                                const isToday = isSameDay(day, today);
+                                const isWeekend = [0, 6].includes(day.getDay());
+                                return <div key={day.toISOString()} className={`border-r last:border-r-0 ${isToday ? "bg-teal-50/50 dark:bg-teal-950/10" : isWeekend ? "bg-muted/10" : ""}`} />;
+                              })}
+                              <CalendarBarsOverlay
+                                bars={bars}
+                                top={8}
+                                laneHeight={32}
+                                barHeight={28}
+                                onOpen={(res: any) => navigate(`/reservations/${res.id}`)}
+                                look={(res: any) => { const c = res.status === "blocked" ? PLATFORM_COLORS.blocked : PLATFORM_COLORS[res.platform] ?? PLATFORM_COLORS.direct; return { style: { background: c.bg, color: c.text } }; }}
+                                label={(res: any) => <CalendarBookingLabel booking={res} />}
+                                title={(res: any) => `${calendarBookingName(res)} (${res.checkIn} → ${res.checkOut})`}
+                                testId={(res: any) => `multi-bar-${res.id}`}
+                              />
+                            </div>
                           </td>
                         );
-                      })}
+                      })()}
                     </tr>
                   ))
                 )}
