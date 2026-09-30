@@ -48,7 +48,7 @@ try {
   assert.equal(preview.from, shift(-30)); assert.equal(preview.to, today);
   assert.deepEqual([byProp['Studio A'].amount, byProp['One Bed'].amount, byProp['Three Bed'].amount, byProp['Typed 2 Bedroom'].amount], [140, 180, 300, 250]);
   assert.equal(byProp['Studio A'].unitSize, 'Studio'); assert.equal(byProp['Typed 2 Bedroom'].unitSize, '2BR');
-  assert.equal(byProp['Five Bed'].action, 'skip'); assert.match(byProp['Five Bed'].reason, /No rate set for 5BR/); assert.equal(byProp['Five Bed'].noRate, true); assert.equal(preview.noRateSet, 1);
+  assert.equal(byProp['Five Bed'].action, 'skip'); assert.match(byProp['Five Bed'].reason, /no 5BR rate/); assert.equal(byProp['Five Bed'].noRate, true); assert.equal(preview.noRateSet, 1);
   assert.equal(preview.items.length, 5, 'cancelled, out-of-window and future checkouts are excluded');
   assert.deepEqual(preview.totals, [{ currency: 'AED', amount: 870 }]);
   assert.equal((await api('/accounting/transactions')).filter(t => t.category === 'Cleaning').length, 0, 'preview records nothing');
@@ -111,7 +111,7 @@ try {
   let scoped = await api('/accounting/cleaning-expenses/backfill', 'POST', { days: 30, dryRun: true });
   const saItems = scoped.items.filter(i => ['Grey House', 'Garden Retreat'].includes(i.property));
   assert.equal(saItems.length, 2, 'cancelled import is not a turnover');
-  assert.ok(saItems.every(i => i.action === 'skip' && i.noRate && /No rate set/.test(i.reason)));
+  assert.ok(saItems.every(i => i.action === 'skip' && i.noRate && /not on the cleaning company's rate card/.test(i.reason)));
   await api(`/accounting/settings/${sa.id}`, 'PUT', { cleaningCostOverride: 350 });
   await api(`/accounting/settings/${saAed.id}`, 'PUT', { cleaningCostOverride: 300, cleaningCostCurrency: 'zar' });
   await api(`/accounting/settings/${saAed.id}`, 'PUT', { cleaningCostCurrency: 'RANDS' }, 400);

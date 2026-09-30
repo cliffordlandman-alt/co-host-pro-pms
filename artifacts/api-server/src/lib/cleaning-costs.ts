@@ -50,10 +50,10 @@ export function cleaningCostFor(property: Property, settings: CostSettings, rate
   const unitSize = cleaningUnitSize(property);
   if (settings?.cleaningCostOverride != null) return { amount: Number(settings.cleaningCostOverride).toFixed(2), currency, unitSize, source: "property override" };
   const onRateCard = settings ? !!settings.cleaningRateCard : defaultFeeSettings(property).cleaningRateCard;
-  if (!onRateCard) return { reason: "No rate set: this property is not on the cleaning company's rate card and has no cleaning cost override", unitSize, noRate: true };
+  if (!onRateCard) return { reason: "not on the cleaning company's rate card and no cleaning cost override", unitSize, noRate: true };
   if (unitSize == null) return { reason: "Unit size unknown: set the property's bedroom count (0 = studio) or a cleaning cost override", unitSize };
   const rate = rates.find(r => r.bedrooms === unitSize);
-  if (!rate) return { reason: `No rate set for ${unitLabel(unitSize)} on the rate card: add one or set a cleaning cost override`, unitSize, noRate: true };
+  if (!rate) return { reason: `the rate card has no ${unitLabel(unitSize)} rate: add one or set a cleaning cost override`, unitSize, noRate: true };
   if (rate.currency !== currency) return { reason: `Rate card is in ${rate.currency} but this property's cleaning is paid in ${currency}: set a cleaning cost override`, unitSize };
   return { amount: Number(rate.amount).toFixed(2), currency, unitSize, source: "rate card" };
 }
@@ -114,7 +114,7 @@ export async function recordCleaningExpenseForTask(taskId: number) {
   if (plan.action === "record") { await insertExpense(db, plan, ctx.vendor.id); return plan; }
   if (plan.action === "skip") {
     const [already] = await db.select({ id: notificationsTable.id }).from(notificationsTable).where(and(eq(notificationsTable.type, "cleaning_cost"), eq(notificationsTable.entityType, "cleaning"), eq(notificationsTable.entityId, String(task.id))));
-    if (!already) await db.insert(notificationsTable).values({ type: "cleaning_cost", title: "Cleaning cost not recorded", message: `${plan.property} (checkout ${plan.checkout}): ${plan.reason}`, link: `/cleaning?task=${task.id}`, entityType: "cleaning", entityId: String(task.id) });
+    if (!already) await db.insert(notificationsTable).values({ type: "cleaning_cost", title: "Cleaning cost not recorded", message: `${plan.property} (checkout ${plan.checkout}): ${plan.noRate ? "no rate set, " : ""}${plan.reason}`, link: `/cleaning?task=${task.id}`, entityType: "cleaning", entityId: String(task.id) });
   }
   return plan;
 }
