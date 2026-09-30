@@ -24,7 +24,7 @@ async function api(route, method = 'GET', body, tok = token) {
   return { status: r.status, body: j };
 }
 const near = (a, b) => Math.abs(Number(a) - Number(b)) < 0.005;
-const tag = process.env.TAG || String(Date.now()).slice(-5);
+const tag = process.env.TAG || 'T' + String(Date.now()).slice(-5); // mixed case on purpose: emails must match case-insensitively
 try {
   for (let i = 0; i < 80; i++) { try { if ((await api('/healthz')).status === 200) break; } catch {} await new Promise(r => setTimeout(r, 250)); }
   if (process.env.EMAIL) token = (await api('/auth/login', 'POST', { email: process.env.EMAIL, password: process.env.PASSWORD })).body.token;

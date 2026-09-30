@@ -78,6 +78,18 @@ try {
   await api('/auth/login', 'POST', { email: u.email, password: 'Old-pass-6284!' }, 401);
   await api('/auth/login', 'POST', { email: u.email, password: 'New-pass-6284!' });
   passed.push('admin password reset');
+  // A cleaner whose staff profile email was typed with capitals can still see their tasks.
+  await api('/users', 'POST', { name: 'Case Cleaner', email: 'Case.Cleaner@Example.invalid', password: 'Clean-only-6284!', role: 'cleaner' }, 201);
+  const cs = await api('/staff', 'POST', { name: 'Case Cleaner', email: 'Case.Cleaner@Example.invalid', role: 'cleaner', active: true }, 201);
+  const b2 = await api('/reservations', 'POST', { ...base, checkIn: '2030-05-01', checkOut: '2030-05-03' }, 201);
+  const t2 = (await api('/cleaning')).find(t => t.reservationId === b2.id);
+  await api(`/cleaning/${t2.id}`, 'PATCH', { assignedToId: cs.id });
+  const admin = token;
+  token = (await api('/auth/login', 'POST', { email: 'case.cleaner@example.invalid', password: 'Clean-only-6284!' })).token;
+  assert.equal((await api('/cleaning')).length, 1);
+  await api(`/cleaning/${t2.id}`, 'PATCH', { status: 'in_progress' });
+  token = admin;
+  passed.push('cleaner email case-insensitive');
 
   console.log('PASS: ' + passed.join('; '));
 } catch (e) { console.error(e); console.error(logs.slice(-4000)); process.exitCode = 1; }

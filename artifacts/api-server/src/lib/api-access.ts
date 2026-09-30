@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { db, usersTable, ownersTable, propertiesTable, reservationsTable, ownerStatementsTable, staffTable, cleaningTasksTable, maintenanceTicketsTable } from '@workspace/db';
-import { eq, and, inArray, ne } from 'drizzle-orm';
+import { eq, and, inArray, ne, sql } from 'drizzle-orm';
 import { getTokenPayload } from './auth-middleware';
 
 const publicPaths = new Set(['/healthz', '/auth/login', '/auth/register', '/owner-auth/send-code', '/owner-auth/verify']);
@@ -46,7 +46,8 @@ export async function apiAccess(req: Request, res: Response, next: NextFunction)
   const root = req.path.split('/')[1];
   if (['auth','session'].includes(root)) return next();
   if (["cleaner","maintenance"].includes(user.role)) {
-    const [staff]=await db.select().from(staffTable).where(and(eq(staffTable.email,user.email),eq(staffTable.active,true)));
+    // Login emails are stored lower-case; staff profiles may have been typed with capitals.
+    const [staff]=await db.select().from(staffTable).where(and(sql`lower(${staffTable.email}) = ${user.email.toLowerCase()}`,eq(staffTable.active,true)));
     if(!staff) return res.status(403).json({error:"Your staff profile must be linked by email before tasks are available"});
     const table=user.role==="cleaner" ? cleaningTasksTable : maintenanceTicketsTable;
     const tasks=await db.select().from(table).where(eq(table.assignedToId,staff.id));

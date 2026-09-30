@@ -20,6 +20,7 @@ router.get("/staff/:id", async (req, res) => {
 router.post("/staff", async (req, res) => {
   const parsed = insertStaffSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+  if (parsed.data.email) parsed.data.email = parsed.data.email.trim().toLowerCase();
   const [row] = await db.insert(staffTable).values(parsed.data).returning();
 
   await insertAuditLog({
@@ -38,6 +39,7 @@ router.patch("/staff/:id", async (req, res) => {
   const parsed = insertStaffSchema.partial().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
   if (!Object.keys(parsed.data).length) return res.status(400).json({ error: "Nothing to update" });
+  if (parsed.data.email) parsed.data.email = parsed.data.email.trim().toLowerCase();
   const [row] = await db.update(staffTable).set(parsed.data).where(eq(staffTable.id, id)).returning();
   if (!row) return res.status(404).json({ error: "Not found" });
 
