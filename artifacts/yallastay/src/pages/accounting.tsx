@@ -1,4 +1,5 @@
 import { CompanyFinance } from "@/components/CompanyFinance";
+import { CleaningCostSettings } from "@/components/CleaningCostSettings";
 import { apiFetch } from "@/lib/api-fetch";
 import { AirbnbIncome } from "@/components/AirbnbIncome";
 import { useState, useMemo } from "react";
@@ -466,7 +467,8 @@ function SettingsTab() {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">Configure management fees, platform costs, and payout rules per property.</p>
+      <p className="text-sm text-muted-foreground">Configure management fees, platform costs, and payout rules per property. New bookings use these rates; bookings already verified keep the rates saved on them.</p>
+      <CleaningCostSettings />
       {isLoading ? (
         Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-lg" />)
       ) : (
@@ -478,7 +480,7 @@ function SettingsTab() {
                   <h3 className="font-semibold text-sm">{s.propertyName}</h3>
                   {editing !== s.propertyId && (
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Mgmt {s.managementFeePercent}% · Airbnb {s.platformFeeAirbnb}% · Booking {s.platformFeeBookingCom}% · Direct {s.platformFeeDirect}% · Vrbo {s.platformFeeVrbo ?? 0}% · VAT {s.vatEnabled ? `${s.vatPercent}%` : "off"} · Tourism {s.tourismEnabled ? s.tourismRate : "off"}
+                      {s.cleaningCostOverride != null ? `Cleaning cost ${s.cleaningCostOverride} (override) · ` : ""}Mgmt {s.managementFeePercent}% · Airbnb {s.platformFeeAirbnb}% · Booking {s.platformFeeBookingCom}% · Direct {s.platformFeeDirect}% · Vrbo {s.platformFeeVrbo ?? 0}% · VAT {s.vatEnabled ? `${s.vatPercent}%` : "off"} · Tourism {s.tourismEnabled ? s.tourismRate : "off"}
                     </p>
                   )}
                 </div>
@@ -503,10 +505,11 @@ function SettingsTab() {
                     { key: "platformFeeVrbo", label: "Vrbo Fee %" },
                     { key: "vatPercent", label: "VAT %" },
                     { key: "tourismRate", label: "Tourism / bedroom / night" },
+                    { key: "cleaningCostOverride", label: "Cleaning cost override (blank = rate card)" },
                   ].map(({ key, label }) => (
                     <div key={key}>
                       <Label className="text-xs mb-1 block">{label}</Label>
-                      <Input type="number" step="0.5" value={draft[key]} onChange={e => setDraft((p: any) => ({ ...p, [key]: parseFloat(e.target.value) }))} />
+                      <Input type="number" step="0.5" min="0" value={draft[key] ?? ""} onChange={e => setDraft((p: any) => ({ ...p, [key]: key === "cleaningCostOverride" && e.target.value === "" ? null : parseFloat(e.target.value) }))} />
                     </div>
                   ))}
                   <div className="flex flex-col gap-3 pt-1">

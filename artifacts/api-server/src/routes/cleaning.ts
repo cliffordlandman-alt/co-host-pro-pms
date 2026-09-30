@@ -5,6 +5,7 @@ import { notifyManagers, notifyStaffMember } from "../lib/whatsapp";
 import { insertAuditLog } from "../lib/audit";
 import { asyncHandler } from "../lib/asyncHandler";
 import { parseId } from "../lib/parseId";
+import { recordCleaningExpenseForTask } from "../lib/cleaning-costs";
 
 const router = Router();
 
@@ -147,6 +148,13 @@ router.patch("/cleaning/:id", asyncHandler(async (req, res) => {
     details: req.body,
     performedBy: req.headers["x-user-id"] as string,
   });
+
+  // First completion of a checkout clean records the cleaning company's charge as a company expense
+  // (idempotent per task; see lib/cleaning-costs.ts).
+  if (["completed", "approved"].includes(row.status) && row.reservationId) {
+    try { await recordCleaningExpenseForTask(row.id); }
+    catch (err: unknown) { console.error("[cleaning] cost recording failed:", err instanceof Error ? err.message : err); }
+  }
 
   res.json({ ...row, createdAt: row.createdAt.toISOString() });
 

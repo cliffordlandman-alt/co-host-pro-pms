@@ -19,6 +19,9 @@ import { eq, and, gte, lte, ne, sql, inArray } from "drizzle-orm";
 import { asyncHandler } from "../lib/asyncHandler";
 import { parseId } from "../lib/parseId";
 import { defaultFeeSettings } from "../lib/fee-config";
+import { backfillCleaningExpenses, cleaningVendor, unitLabel } from "../lib/cleaning-costs";
+import { insertAuditLog } from "../lib/audit";
+import { cleaningCostRatesTable, vendorsTable, usersTable } from "@workspace/db";
 
 const router = Router();
 
@@ -41,6 +44,7 @@ const accountingSettingsSchema = z.object({
   includeCleaning: z.boolean().optional(),
   includeMaintenance: z.boolean().optional(),
   currency: z.string().max(3).optional(),
+  cleaningCostOverride: z.union([z.null(), z.coerce.number().finite().min(0).max(100000).transform(n => n.toFixed(2))]).optional(),
 }).strict();
 
 // ── Property Settings ──────────────────────────────────────────────────────────
@@ -64,6 +68,7 @@ router.get("/accounting/settings", asyncHandler(async (_req, res) => {
       includeCleaning: propertySettingsTable.includeCleaning,
       includeMaintenance: propertySettingsTable.includeMaintenance,
       currency: propertySettingsTable.currency,
+      cleaningCostOverride: propertySettingsTable.cleaningCostOverride,
     })
     .from(propertySettingsTable)
     .leftJoin(propertiesTable, eq(propertySettingsTable.propertyId, propertiesTable.id));
@@ -83,6 +88,7 @@ router.get("/accounting/settings", asyncHandler(async (_req, res) => {
     platformFeeVrbo: parseFloat(r.platformFeeVrbo || "0"),
     ownerSplitPercent: parseFloat(r.ownerSplitPercent || "80"),
     vatPercent: parseFloat(r.vatPercent || "5"),
+    cleaningCostOverride: r.cleaningCostOverride == null ? null : parseFloat(r.cleaningCostOverride),
   })));
 }));
 
@@ -130,11 +136,15 @@ router.get("/accounting/transactions", asyncHandler(async (req, res) => {
       currency: accountingTransactionsTable.currency,
       allocation: accountingTransactionsTable.allocation,
       reference: accountingTransactionsTable.reference,
+      vendorId: accountingTransactionsTable.vendorId,
+      vendorName: vendorsTable.name,
+      cleaningTaskId: accountingTransactionsTable.cleaningTaskId,
       notes: accountingTransactionsTable.notes,
       createdAt: accountingTransactionsTable.createdAt,
     })
     .from(accountingTransactionsTable)
     .leftJoin(propertiesTable, eq(accountingTransactionsTable.propertyId, propertiesTable.id))
+    .leftJoin(vendorsTable, eq(accountingTransactionsTable.vendorId, vendorsTable.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(sql`${accountingTransactionsTable.date} DESC`);
 
@@ -168,11 +178,57 @@ router.delete("/accounting/transactions/:id", asyncHandler(async (req, res) => {
   return res.status(204).send();
 }));
 
+// ── Cleaning costs (company expense paid to the cleaning company) ─────────────
+router.get("/accounting/cleaning-costs", asyncHandler(async (_req, res) => {
+  const [vendor, rates] = await Promise.all([cleaningVendor(db), db.select().from(cleaningCostRatesTable).orderBy(cleaningCostRatesTable.bedrooms)]);
+  res.json({ vendor, rates: rates.map(r => ({ bedrooms: r.bedrooms, label: unitLabel(r.bedrooms), amount: Number(r.amount), currency: r.currency })) });
+}));
+
+const rateCardSchema = z.object({
+  vendorName: z.string().trim().min(1).max(120).optional(),
+  rates: z.array(z.object({ bedrooms: z.number().int().min(0).max(20), amount: z.union([z.null(), z.coerce.number().finite().min(0).max(100000)]) })).max(21).optional(),
+}).strict();
+
+router.put("/accounting/cleaning-costs", asyncHandler(async (req, res) => {
+  const parsed = rateCardSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Enter a whole bedroom count (0 = studio) and a non-negative amount for each rate" });
+  await db.transaction(async tx => {
+    if (parsed.data.vendorName) {
+      const vendor = await cleaningVendor(tx);
+      if (vendor) await tx.update(vendorsTable).set({ name: parsed.data.vendorName }).where(eq(vendorsTable.id, vendor.id));
+      else await tx.insert(vendorsTable).values({ name: parsed.data.vendorName, kind: "cleaning" });
+    }
+    for (const r of parsed.data.rates ?? []) {
+      if (r.amount == null) await tx.delete(cleaningCostRatesTable).where(eq(cleaningCostRatesTable.bedrooms, r.bedrooms));
+      else await tx.insert(cleaningCostRatesTable).values({ bedrooms: r.bedrooms, amount: r.amount.toFixed(2) })
+        .onConflictDoUpdate({ target: cleaningCostRatesTable.bedrooms, set: { amount: r.amount.toFixed(2), updatedAt: new Date() } });
+    }
+  });
+  await insertAuditLog({ action: "update", entity: "cleaning_cost_rates", entityId: 0, details: parsed.data, performedBy: req.headers["x-user-id"] as string });
+  const [vendor, rates] = await Promise.all([cleaningVendor(db), db.select().from(cleaningCostRatesTable).orderBy(cleaningCostRatesTable.bedrooms)]);
+  return res.json({ vendor, rates: rates.map(r => ({ bedrooms: r.bedrooms, label: unitLabel(r.bedrooms), amount: Number(r.amount), currency: r.currency })) });
+}));
+
+// Record cleaning expenses for all checkouts in the last N days (Dubai dates). Preview is the default;
+// recording requires an administrator. Safe to run repeatedly: each cleaning task is expensed once.
+router.post("/accounting/cleaning-expenses/backfill", asyncHandler(async (req, res) => {
+  const days = req.body?.days == null ? 30 : Number(req.body.days);
+  if (!Number.isInteger(days) || days < 1 || days > 366) return res.status(400).json({ error: "Choose between 1 and 366 days" });
+  const dryRun = req.body?.dryRun !== false;
+  if (!dryRun) {
+    const [user] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, Number(req.headers["x-user-id"])));
+    if (!user || !["admin", "super_admin"].includes(user.role)) return res.status(403).json({ error: "Only an administrator can record cleaning expenses in bulk" });
+  }
+  const result = await backfillCleaningExpenses({ days, dryRun });
+  if (!dryRun) await insertAuditLog({ action: "create", entity: "cleaning_expense_backfill", entityId: 0, details: { days, recorded: result.recorded, from: result.from, to: result.to }, performedBy: req.headers["x-user-id"] as string });
+  return res.json(result);
+}));
+
 router.get('/accounting/company-statement',asyncHandler(async(req,res)=>{
  const end=String(req.query.end || dubaiToday());const start=String(req.query.start || '0001-01-01');
  if(![start,end].every(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d))&&new Date(d).toISOString().slice(0,10)===d)||start>end)return res.status(400).json({error:'Invalid statement date range'});
- const [earnings,bookings,transactions,properties,maintenance]=await Promise.all([db.select().from(airbnbEarningsTable),db.select().from(reservationsTable),db.select().from(accountingTransactionsTable),db.select().from(propertiesTable),db.select().from(maintenanceTicketsTable)]);
- res.json(companyStatement({earnings,bookings,transactions,properties,maintenance},start,end));
+ const [settings,earnings,bookings,transactions,properties,maintenance]=await Promise.all([db.select().from(propertySettingsTable),db.select().from(airbnbEarningsTable),db.select().from(reservationsTable),db.select().from(accountingTransactionsTable),db.select().from(propertiesTable),db.select().from(maintenanceTicketsTable)]);
+ res.json(companyStatement({earnings,bookings,transactions,properties,maintenance,settings},start,end));
 }));
 
 // ── Owner Statements ───────────────────────────────────────────────────────────

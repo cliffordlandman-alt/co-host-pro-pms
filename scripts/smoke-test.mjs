@@ -68,7 +68,11 @@ try {
  await request('/accounting/transactions','POST',{allocation:'company',currency:'AED',date:'2026-02-30',type:'expense',description:'Invalid date',amount:10},400);
  await request('/accounting/transactions','POST',{allocation:'owner',currency:'AED',date:'2026-10-02',type:'expense',description:'Missing property',amount:10},400);
  const company=await request('/accounting/company-statement?start=2026-10-01&end=2026-10-31');
- assert.equal(company.totals.find(t=>t.currency==='AED').expenses,40);assert.equal(company.totals.find(t=>t.currency==='ZAR').income,100);
+ // 40 manual agent cost + 250 automatic cleaning-company cost for the completed 2BR checkout clean.
+ assert.equal(company.totals.find(t=>t.currency==='AED').expenses,290);
+ assert.deepEqual(company.cleaning.find(c=>c.currency==='AED'),{currency:'AED',income:100,expenses:250,net:-150,cleans:1});
+ await request('/cleaning/'+task.id,'PATCH',{status:'completed',notes:'saved again'});
+ assert.equal((await request('/accounting/company-statement?start=2026-10-01&end=2026-10-31')).cleaning[0].cleans,1,'saving a completed clean again does not add a second cleaning cost');assert.equal(company.totals.find(t=>t.currency==='ZAR').income,100);
  assert.equal(company.lines.some(l=>l.description==='Sample supplies'),false);
  await request('/accounting/company-statement?start=2026-10-31&end=2026-10-01','GET',undefined,400);
  const sept=await request('/accounting/statements/generate','POST',{month:'2026-09'});

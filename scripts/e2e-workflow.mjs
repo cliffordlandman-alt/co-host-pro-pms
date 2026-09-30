@@ -129,7 +129,7 @@ try {
   const tx2 = (await api('/accounting/transactions?month=2026-09')).body;
   const company2 = (await api('/accounting/company-statement?start=2026-09-01&end=2026-09-30')).body;
   const cleanCost = tx2.find(t => /clean/i.test(`${t.category} ${t.description}`) && (t.reservationId === b.id || t.reference === `cleaning:${task.id}`)) || company2.lines?.find(l => /clean/i.test(`${l.category} ${l.description}`) && l.type === 'expense');
-  rec('12 Cleaning expense recorded on completion', cleanCost ? 'OK' : 'GAP', cleanCost ? `${cleanCost.allocation || ''} ${cleanCost.amount}` : 'nothing posted; owner statement deducts the booking cleaning fee, but the cleaner cost is never recorded as a company expense');
+  rec('12 Cleaning expense recorded on completion', cleanCost ? 'OK' : 'GAP', cleanCost ? `${cleanCost.allocation || ''} expense AED ${cleanCost.amount} to ${cleanCost.vendorName || 'cleaning company'} (rate card, ${cleanCost.description || ''})` : 'nothing posted; owner statement deducts the booking cleaning fee, but the cleaner cost is never recorded as a company expense');
 
   // 13. Property ready
   const tc = (await api('/task-centre')).body;
@@ -139,7 +139,7 @@ try {
   // 14. Owner statement + dashboard reflect everything
   const st2 = (await api('/accounting/statements?month=2026-09')).body.find(s => s.propertyId === property.id);
   const dash2 = (await api('/dashboard/summary')).body;
-  rec('14a Owner statement after cleaning', st2 && near(st2.ownerPayout, 1805.71) ? 'OK' : 'FAIL', st2 ? `payout ${st2.ownerPayout}, cleaning ${st2.cleaningCosts} (booking fee, not actual cleaner cost)` : 'missing');
+  rec('14a Owner statement after cleaning', st2 && near(st2.ownerPayout, 1805.71) ? 'OK' : 'FAIL', st2 ? `payout ${st2.ownerPayout}; owner charged the booking cleaning fee ${st2.cleaningCosts} (company income); cleaning company cost is a company expense, not charged to the owner` : 'missing');
   rec('14b Dashboard reflects', dash2.todayCheckOuts >= 1 ? 'OK' : 'FAIL', `today checkouts ${dash2.todayCheckOuts}, cleaningPending ${dash2.cleaningPending}, monthRevenue ${dash2.monthRevenue}`);
   const publish = await api(`/accounting/statements/${st2.id}`, 'PATCH', { status: 'sent' });
   const paid = await api(`/accounting/statements/${st2.id}`, 'PATCH', { status: 'paid' });

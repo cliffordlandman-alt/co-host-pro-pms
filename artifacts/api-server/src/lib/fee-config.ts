@@ -23,6 +23,7 @@ export function defaultFeeSettings(p: PropertyLike) {
     ownerSplitPercent: "80", vatPercent: "5",
     includeCleaning: true, includeMaintenance: true,
     currency: p.currency || "AED",
+    cleaningCostOverride: null as string | null,
   };
 }
 

@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { propertiesTable } from "./properties";
 import { reservationsTable } from "./reservations";
+import { cleaningTasksTable } from "./cleaning";
 
 export const propertySettingsTable = pgTable("property_settings", {
   id: serial("id").primaryKey(),
@@ -20,6 +21,8 @@ export const propertySettingsTable = pgTable("property_settings", {
   includeCleaning: boolean("include_cleaning").notNull().default(true),
   includeMaintenance: boolean("include_maintenance").notNull().default(true),
   currency: text("currency").notNull().default("AED"),
+  /** Optional per-property cleaning cost (what the cleaning company charges); overrides the rate card. */
+  cleaningCostOverride: numeric("cleaning_cost_override", { precision: 10, scale: 2 }),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
@@ -36,6 +39,9 @@ export const accountingTransactionsTable = pgTable("accounting_transactions", {
   allocation: text("allocation").notNull().default("owner"),
   reference: text("reference"),
   notes: text("notes"),
+  vendorId: integer("vendor_id").references(() => vendorsTable.id),
+  /** Set on the automatic cleaning expense; unique, so a task can never be expensed twice. */
+  cleaningTaskId: integer("cleaning_task_id").unique("accounting_transactions_cleaning_task_uq").references(() => cleaningTasksTable.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -65,9 +71,30 @@ export const ownerStatementsTable = pgTable("owner_statements", {
 });
 
 export const insertPropertySettingsSchema = createInsertSchema(propertySettingsTable).omit({ id: true, updatedAt: true });
-export const insertAccountingTransactionSchema = createInsertSchema(accountingTransactionsTable).omit({ id: true, createdAt: true });
+export const insertAccountingTransactionSchema = createInsertSchema(accountingTransactionsTable).omit({ id: true, createdAt: true, cleaningTaskId: true });
 export const insertOwnerStatementSchema = createInsertSchema(ownerStatementsTable).omit({ id: true, createdAt: true });
 
 export type PropertySettings = typeof propertySettingsTable.$inferSelect;
 export type AccountingTransaction = typeof accountingTransactionsTable.$inferSelect;
 export type OwnerStatement = typeof ownerStatementsTable.$inferSelect;
+
+export const vendorsTable = pgTable("vendors", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  kind: text("kind").notNull().default("cleaning"),
+  email: text("email"),
+  phone: text("phone"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type Vendor = typeof vendorsTable.$inferSelect;
+
+/** Cleaning company rate card: cost per checkout clean by bedroom count (0 = studio). */
+export const cleaningCostRatesTable = pgTable("cleaning_cost_rates", {
+  id: serial("id").primaryKey(),
+  bedrooms: integer("bedrooms").notNull().unique(),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: text("currency").notNull().default("AED"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type CleaningCostRate = typeof cleaningCostRatesTable.$inferSelect;

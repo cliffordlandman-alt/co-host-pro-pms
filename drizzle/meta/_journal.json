@@ -71,6 +71,13 @@
       "when": 1790700006000,
       "tag": "0009_vrbo_channel_fee",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790700007000,
+      "tag": "0010_cleaning_costs",
+      "breakpoints": true
     }
   ]
 }
