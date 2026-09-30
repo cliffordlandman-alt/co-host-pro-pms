@@ -106,6 +106,13 @@
       "when": 1790700011000,
       "tag": "0014_external_id_per_property",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1790700012000,
+      "tag": "0015_redact_audit_secrets",
+      "breakpoints": true
     }
   ]
 }

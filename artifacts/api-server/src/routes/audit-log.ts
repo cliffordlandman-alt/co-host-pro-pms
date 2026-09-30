@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, auditLogsTable } from "@workspace/db";
 import { desc } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth-middleware";
+import { redactSecrets } from "../../../../lib/redact.mjs";
 
 const router = Router();
 
@@ -24,7 +25,7 @@ router.get("/audit-log", requireAdmin, async (_req, res) => {
     res.json(logs.map(log => ({
       ...log,
       createdAt: log.createdAt.toISOString(),
-      details: log.details ? JSON.parse(log.details) : null,
+      details: log.details ? redactSecrets(JSON.parse(log.details)) : null,
     })));
   } catch (err) {
     console.error("Error fetching audit logs:", err);
