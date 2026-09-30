@@ -71,6 +71,14 @@ try {
   await api(`/owners/${lonely.id}`, 'DELETE', undefined, 204);
   passed.push('deletes keep history; owner/staff edits validated');
 
+  // Administrator can reset a staff password; old password stops working.
+  const u = await api('/users', 'POST', { name: 'Forgetful', email: 'forgetful@example.invalid', password: 'Old-pass-6284!', role: 'operations' }, 201);
+  await api(`/users/${u.id}`, 'PATCH', { password: 'short' }, 400);
+  await api(`/users/${u.id}`, 'PATCH', { password: 'New-pass-6284!' });
+  await api('/auth/login', 'POST', { email: u.email, password: 'Old-pass-6284!' }, 401);
+  await api('/auth/login', 'POST', { email: u.email, password: 'New-pass-6284!' });
+  passed.push('admin password reset');
+
   console.log('PASS: ' + passed.join('; '));
 } catch (e) { console.error(e); console.error(logs.slice(-4000)); process.exitCode = 1; }
 finally { child.kill('SIGTERM'); }

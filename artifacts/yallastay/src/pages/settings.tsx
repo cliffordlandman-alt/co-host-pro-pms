@@ -377,15 +377,18 @@ function UsersSection() {
   });
 
   const patchMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) => { await apiFetch(`${API}/api/users/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }); },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+    mutationFn: async ({ id, ...changes }: { id: number; status?: string; password?: string }) => { const r = await apiFetch(`${API}/api/users/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(changes) }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Could not update user"); },
+    onSuccess: (_d, vars) => { qc.invalidateQueries({ queryKey: ["users"] }); if (vars.password) { toast({ title: "Password reset", description: "Share the new temporary password with the user securely." }); setResetUser(null); setNewPassword(""); } },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
+  const [resetUser, setResetUser] = useState<any>(null);
+  const [newPassword, setNewPassword] = useState("");
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div><h3 className="font-bold text-base">Users & Roles</h3><p className="text-sm text-muted-foreground">{users.length} team members</p></div>
-        <Button onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-2" /> Invite User</Button>
+        <Button onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-2" /> Add User</Button>
       </div>
       <div className="bg-card border rounded-2xl overflow-hidden">
         {isLoading ? <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div> : (
@@ -403,6 +406,7 @@ function UsersSection() {
                     <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => patchMutation.mutate({ id: u.id, status: u.status === "active" ? "inactive" : "active" })}>
                       {u.status === "active" ? "Deactivate" : "Activate"}
                     </Button>
+                    <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => { setResetUser(u); setNewPassword(""); }}>Reset password</Button>
                   </td>
                 </tr>
               ))}
@@ -410,9 +414,19 @@ function UsersSection() {
           </table>
         )}
       </div>
+      <Dialog open={!!resetUser} onOpenChange={o => { if (!o) setResetUser(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Reset password · {resetUser?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">Set a new temporary password (at least 8 characters). No email is sent — give it to {resetUser?.email} yourself.</p>
+            <Input type="password" aria-label="New temporary password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+            <Button className="w-full" disabled={newPassword.length < 8 || patchMutation.isPending} onClick={() => patchMutation.mutate({ id: resetUser.id, password: newPassword })}>Set new password</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Invite Team Member</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Add Team Member</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Full Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
             <div><Label>Email</Label><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>

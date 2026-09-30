@@ -124,6 +124,12 @@ router.patch("/users/:id", async (req, res) => {
   if (updates.role && !["admin", "manager", "reservations", "operations", "cleaner", "maintenance", "accountant"].includes(String(updates.role))) return res.status(400).json({error:"Invalid role"});
   if (updates.status && !["active", "inactive"].includes(String(updates.status))) return res.status(400).json({error:"Invalid status"});
   if (id === res.locals.user.id && (updates.role || updates.status === "inactive")) return res.status(400).json({error:"You cannot remove your own access"});
+  if (req.body.password !== undefined) {
+    // Administrator sets a new temporary password (there is no self-service email reset).
+    if (typeof req.body.password !== "string" || req.body.password.length < 8) return res.status(400).json({error:"Password must be at least 8 characters"});
+    updates.password = await bcrypt.hash(req.body.password, 12);
+  }
+  if (!Object.keys(updates).length) return res.status(400).json({error:"Nothing to update"});
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).returning();
   if (!user) return res.status(404).json({ error: "Not found" });
   const { password: pw2, ...safeUser } = user;
