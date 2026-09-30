@@ -58,7 +58,7 @@ try {
   await api(`/properties/${p.id}`, 'DELETE', undefined, 409);
   await api(`/owners/${owner.id}`, 'DELETE', undefined, 409);
   const spare = await api('/properties', 'POST', { name: 'Spare', unitNumber: 'S-1' }, 201);
-  await api(`/accounting/settings/${spare.id}`, 'PUT', { managementFeePercent: 15 }, 201);
+  await api(`/accounting/settings/${spare.id}`, 'PUT', { managementFeePercent: 15 });
   await api(`/properties/${spare.id}`, 'DELETE', undefined, 204);
   const cleaner = await api('/staff', 'POST', { name: 'Has history', role: 'cleaner', active: true }, 201);
   const task = (await api('/cleaning')).find(t => t.reservationId === b.id);
@@ -93,7 +93,7 @@ try {
 
   // Rates come from the property's fee settings, never from the browser; verified bookings keep their snapshot.
   const rp = await api('/properties', 'POST', { name: 'Rates 2BR', unitNumber: 'R-2', ownerId: owner.id, bedrooms: 2, city: 'Dubai', currency: 'AED' }, 201);
-  await api(`/accounting/settings/${rp.id}`, 'PUT', { managementFeePercent: 20, platformFeeBookingCom: 15, platformFeeVrbo: 8, tourismRate: 10, tourismEnabled: true, vatEnabled: true, vatPercent: 5 }, 201);
+  await api(`/accounting/settings/${rp.id}`, 'PUT', { managementFeePercent: 20, platformFeeBookingCom: 15, platformFeeVrbo: 8, tourismRate: 10, tourismEnabled: true, vatEnabled: true, vatPercent: 5 });
   const preview = await api(`/reservations/rates?propertyId=${rp.id}&platform=booking_com`);
   assert.deepEqual([preview.managementPercent, preview.channelPercent, preview.vatRate, preview.tourismEnabled, preview.tourismRate], [20, 15, 5, true, 10]);
   const forged = await api('/reservations', 'POST', { propertyId: rp.id, guestName: 'Forged rates', platform: 'booking_com', status: 'confirmed', financeMode: 'inclusive-v1', grossAmount: 3300, cleaningFee: 200, checkIn: '2031-01-01', checkOut: '2031-01-04',
@@ -107,6 +107,37 @@ try {
   const refreshed = await api(`/reservations/${forged.id}`, 'PATCH', { refreshRates: true });
   assert.equal(refreshed.managementPercent, 25, 'explicit re-apply uses the current property rate');
   passed.push('server-authoritative rates + booking snapshot');
+
+  // Management % and cleaning fee have one home (fee settings); the property screens read and write it.
+  const fp = await api('/properties', 'POST', { name: 'Fees 1BR', unitNumber: 'F-1', ownerId: owner.id, bedrooms: 1, city: 'Dubai', currency: 'AED', managementFee: '17', cleaningFee: '120' }, 201);
+  assert.deepEqual([fp.managementFee, fp.cleaningFee], ['17', '120']);
+  const feeRow = () => api('/accounting/settings').then(rows => rows.find(r => r.propertyId === fp.id));
+  assert.deepEqual([(await feeRow()).managementFeePercent, (await feeRow()).cleaningFee], [17, 120], 'property fees are stored in fee settings');
+  await api(`/properties/${fp.id}`, 'PATCH', { cleaningFee: '130', managementFee: '18' });
+  assert.deepEqual([(await feeRow()).managementFeePercent, (await feeRow()).cleaningFee], [18, 130], 'property edit updates fee settings');
+  await api(`/accounting/settings/${fp.id}`, 'PUT', { cleaningFee: 140 });
+  const fpGet = await api(`/properties/${fp.id}`);
+  assert.deepEqual([fpGet.managementFee, fpGet.cleaningFee], ['18', '140'], 'fee settings change shows on the property');
+  assert.equal((await api('/properties')).find(x => x.id === fp.id).cleaningFee, '140');
+  await api(`/properties/${fp.id}`, 'PATCH', { managementFee: '101' }, 400);
+  const snap = await api('/reservations', 'POST', { propertyId: fp.id, guestName: 'Snapshot', platform: 'direct', status: 'confirmed', financeMode: 'inclusive-v1', grossAmount: 1000, checkIn: '2031-03-01', checkOut: '2031-03-03' }, 201);
+  assert.equal(snap.cleaningFee, 140, 'booking takes the property cleaning fee when none is entered');
+  await api(`/accounting/settings/${fp.id}`, 'PUT', { cleaningFee: 150 });
+  const snapEdit = await api(`/reservations/${snap.id}`, 'PATCH', { notes: 'later edit' });
+  assert.equal(snapEdit.cleaningFee, 140, 'existing booking keeps its cleaning fee snapshot');
+  const own = await api('/reservations', 'POST', { propertyId: fp.id, guestName: 'Own fee', platform: 'direct', status: 'confirmed', financeMode: 'inclusive-v1', grossAmount: 1000, cleaningFee: 90, checkIn: '2031-04-01', checkOut: '2031-04-03' }, 201);
+  assert.equal(own.cleaningFee, 90, 'an entered booking cleaning fee is kept');
+  // Blank fees on a new property use Settings > Property Defaults.
+  await api('/settings/property', 'PUT', { value: { managementFee: 22, cleaningFee: 175 } }, 201);
+  const dp = await api('/properties', 'POST', { name: 'Defaults', unitNumber: 'D-1', ownerId: owner.id, bedrooms: 2 }, 201);
+  assert.deepEqual([dp.managementFee, dp.cleaningFee], ['22', '175']);
+  await api('/settings/property', 'PUT', { value: { managementFee: '', cleaningFee: '' } });
+  const dp2 = await api('/properties', 'POST', { name: 'Defaults 2', unitNumber: 'D-2', ownerId: owner.id, bedrooms: 2 }, 201);
+  assert.deepEqual([dp2.managementFee, dp2.cleaningFee], ['20', null], 'blank defaults mean 20% and no cleaning fee');
+  const batch = await api('/properties/batch', 'POST', { properties: [{ name: 'Batch fee', unitNumber: 'B-9', managementFee: '16', cleaningFee: '80' }] }, 201);
+  const bRow = (await api('/accounting/settings')).find(r => r.propertyName === 'Batch fee');
+  assert.deepEqual([bRow.managementFeePercent, bRow.cleaningFee], [16, 80], 'bulk import stores fees in fee settings');
+  passed.push('single source for management % and cleaning fee');
 
   console.log('PASS: ' + passed.join('; '));
 } catch (e) { console.error(e); console.error(logs.slice(-4000)); process.exitCode = 1; }

@@ -467,7 +467,7 @@ function SettingsTab() {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">Configure management fees, platform costs, and payout rules per property. New bookings use these rates; bookings already verified keep the rates saved on them.</p>
+      <p className="text-sm text-muted-foreground">This is the one place each property's management fee, cleaning fee, channel fees and tax rules are kept (the property screen edits the same values). New bookings use these rates; bookings already verified keep the rates saved on them.</p>
       <CleaningCostSettings />
       {isLoading ? (
         Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-lg" />)
@@ -480,7 +480,7 @@ function SettingsTab() {
                   <h3 className="font-semibold text-sm">{s.propertyName}</h3>
                   {editing !== s.propertyId && (
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {s.cleaningCostOverride != null ? `Cleaning cost ${s.cleaningCostOverride} (override) · ` : ""}Mgmt {s.managementFeePercent}% · Airbnb {s.platformFeeAirbnb}% · Booking {s.platformFeeBookingCom}% · Direct {s.platformFeeDirect}% · Vrbo {s.platformFeeVrbo ?? 0}% · VAT {s.vatEnabled ? `${s.vatPercent}%` : "off"} · Tourism {s.tourismEnabled ? s.tourismRate : "off"}
+                      Mgmt {s.managementFeePercent}% · Cleaning fee {s.cleaningFee != null ? s.cleaningFee : "none"}{s.cleaningCostOverride != null ? ` (cost override ${s.cleaningCostOverride})` : ""} · Airbnb {s.platformFeeAirbnb}% · Booking {s.platformFeeBookingCom}% · Direct {s.platformFeeDirect}% · Vrbo {s.platformFeeVrbo ?? 0}% · VAT {s.vatEnabled ? `${s.vatPercent}%` : "off"} · Tourism {s.tourismEnabled ? s.tourismRate : "off"}
                     </p>
                   )}
                 </div>
@@ -499,6 +499,7 @@ function SettingsTab() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {[
                     { key: "managementFeePercent", label: "Management Fee %" },
+                    { key: "cleaningFee", label: "Cleaning fee per booking (blank = none)" },
                     { key: "platformFeeAirbnb", label: "Airbnb Fee %" },
                     { key: "platformFeeBookingCom", label: "Booking.com Fee %" },
                     { key: "platformFeeDirect", label: "Direct Fee %" },
@@ -509,7 +510,7 @@ function SettingsTab() {
                   ].map(({ key, label }) => (
                     <div key={key}>
                       <Label className="text-xs mb-1 block">{label}</Label>
-                      <Input type="number" step="0.5" min="0" value={draft[key] ?? ""} onChange={e => setDraft((p: any) => ({ ...p, [key]: key === "cleaningCostOverride" && e.target.value === "" ? null : parseFloat(e.target.value) }))} />
+                      <Input type="number" step="0.5" min="0" value={draft[key] ?? ""} onChange={e => setDraft((p: any) => ({ ...p, [key]: (key === "cleaningCostOverride" || key === "cleaningFee") && e.target.value === "" ? null : parseFloat(e.target.value) }))} />
                     </div>
                   ))}
                   <div className="flex flex-col gap-3 pt-1">

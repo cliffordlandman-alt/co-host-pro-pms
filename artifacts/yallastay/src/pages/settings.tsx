@@ -201,23 +201,24 @@ function NotificationsSection({ settings, onSave }: { settings: any; onSave: (v:
 
 // ─── Property Defaults ─────────────────────────────────────────────────────────
 function PropertySection({ settings, onSave }: { settings: any; onSave: (v: any) => void }) {
-  const defs = { checkInTime: "15:00", checkOutTime: "11:00", cleaningFee: 200, securityDeposit: 500, managementFee: 20, maxGuests: 4, maintenanceThreshold: 500, houseRules: "No smoking indoors. No parties. No pets unless pre-approved.", wifiInstructions: "WiFi name and password are in the welcome guide on the coffee table.", parkingInstructions: "Dedicated parking space in the basement. Use intercom for access." };
+  const defs = { checkInTime: "15:00", checkOutTime: "11:00", cleaningFee: "" as number | "", securityDeposit: 500, managementFee: 20 as number | "", maxGuests: 4, maintenanceThreshold: 500, houseRules: "No smoking indoors. No parties. No pets unless pre-approved.", wifiInstructions: "WiFi name and password are in the welcome guide on the coffee table.", parkingInstructions: "Dedicated parking space in the basement. Use intercom for access." };
   const [form, setForm] = useState({ ...defs, ...settings?.property });
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
   function set(k: string, v: any) { setForm((f: any) => ({ ...f, [k]: v })); }
   async function save() { setSaving(true); await onSave(form); setSaving(false); toast({ title: "Property defaults saved" }); }
   return (
-    <SectionCard title="Property Defaults" desc="Auto-fill values when creating a new property" onSave={save} saving={saving}>
+    <SectionCard title="Property Defaults" desc="Starting values for new properties" onSave={save} saving={saving}>
       <div className="grid sm:grid-cols-2 gap-4">
         <Field label="Check-In Time"><Input type="time" value={form.checkInTime} onChange={e => set("checkInTime", e.target.value)} className="w-full" /></Field>
         <Field label="Check-Out Time"><Input type="time" value={form.checkOutTime} onChange={e => set("checkOutTime", e.target.value)} className="w-full" /></Field>
       </div>
-      <div className="grid sm:grid-cols-3 gap-4">
-        <Field label="Cleaning Fee (AED)"><Input type="number" value={form.cleaningFee} onChange={e => set("cleaningFee", +e.target.value)} /></Field>
-        <Field label="Security Deposit (AED)"><Input type="number" value={form.securityDeposit} onChange={e => set("securityDeposit", +e.target.value)} /></Field>
-        <Field label="Management Fee (%)"><Input type="number" value={form.managementFee} onChange={e => set("managementFee", +e.target.value)} /></Field>
+      <div className="space-y-4">
+        <Field label="Cleaning Fee (AED)" hint="Blank = no cleaning fee"><Input type="number" min="0" step="0.01" value={form.cleaningFee} onChange={e => set("cleaningFee", e.target.value === "" ? "" : +e.target.value)} className="w-32" /></Field>
+        <Field label="Security Deposit (AED)"><Input type="number" value={form.securityDeposit} onChange={e => set("securityDeposit", +e.target.value)} className="w-32" /></Field>
+        <Field label="Management Fee (%)" hint="Blank = 20%"><Input type="number" min="0" max="100" step="0.01" value={form.managementFee} onChange={e => set("managementFee", e.target.value === "" ? "" : +e.target.value)} className="w-32" /></Field>
       </div>
+      <p className="text-xs text-muted-foreground">The cleaning and management fees here are only starting values: a new property gets them when you leave its fees blank. After that, each property's fees live in Accounting → Fee settings (also editable on the property). Changing these defaults does not change existing properties or bookings.</p>
       <Field label="Max Guests"><Input type="number" value={form.maxGuests} onChange={e => set("maxGuests", +e.target.value)} className="w-24" /></Field>
       <Field label="Maintenance Approval Threshold" hint="Owner approval required above this amount">
         <div className="flex items-center gap-2"><Input type="number" value={form.maintenanceThreshold} onChange={e => set("maintenanceThreshold", +e.target.value)} className="w-32" /><span className="text-sm text-muted-foreground">AED</span></div>
@@ -290,7 +291,7 @@ function MaintenanceSection({ settings, onSave }: { settings: any; onSave: (v: a
 
 // ─── Financial ────────────────────────────────────────────────────────────────
 function FinancialSection({ settings, onSave }: { settings: any; onSave: (v: any) => void }) {
-  const defs = { managementFee: 20, cleaningMargin: 15, maintenanceMarkup: 10, payoutMethod: "net_revenue", vatEnabled: false, vatRate: 5, expenseCategories: "Cleaning\nMaintenance\nUtilities\nMarketing\nInsurance\nOther", revenueCategories: "Airbnb\nBooking.com\nDirect\nVRBO\nCorporate" };
+  const defs = { cleaningMargin: 15, maintenanceMarkup: 10, payoutMethod: "net_revenue", vatEnabled: false, vatRate: 5, expenseCategories: "Cleaning\nMaintenance\nUtilities\nMarketing\nInsurance\nOther", revenueCategories: "Airbnb\nBooking.com\nDirect\nVRBO\nCorporate" };
   const [form, setForm] = useState({ ...defs, ...settings?.financial });
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
@@ -298,8 +299,8 @@ function FinancialSection({ settings, onSave }: { settings: any; onSave: (v: any
   async function save() { setSaving(true); await onSave(form); setSaving(false); toast({ title: "Financial settings saved" }); }
   return (
     <SectionCard title="Financial Defaults" desc="Fee structures and payout calculation rules" onSave={save} saving={saving}>
-      <div className="grid sm:grid-cols-3 gap-4">
-        <Field label="Management Fee (%)"><div className="flex items-center gap-1"><Input type="number" value={form.managementFee} onChange={e => set("managementFee", +e.target.value)} /><span className="text-sm text-muted-foreground">%</span></div></Field>
+      <p className="text-sm text-muted-foreground">Management fee and cleaning fee are set per property in Accounting → Fee settings. The starting values for new properties are in Property Defaults.</p>
+      <div className="grid sm:grid-cols-2 gap-4">
         <Field label="Cleaning Margin (%)"><div className="flex items-center gap-1"><Input type="number" value={form.cleaningMargin} onChange={e => set("cleaningMargin", +e.target.value)} /><span className="text-sm text-muted-foreground">%</span></div></Field>
         <Field label="Maintenance Markup (%)"><div className="flex items-center gap-1"><Input type="number" value={form.maintenanceMarkup} onChange={e => set("maintenanceMarkup", +e.target.value)} /><span className="text-sm text-muted-foreground">%</span></div></Field>
       </div>

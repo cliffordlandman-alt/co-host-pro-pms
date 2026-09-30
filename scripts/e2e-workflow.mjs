@@ -102,7 +102,7 @@ try {
 
   // 10. Cleaning task
   let task = (await api('/cleaning')).body.find(t => t.reservationId === b.id);
-  rec('10 Cleaning task created for checkout', task ? 'OK' : 'FAIL', task ? `task #${task.id} status '${task.status}' on ${task.scheduledDate} ${task.scheduledTime}, price ${task.price} (created at booking time, not at checkout)` : '');
+  rec('10 Cleaning task created for checkout', task ? 'OK' : 'FAIL', task ? `task #${task.id} status '${task.status}' on ${task.scheduledDate} ${task.scheduledTime} (created at booking time, not at checkout; the clean is costed from the rate card when completed)` : '');
 
   // 11. Assign cleaner, cleaner works it, manager inspects
   const cleanerEmail = `cleaner${tag}@example.invalid`;

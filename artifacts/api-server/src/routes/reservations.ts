@@ -103,6 +103,11 @@ async function prepareFinance(body: any, existing?: any) {
     tourismEnabled: Number(existing.tourismRooms) > 0,
     tourismRate: Number(existing.tourismRate ?? current.tourismRate),
   } : current;
+  // Cleaning fee: the amount entered for this booking, else the booking's saved snapshot, else the
+  // property's cleaning fee from its fee settings (the single source), snapshotted onto the booking.
+  if (clean.cleaningFee === undefined || clean.cleaningFee === null || clean.cleaningFee === "") {
+    input.cleaningFee = existing?.cleaningFee ?? settings.cleaningFee ?? 0;
+  }
   const rooms = bedroomCount(property) ?? Number(tourismRoomsHint ?? existing?.tourismRooms);
   const finance = bookingFinance({total: input.grossAmount, managementPercent: rates.managementPercent,
     cleaningFee: input.cleaningFee ?? 0, nights, rooms, dubai: rates.tourismEnabled,
@@ -208,9 +213,9 @@ async function saveBooking(input: any, id?: number) {
   if (["cancelled","blocked"].includes(row.status)) {
    for (const task of tasks) if (!["approved","completed"].includes(task.status)) await tx.update(cleaningTasksTable).set({status:"cancelled"}).where(eq(cleaningTasksTable.id,task.id));
   } else if (!tasks.length) {
-   await tx.insert(cleaningTasksTable).values({propertyId:row.propertyId,reservationId:row.id,status:"dirty",scheduledDate:row.checkOut,scheduledTime:"11:00",price:row.cleaningFee});
+   await tx.insert(cleaningTasksTable).values({propertyId:row.propertyId,reservationId:row.id,status:"dirty",scheduledDate:row.checkOut,scheduledTime:"11:00"});
   } else {
-   for (const task of tasks) if (!["approved","completed"].includes(task.status)) await tx.update(cleaningTasksTable).set({propertyId:row.propertyId,scheduledDate:row.checkOut,price:row.cleaningFee,status:task.status==="cancelled"?"dirty":task.status}).where(eq(cleaningTasksTable.id,task.id));
+   for (const task of tasks) if (!["approved","completed"].includes(task.status)) await tx.update(cleaningTasksTable).set({propertyId:row.propertyId,scheduledDate:row.checkOut,status:task.status==="cancelled"?"dirty":task.status}).where(eq(cleaningTasksTable.id,task.id));
   }
   return row;
  });

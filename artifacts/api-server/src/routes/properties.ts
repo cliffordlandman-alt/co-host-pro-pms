@@ -6,6 +6,7 @@ import { insertAuditLog } from "../lib/audit";
 import { checkPropertyLimit } from "../lib/auth-middleware";
 import { asyncHandler } from "../lib/asyncHandler";
 import { parseId } from "../lib/parseId";
+import { feeFieldsFrom, parseFeeFields, saveFeeFields } from "../lib/fee-config";
 
 const router = Router();
 
@@ -30,7 +31,7 @@ const propertyBaseSelect = {
 } as const;
 
 const propertyListSelect = {
-  city: propertiesTable.city, country: propertiesTable.country, currency: propertiesTable.currency, bedrooms: propertiesTable.bedrooms, cleaningFee: propertiesTable.cleaningFee, managementFee: propertiesTable.managementFee,
+  city: propertiesTable.city, country: propertiesTable.country, currency: propertiesTable.currency, bedrooms: propertiesTable.bedrooms, feeManagementPercent: propertySettingsTable.managementFeePercent, feeCleaning: propertySettingsTable.cleaningFee,
   ...propertyBaseSelect,
   airbnbListingId: propertiesTable.airbnbListingId,
   importStatus: propertiesTable.importStatus,
@@ -52,11 +53,23 @@ const propertyDetailSelect = {
   checkInInstructions: propertiesTable.checkInInstructions,
   wifiDetails: propertiesTable.wifiDetails,
   accessDetails: propertiesTable.accessDetails,
-  cleaningFee: propertiesTable.cleaningFee,
-  managementFee: propertiesTable.managementFee,
+  feeManagementPercent: propertySettingsTable.managementFeePercent,
+  feeCleaning: propertySettingsTable.cleaningFee,
   importedOwnerName: propertiesTable.importedOwnerName,
   importedOwnerEmail: propertiesTable.importedOwnerEmail,
 } as const;
+
+// managementFee / cleaningFee are served from the property's fee record (property_settings).
+function withFees<T extends { feeManagementPercent?: string | null; feeCleaning?: string | null; createdAt: Date }>(r: T) {
+  const { feeManagementPercent, feeCleaning, ...rest } = r;
+  return { ...rest, ...feeFieldsFrom({ managementFeePercent: feeManagementPercent, cleaningFee: feeCleaning }), createdAt: r.createdAt.toISOString() };
+}
+
+/** Drop the pre-0011 legacy fee columns from write responses (they are no longer used). */
+function stripLegacy<T extends { legacyCleaningFee?: unknown; legacyManagementFee?: unknown }>(row: T) {
+  const { legacyCleaningFee: _c, legacyManagementFee: _m, ...rest } = row;
+  return rest;
+}
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
@@ -66,11 +79,12 @@ router.get("/properties", asyncHandler(async (req, res) => {
     .select(propertyListSelect)
     .from(propertiesTable)
     .leftJoin(ownersTable, eq(propertiesTable.ownerId, ownersTable.id))
+    .leftJoin(propertySettingsTable, eq(propertySettingsTable.propertyId, propertiesTable.id))
     .orderBy(propertiesTable.name);
   const rows = ownerId
     ? await base.where(eq(propertiesTable.ownerId, parseInt(ownerId)))
     : await base;
-  res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString() })));
+  res.json(rows.map(withFees));
 }));
 
 router.get("/properties/:id", asyncHandler(async (req, res) => {
@@ -80,15 +94,21 @@ router.get("/properties/:id", asyncHandler(async (req, res) => {
     .select(propertyDetailSelect)
     .from(propertiesTable)
     .leftJoin(ownersTable, eq(propertiesTable.ownerId, ownersTable.id))
+    .leftJoin(propertySettingsTable, eq(propertySettingsTable.propertyId, propertiesTable.id))
     .where(eq(propertiesTable.id, id));
   if (!row) return res.status(404).json({ error: "Not found" });
-  return res.json({ ...row, createdAt: row.createdAt.toISOString() });
+  return res.json(withFees(row));
 }));
 
 router.post("/properties", checkPropertyLimit, asyncHandler(async (req, res) => {
   const parsed = insertPropertySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-  const [row] = await db.insert(propertiesTable).values(parsed.data).returning();
+  let fees;
+  try { fees = parseFeeFields(req.body, true); } catch (e) { return res.status(400).json({ error: (e as Error).message }); }
+  const { row, feeRow } = await db.transaction(async tx => {
+    const [row] = await tx.insert(propertiesTable).values(parsed.data).returning();
+    return { row, feeRow: await saveFeeFields(tx, row, fees) };
+  });
 
   await insertAuditLog({
     action: "create",
@@ -108,7 +128,7 @@ router.post("/properties", checkPropertyLimit, asyncHandler(async (req, res) => 
     reservationsImported += (syncRes as { created?: number }).created ?? 0;
   }
 
-  return res.status(201).json({ ...row, createdAt: row.createdAt.toISOString(), reservationsImported });
+  return res.status(201).json({ ...stripLegacy(row), ...feeFieldsFrom(feeRow), createdAt: row.createdAt.toISOString(), reservationsImported });
 }));
 
 router.post("/properties/batch", checkPropertyLimit, asyncHandler(async (req, res) => {
@@ -145,8 +165,13 @@ router.post("/properties/batch", checkPropertyLimit, asyncHandler(async (req, re
         duplicates.push(listingId);
         continue;
       }
-      const [row] = await db.insert(propertiesTable).values(parsed.data).returning();
-      created.push({ ...row, createdAt: row.createdAt.toISOString() });
+      let fees;
+      try { fees = parseFeeFields(prop, true); } catch (e) { errors.push((e as Error).message); continue; }
+      const { row, feeRow } = await db.transaction(async tx => {
+        const [row] = await tx.insert(propertiesTable).values(parsed.data).returning();
+        return { row, feeRow: await saveFeeFields(tx, row, fees) };
+      });
+      created.push({ ...stripLegacy(row), ...feeFieldsFrom(feeRow), createdAt: row.createdAt.toISOString() });
 
       if (row.airbnbListingId) {
         await db.update(importLogsTable)
@@ -179,12 +204,17 @@ router.patch("/properties/:id", asyncHandler(async (req, res) => {
   if (id === null) return res.status(400).json({ error: "Invalid id" });
   const parsed=insertPropertySchema.partial().safeParse(req.body);
   if(!parsed.success) return res.status(400).json({error:parsed.error.message});
-  const [row] = await db
-    .update(propertiesTable)
-    .set(parsed.data)
-    .where(eq(propertiesTable.id, id))
-    .returning();
-  if (!row) return res.status(404).json({ error: "Not found" });
+  let fees;
+  try { fees = parseFeeFields(req.body, false); } catch (e) { return res.status(400).json({ error: (e as Error).message }); }
+  const result = await db.transaction(async tx => {
+    const [row] = Object.keys(parsed.data).length
+      ? await tx.update(propertiesTable).set(parsed.data).where(eq(propertiesTable.id, id)).returning()
+      : await tx.select().from(propertiesTable).where(eq(propertiesTable.id, id));
+    if (!row) return null;
+    return { row, feeRow: await saveFeeFields(tx, row, fees) };
+  });
+  if (!result) return res.status(404).json({ error: "Not found" });
+  const { row, feeRow } = result;
 
   await insertAuditLog({
     action: "update",
@@ -200,7 +230,7 @@ router.patch("/properties/:id", asyncHandler(async (req, res) => {
   if (body.bookingComIcalUrl)  syncPropertyIcal(id, "booking_com").catch(() => {});
   if (body.vrboIcalUrl)        syncPropertyIcal(id, "vrbo").catch(() => {});
 
-  return res.json({ ...row, createdAt: row.createdAt.toISOString() });
+  return res.json({ ...stripLegacy(row), ...feeFieldsFrom(feeRow), createdAt: row.createdAt.toISOString() });
 }));
 
 router.delete("/properties/:id", asyncHandler(async (req, res) => {

@@ -17,11 +17,9 @@ const DEFAULTS: Record<string, unknown> = {
   booking: {
     checkInTime: "15:00",
     checkOutTime: "11:00",
-    defaultCleaningFee: 200,
     defaultSecurityDeposit: 500,
   },
   owner: {
-    defaultManagementFee: 20,
     defaultPayoutMethod: "bank",
     minPayoutThreshold: 1000,
     payoutFrequency: "monthly",

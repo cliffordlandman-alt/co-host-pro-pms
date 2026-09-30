@@ -43,7 +43,7 @@ try {
  assert.throws(()=>bookingFinance({total:10,managementPercent:20,nights:3,rooms:2,dubai:true}));
  const prop2=await request('/properties','POST',{name:'Sample Dubai 2 Bedroom',unitNumber:'TEST-202',ownerId:owner.id,bedrooms:2,city:'Dubai',currency:'AED'},201);
  // Rates come from the property's fee settings (the server ignores rates sent with the booking).
- await request('/accounting/settings/'+prop2.id,'PUT',{managementFeePercent:20,platformFeeDirect:3,tourismEnabled:true,tourismRate:10,vatEnabled:true,vatPercent:5},201);
+ await request('/accounting/settings/'+prop2.id,'PUT',{managementFeePercent:20,platformFeeDirect:3,tourismEnabled:true,tourismRate:10,vatEnabled:true,vatPercent:5});
  const payload={propertyId:prop2.id,guestName:'Sample Guest',guestEmail:'guest@example.invalid',checkIn:'2026-09-29',checkOut:'2026-10-02',status:'confirmed',platform:'direct',financeMode:'inclusive-v1',grossAmount:1110,managementPercent:20,cleaningFee:100,dubaiCharges:true,channelPercent:3};
  const b=await request('/reservations','POST',payload,201);
  assert.equal(b.ownerAmount,670);assert.equal(b.balanceDue,1110);

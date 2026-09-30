@@ -1,4 +1,4 @@
-import { db, propertiesTable, reservationsTable, cleaningTasksTable, appSettingsTable, notificationsTable, ownerStatementsTable } from "@workspace/db";
+import { db, propertiesTable, reservationsTable, cleaningTasksTable, appSettingsTable, notificationsTable, ownerStatementsTable, propertySettingsTable } from "@workspace/db";
 import { dubaiToday } from "./dubai-date";
 import { eq, and, ne } from "drizzle-orm";
 import { parseIcalEvents, planIcalSync, type IcalFlag } from "../../../../lib/ical-sync.mjs";
@@ -52,12 +52,14 @@ export async function syncPropertyIcal(propertyId: number, platform: Platform) {
     const lockedMonths = new Set((await tx.select({ month: ownerStatementsTable.month }).from(ownerStatementsTable)
       .where(and(eq(ownerStatementsTable.propertyId, propertyId), ne(ownerStatementsTable.status, "draft")))).map(s => s.month));
     let created = 0, updated = 0, released = 0, flagged = 0;
+    // Imported stays get the property's cleaning fee from its fee settings (the single source).
+    const [fees] = await tx.select({ cleaningFee: propertySettingsTable.cleaningFee }).from(propertySettingsTable).where(eq(propertySettingsTable.propertyId, propertyId));
     for (const row of plan.inserts) {
       const { flag, ...values } = row;
-      const [inserted] = await tx.insert(reservationsTable).values({ ...values, propertyId, cleaningFee: values.status === "blocked" ? null : property.cleaningFee ?? null } as any).onConflictDoNothing({ target: reservationsTable.externalId }).returning();
+      const [inserted] = await tx.insert(reservationsTable).values({ ...values, propertyId, cleaningFee: values.status === "blocked" ? null : fees?.cleaningFee ?? null } as any).onConflictDoNothing({ target: reservationsTable.externalId }).returning();
       if (!inserted) continue;
       created++;
-      if (inserted.status !== "blocked" && inserted.checkOut >= today) await tx.insert(cleaningTasksTable).values({ propertyId, reservationId: inserted.id, status: "dirty", scheduledDate: inserted.checkOut, scheduledTime: "11:00", price: inserted.cleaningFee });
+      if (inserted.status !== "blocked" && inserted.checkOut >= today) await tx.insert(cleaningTasksTable).values({ propertyId, reservationId: inserted.id, status: "dirty", scheduledDate: inserted.checkOut, scheduledTime: "11:00" });
       if (flag) { await raiseOnce(tx, flag, inserted.id, property.name); flagged++; }
     }
     for (const u of plan.updates) {

@@ -16,11 +16,15 @@ export const propertySettingsTable = pgTable("property_settings", {
   platformFeeBookingCom: numeric("platform_fee_booking_com", { precision: 5, scale: 2 }).notNull().default("15"),
   platformFeeDirect: numeric("platform_fee_direct", { precision: 5, scale: 2 }).notNull().default("0"),
   platformFeeVrbo: numeric("platform_fee_vrbo", { precision: 5, scale: 2 }).notNull().default("0"),
+  /** Not used (owner share is derived from managementFeePercent). */
   ownerSplitPercent: numeric("owner_split_percent", { precision: 5, scale: 2 }).notNull().default("80"),
   vatPercent: numeric("vat_percent", { precision: 5, scale: 2 }).notNull().default("5"),
   includeCleaning: boolean("include_cleaning").notNull().default(true),
   includeMaintenance: boolean("include_maintenance").notNull().default(true),
   currency: text("currency").notNull().default("AED"),
+  /** Cleaning fee charged per booking (deducted from the owner; company income). Single source of truth;
+   *  each booking snapshots it into reservations.cleaning_fee when calculated. */
+  cleaningFee: numeric("cleaning_fee", { precision: 10, scale: 2 }),
   /** Optional per-property cleaning cost (what the cleaning company charges); overrides the rate card. */
   cleaningCostOverride: numeric("cleaning_cost_override", { precision: 10, scale: 2 }),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

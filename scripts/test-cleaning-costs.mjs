@@ -31,7 +31,7 @@ try {
   const three = await mk('Three Bed', { bedrooms: 3 });
   const five = await mk('Five Bed', { bedrooms: 5 });
   const typed = await mk('Typed 2 Bedroom', { bedrooms: 0, bedroomType: '2 Bedroom' });
-  await api(`/accounting/settings/${three.id}`, 'PUT', { cleaningCostOverride: 300 }, 201);
+  await api(`/accounting/settings/${three.id}`, 'PUT', { cleaningCostOverride: 300 });
   const book = (p, checkIn, checkOut, extra = {}) => api('/reservations', 'POST', { propertyId: p.id, guestName: `Guest ${p.name}`, platform: 'direct', status: 'confirmed', financeMode: 'inclusive-v1', grossAmount: 2000, cleaningFee: 150, checkIn, checkOut, paymentStatus: 'unknown', ...extra }, 201);
   await book(studio, shift(-12), shift(-10));
   await book(one, shift(-6), shift(-3));

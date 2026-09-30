@@ -44,6 +44,7 @@ const accountingSettingsSchema = z.object({
   includeCleaning: z.boolean().optional(),
   includeMaintenance: z.boolean().optional(),
   currency: z.string().max(3).optional(),
+  cleaningFee: z.union([z.null(), z.coerce.number().finite().min(0).max(100000).transform(n => n.toFixed(2))]).optional(),
   cleaningCostOverride: z.union([z.null(), z.coerce.number().finite().min(0).max(100000).transform(n => n.toFixed(2))]).optional(),
 }).strict();
 
@@ -63,12 +64,12 @@ router.get("/accounting/settings", asyncHandler(async (_req, res) => {
       platformFeeBookingCom: propertySettingsTable.platformFeeBookingCom,
       platformFeeDirect: propertySettingsTable.platformFeeDirect,
       platformFeeVrbo: propertySettingsTable.platformFeeVrbo,
-      ownerSplitPercent: propertySettingsTable.ownerSplitPercent,
       vatPercent: propertySettingsTable.vatPercent,
       includeCleaning: propertySettingsTable.includeCleaning,
       includeMaintenance: propertySettingsTable.includeMaintenance,
       currency: propertySettingsTable.currency,
       cleaningCostOverride: propertySettingsTable.cleaningCostOverride,
+      cleaningFee: propertySettingsTable.cleaningFee,
     })
     .from(propertySettingsTable)
     .leftJoin(propertiesTable, eq(propertySettingsTable.propertyId, propertiesTable.id));
@@ -86,9 +87,9 @@ router.get("/accounting/settings", asyncHandler(async (_req, res) => {
     platformFeeBookingCom: parseFloat(r.platformFeeBookingCom || "15"),
     platformFeeDirect: parseFloat(r.platformFeeDirect || "0"),
     platformFeeVrbo: parseFloat(r.platformFeeVrbo || "0"),
-    ownerSplitPercent: parseFloat(r.ownerSplitPercent || "80"),
     vatPercent: parseFloat(r.vatPercent || "5"),
     cleaningCostOverride: r.cleaningCostOverride == null ? null : parseFloat(r.cleaningCostOverride),
+    cleaningFee: r.cleaningFee == null ? null : parseFloat(r.cleaningFee),
   })));
 }));
 
@@ -99,15 +100,19 @@ router.put("/accounting/settings/:propertyId", asyncHandler(async (req, res) => 
   const parsed = accountingSettingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
 
+  const { ownerSplitPercent: _unused, ...data } = parsed.data; // owner share is derived from the management %
   const existing = await db.select().from(propertySettingsTable).where(eq(propertySettingsTable.propertyId, propertyId));
   if (existing.length > 0) {
     const [row] = await db.update(propertySettingsTable)
-      .set({ ...parsed.data, updatedAt: new Date() })
+      .set({ ...data, updatedAt: new Date() })
       .where(eq(propertySettingsTable.propertyId, propertyId))
       .returning();
     return res.json(row);
   }
-  const [row] = await db.insert(propertySettingsTable).values({ propertyId, ...parsed.data }).returning();
+  const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, propertyId));
+  if (!property) return res.status(404).json({ error: "Property not found" });
+  const d = defaultFeeSettings(property);
+  const [row] = await db.insert(propertySettingsTable).values({ propertyId, tourismEnabled: d.tourismEnabled, vatEnabled: d.vatEnabled, currency: d.currency, ...data }).returning();
   return res.status(201).json(row);
 }));
 

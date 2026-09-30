@@ -42,8 +42,10 @@ export const propertiesTable = pgTable("properties", {
   checkInInstructions: text("check_in_instructions"),
   wifiDetails: text("wifi_details"),
   accessDetails: text("access_details"),
-  cleaningFee: text("cleaning_fee"),
-  managementFee: text("management_fee"),
+  /** Pre-migration-0011 copies, kept for reference only and never read or written by the app.
+   *  The live values are property_settings.cleaning_fee and property_settings.management_fee_percent. */
+  legacyCleaningFee: text("legacy_cleaning_fee"),
+  legacyManagementFee: text("legacy_management_fee"),
   importedOwnerName: text("imported_owner_name"),
   importedOwnerEmail: text("imported_owner_email"),
   airbnbSnapshot: text("airbnb_snapshot"),
@@ -60,7 +62,7 @@ export const propertiesTable = pgTable("properties", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertPropertySchema = createInsertSchema(propertiesTable).omit({ id: true, createdAt: true });
+export const insertPropertySchema = createInsertSchema(propertiesTable).omit({ id: true, createdAt: true, legacyCleaningFee: true, legacyManagementFee: true });
 export type InsertProperty = z.infer<typeof insertPropertySchema>;
 export type Property = typeof propertiesTable.$inferSelect;
 
