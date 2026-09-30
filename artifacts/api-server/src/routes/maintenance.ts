@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, maintenanceTicketsTable, propertiesTable, staffTable, ownersTable, insertMaintenanceTicketSchema } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or, sql, desc } from "drizzle-orm";
+import { pageParams, paged } from "../lib/paging";
 import { notifyManagers, notifyStaffMember } from "../lib/whatsapp";
 import { insertAuditLog } from "../lib/audit";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -55,21 +56,41 @@ function formatTicket(r: {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 router.get("/maintenance", asyncHandler(async (req, res) => {
-  const { status, priority, propertyId } = req.query as { status?: string; priority?: string; propertyId?: string };
+  const { status, priority, propertyId, filter, id } = req.query as { status?: string; priority?: string; propertyId?: string; filter?: string; id?: string };
   const conditions = [];
   if (status) conditions.push(eq(maintenanceTicketsTable.status, status));
   if (priority) conditions.push(eq(maintenanceTicketsTable.priority, priority));
   if (propertyId) conditions.push(eq(maintenanceTicketsTable.propertyId, parseInt(propertyId)));
+  const p = pageParams(req.query as Record<string, unknown>);
+  let summary: Record<string, number> | null = null, total = 0;
+  if (p) {
+    if (id && parseId(id) !== null) conditions.push(eq(maintenanceTicketsTable.id, parseId(id)!));
+    // Stat cards count every ticket; the filter tab only narrows the list.
+    const [agg] = await db.select({
+      total: sql<number>`count(*)::int`,
+      emergency: sql<number>`count(*) filter (where ${maintenanceTicketsTable.priority} = 'emergency')::int`,
+      approval: sql<number>`count(*) filter (where ${maintenanceTicketsTable.status} = 'awaiting_approval')::int`,
+      open: sql<number>`count(*) filter (where ${maintenanceTicketsTable.status} not in ('resolved','completed','cancelled'))::int`,
+      resolved: sql<number>`count(*) filter (where ${maintenanceTicketsTable.status} in ('resolved','completed'))::int`,
+    }).from(maintenanceTicketsTable).where(conditions.length > 0 ? and(...conditions) : undefined);
+    summary = agg;
+    if (filter && filter !== "all") conditions.push(or(eq(maintenanceTicketsTable.status, filter), eq(maintenanceTicketsTable.priority, filter))!);
+    const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(maintenanceTicketsTable).where(conditions.length > 0 ? and(...conditions) : undefined);
+    total = n;
+  }
 
-  const rows = await db
+  const query = db
     .select(maintenanceSelect)
     .from(maintenanceTicketsTable)
     .leftJoin(propertiesTable, eq(maintenanceTicketsTable.propertyId, propertiesTable.id))
     .leftJoin(staffTable, eq(maintenanceTicketsTable.assignedToId, staffTable.id))
     .leftJoin(ownersTable, eq(propertiesTable.ownerId, ownersTable.id))
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(maintenanceTicketsTable.createdAt);
-
+    .where(conditions.length > 0 ? and(...conditions) : undefined);
+  if (p) {
+    const rows = await query.orderBy(desc(maintenanceTicketsTable.createdAt), desc(maintenanceTicketsTable.id)).limit(p.pageSize).offset(p.offset);
+    return res.json(paged(rows.map(formatTicket), total, p, summary));
+  }
+  const rows = await query.orderBy(maintenanceTicketsTable.createdAt);
   return res.json(rows.map(formatTicket));
 }));
 

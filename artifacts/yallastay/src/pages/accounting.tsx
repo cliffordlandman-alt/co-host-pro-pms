@@ -1,8 +1,9 @@
 import { CompanyFinance } from "@/components/CompanyFinance";
 import { CleaningCostSettings } from "@/components/CleaningCostSettings";
 import { apiFetch } from "@/lib/api-fetch";
+import { Pager, usePagedList } from "@/components/Pager";
 import { AirbnbIncome } from "@/components/AirbnbIncome";
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useGetProperties } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -172,10 +173,11 @@ function StatementsTab() {
   const queryClient = useQueryClient();
   const [selectedMonth, setSelectedMonth] = useState(MONTHS[0].value);
 
-  const { data: statements, isLoading } = useQuery({
-    queryKey: ["statements", selectedMonth],
-    queryFn: () => f(`/api/accounting/statements?month=${selectedMonth}`),
-  });
+  const [statusFilter, setStatusFilter] = useState("all");
+  // Paged on the server; the KPI totals are server sums over every statement for the month (per currency).
+  const list = usePagedList<any, any>("statements", "accounting/statements", { month: selectedMonth, status: statusFilter }, 20);
+  const statements = list.data?.items, isLoading = list.isLoading, summary = list.data?.summary;
+  const serverMoney = (key: "grossRevenue" | "managementFee" | "ownerPayout") => (summary?.currencies ?? []).map((c: any) => aed(Number(c[key]), c.currency)).join(" · ") || "—";
 
   const generateMutation = useMutation({
     mutationFn: () => f("/api/accounting/statements/generate", {
@@ -197,22 +199,27 @@ function StatementsTab() {
   });
   const { data: duplicates } = useQuery({ queryKey: ["statements", "duplicates"], queryFn: () => f("/api/accounting/statements/duplicates") });
 
-  const totals = useMemo(() => ({
-    gross: statements?.reduce((s: number, st: any) => s + st.grossRevenue, 0) ?? 0,
-    mgmt: statements?.reduce((s: number, st: any) => s + st.managementFee, 0) ?? 0,
-    payout: statements?.reduce((s: number, st: any) => s + st.ownerPayout, 0) ?? 0,
-  }), [statements]);
-
   return (
     <div className="space-y-4">
       {/* Controls */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
         <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-          <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-44" aria-label="Statement month"><SelectValue /></SelectTrigger>
           <SelectContent>
             {MONTHS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-36" aria-label="Statement status"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="draft">Draft</SelectItem>
+            <SelectItem value="sent">Sent</SelectItem>
+            <SelectItem value="paid">Paid</SelectItem>
+          </SelectContent>
+        </Select>
+        </div>
         <Button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}>
           <RefreshCw className={`h-4 w-4 mr-1.5 ${generateMutation.isPending ? "animate-spin" : ""}`} />
           {generateMutation.isPending ? "Generating…" : "Generate Statements"}
@@ -230,17 +237,18 @@ function StatementsTab() {
       )}
 
       {/* Summary KPIs */}
-      {!isLoading && statements?.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
+      {!isLoading && summary?.total > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
-            { label: "Gross Revenue", value: totals.gross, color: "text-emerald-600" },
-            { label: "Management Fees", value: totals.mgmt, color: "text-amber-600" },
-            { label: "Total Payouts", value: totals.payout, color: "text-primary" },
-          ].map(({ label, value, color }) => (
+            { label: "Gross Revenue", key: "grossRevenue" as const, color: "text-emerald-600" },
+            { label: "Management Fees", key: "managementFee" as const, color: "text-amber-600" },
+            { label: "Total Payouts", key: "ownerPayout" as const, color: "text-primary" },
+          ].map(({ label, key, color }) => (
             <Card key={label}>
               <CardContent className="pt-3 pb-3">
                 <div className="text-xs text-muted-foreground mb-1">{label}</div>
-                <div className={`text-lg font-bold ${color}`}>{groupedMoney(statements,(r:any)=>Number(label==="Gross Revenue"?r.grossRevenue:label==="Management Fees"?r.managementFee:r.ownerPayout))}</div>
+                <div className={`text-lg font-bold ${color}`}>{serverMoney(key)}</div>
+                <div className="text-[11px] text-muted-foreground">All {summary.total} statement{summary.total !== 1 ? "s" : ""}{statusFilter !== "all" ? ` (${statusFilter})` : ""} this month</div>
               </CardContent>
             </Card>
           ))}
@@ -250,11 +258,13 @@ function StatementsTab() {
       {/* Statements list */}
       {isLoading ? (
         <div className="space-y-2">{Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}</div>
+      ) : list.isError ? (
+        <div className="text-center py-10 text-muted-foreground">Could not load statements. Please refresh.</div>
       ) : !statements?.length ? (
         <div className="text-center py-16 border-2 border-dashed rounded-xl text-muted-foreground space-y-3">
           <FileText className="h-10 w-10 mx-auto text-muted-foreground/30" />
           <div>
-            <p className="font-medium">No statements for {format(new Date(selectedMonth + "-01"), "MMMM yyyy")}</p>
+            <p className="font-medium">No {statusFilter !== "all" ? `${statusFilter} ` : ""}statements for {format(new Date(selectedMonth + "-01"), "MMMM yyyy")}</p>
             <p className="text-sm mt-1">Click "Generate Statements" to auto-calculate from reservations</p>
           </div>
         </div>
@@ -263,6 +273,7 @@ function StatementsTab() {
           {statements.map((stmt: any) => (
             <StatementRow key={stmt.id} stmt={stmt} onStatusChange={(id, status) => statusMutation.mutate({ id, status })} />
           ))}
+          <Pager page={list.page} pages={list.data!.pages} total={list.data!.total} pageSize={list.data!.pageSize} onPage={list.setPage} noun="statements" busy={list.isFetching} />
         </div>
       )}
     </div>

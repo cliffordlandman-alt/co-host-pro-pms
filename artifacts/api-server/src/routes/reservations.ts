@@ -1,11 +1,12 @@
-import { reservationFinancials } from "../../../../lib/reservation-financials.mjs";
+import { reservationFinancials, financialTotals } from "../../../../lib/reservation-financials.mjs";
+import { pageParams, paged, likeTerm } from "../lib/paging";
 import { dubaiToday } from "../lib/dubai-date";
 import { airbnbEarningsTable } from "@workspace/db";
 import { bedroomCount, bookingFinance } from "../../../../lib/booking-finance.mjs";
 import { loadPropertyFeeSettings, ratesFromSettings } from "../lib/fee-config";
 import { Router } from "express";
 import { db, reservationsTable, propertiesTable, insertReservationSchema, cleaningTasksTable, propertySettingsTable, ownerStatementsTable, paymentsTable } from "@workspace/db";
-import { eq, and, ne, lt, gt, inArray } from "drizzle-orm";
+import { eq, and, ne, lt, gt, inArray, or, ilike, sql, desc } from "drizzle-orm";
 import { insertAuditLog } from "../lib/audit";
 import { asyncHandler } from "../lib/asyncHandler";
 import { parseId } from "../lib/parseId";
@@ -126,11 +127,34 @@ async function prepareFinance(body: any, existing?: any) {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 router.get("/reservations", asyncHandler(async (req, res) => {
-  const { propertyId, status } = req.query as { propertyId?: string; status?: string };
+  const { propertyId, status, platform, paymentStatus, q } = req.query as { propertyId?: string; status?: string; platform?: string; paymentStatus?: string; q?: string };
 
   const conditions = [];
   if (propertyId) conditions.push(eq(reservationsTable.propertyId, parseInt(propertyId)));
   if (status) conditions.push(eq(reservationsTable.status, status));
+  const p = pageParams(req.query as Record<string, unknown>);
+  if (p) {
+    if (platform) conditions.push(eq(reservationsTable.platform, platform));
+    if (paymentStatus) conditions.push(eq(reservationsTable.paymentStatus, paymentStatus));
+    if (q?.trim()) { const t = likeTerm(q.trim()); conditions.push(or(ilike(reservationsTable.guestName, t), ilike(propertiesTable.name, t), ilike(reservationsTable.externalId, t))!); }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    // Summary over the whole filtered set: counts in SQL; verified money totals with the same rules the
+    // screens use (reservation-financials), over every matching booking, not only this page.
+    const [agg] = await db.select({
+      total: sql<number>`count(*)::int`,
+      pendingPayments: sql<number>`count(*) filter (where ${reservationsTable.paymentStatus} in ('pending','partial'))::int`,
+      platforms: sql<number>`count(distinct ${reservationsTable.platform})::int`,
+    }).from(reservationsTable).leftJoin(propertiesTable, eq(reservationsTable.propertyId, propertiesTable.id)).where(where);
+    const all = await db.select(reservationSelect).from(reservationsTable).leftJoin(propertiesTable, eq(reservationsTable.propertyId, propertiesTable.id)).where(where);
+    const allCodes = [...new Set(all.map(r => r.externalId).filter((x): x is string => !!x && x.startsWith("airbnb:")).map(x => x.slice(7)))];
+    const allEarnings = allCodes.length ? await db.select().from(airbnbEarningsTable).where(inArray(airbnbEarningsTable.confirmationCode, allCodes)) : [];
+    const formatted = all.map(r => formatReservation(r, allEarnings));
+    const finance = financialTotals(formatted);
+    const byId = new Map(all.map((r, i) => [r.id, formatted[i]]));
+    const pageRows = await db.select({ id: reservationsTable.id }).from(reservationsTable).leftJoin(propertiesTable, eq(reservationsTable.propertyId, propertiesTable.id)).where(where)
+      .orderBy(desc(reservationsTable.checkIn), desc(reservationsTable.id)).limit(p.pageSize).offset(p.offset);
+    return res.json(paged(pageRows.map(r => byId.get(r.id)), agg.total, p, { total: agg.total, pendingPayments: agg.pendingPayments, platforms: agg.platforms, finance }));
+  }
 
   const rows = await db
     .select(reservationSelect)

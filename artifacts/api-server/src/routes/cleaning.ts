@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { db, cleaningTasksTable, propertiesTable, staffTable, reservationsTable, insertCleaningTaskSchema } from "@workspace/db";
-import { eq, and, gte, inArray, notInArray } from "drizzle-orm";
+import { eq, and, gte, lt, inArray, notInArray, sql } from "drizzle-orm";
+import { pageParams, paged } from "../lib/paging";
+import { dubaiToday } from "../lib/dubai-date";
 import { notifyManagers, notifyStaffMember } from "../lib/whatsapp";
 import { insertAuditLog } from "../lib/audit";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -34,18 +36,41 @@ const cleaningSelect = {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 router.get("/cleaning", asyncHandler(async (req, res) => {
-  const { status, propertyId } = req.query as { status?: string; propertyId?: string };
+  const { status, propertyId, filter, id } = req.query as { status?: string; propertyId?: string; filter?: string; id?: string };
   const conditions = [];
   if (status) conditions.push(eq(cleaningTasksTable.status, status));
   if (propertyId) conditions.push(eq(cleaningTasksTable.propertyId, parseInt(propertyId)));
+  const p = pageParams(req.query as Record<string, unknown>);
+  const today = dubaiToday();
+  const openStatus = notInArray(cleaningTasksTable.status, ["completed", "approved", "cancelled"]);
+  let summary: Record<string, number> | null = null, total = 0;
+  if (p) {
+    if (id && parseId(id) !== null) conditions.push(eq(cleaningTasksTable.id, parseId(id)!));
+    // Stat counts cover all tasks (the board's filter tabs do not change them); the list uses the filter.
+    const base = conditions.length > 0 ? and(...conditions) : undefined;
+    const [agg] = await db.select({
+      total: sql<number>`count(*)::int`,
+      pending: sql<number>`count(*) filter (where ${cleaningTasksTable.status} in ('pending','dirty'))::int`,
+      inProgress: sql<number>`count(*) filter (where ${cleaningTasksTable.status} = 'in_progress')::int`,
+      completed: sql<number>`count(*) filter (where ${cleaningTasksTable.status} = 'completed')::int`,
+      overdue: sql<number>`count(*) filter (where ${cleaningTasksTable.status} not in ('completed','approved','cancelled') and ${cleaningTasksTable.scheduledDate} < ${today})::int`,
+    }).from(cleaningTasksTable).where(base);
+    summary = agg;
+    if (filter === "overdue") conditions.push(openStatus, lt(cleaningTasksTable.scheduledDate, today));
+    else if (filter === "pending") conditions.push(inArray(cleaningTasksTable.status, ["pending", "dirty"]));
+    else if (filter && filter !== "all") conditions.push(eq(cleaningTasksTable.status, filter));
+    const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(cleaningTasksTable).where(conditions.length > 0 ? and(...conditions) : undefined);
+    total = n;
+  }
 
-  const rows = await db
+  const query = db
     .select(cleaningSelect)
     .from(cleaningTasksTable)
     .leftJoin(propertiesTable, eq(cleaningTasksTable.propertyId, propertiesTable.id))
     .leftJoin(staffTable, eq(cleaningTasksTable.assignedToId, staffTable.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(cleaningTasksTable.scheduledDate);
+    .orderBy(cleaningTasksTable.scheduledDate, cleaningTasksTable.id);
+  const rows = p ? await query.limit(p.pageSize).offset(p.offset) : await query;
 
   // Next guest arrival at each unit on/after the clean date, so the board can flag same-day turnovers.
   const propIds = [...new Set(rows.map(r => r.propertyId))];
@@ -55,10 +80,11 @@ router.get("/cleaning", asyncHandler(async (req, res) => {
     .from(reservationsTable)
     .where(and(inArray(reservationsTable.propertyId, propIds), gte(reservationsTable.checkIn, earliest), notInArray(reservationsTable.status, ["cancelled", "blocked"])))
     .orderBy(reservationsTable.checkIn) : [];
-  res.json(rows.map(r => {
+  const items = rows.map(r => {
     const next = arrivals.find(a => a.propertyId === r.propertyId && a.checkIn >= r.scheduledDate);
     return { ...r, nextGuestCheckIn: next?.checkIn ?? null, createdAt: r.createdAt.toISOString() };
-  }));
+  });
+  res.json(p ? paged(items, total, p, summary) : items);
 }));
 
 router.get("/cleaning/:id", asyncHandler(async (req, res) => {

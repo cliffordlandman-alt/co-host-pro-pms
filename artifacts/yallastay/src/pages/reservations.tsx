@@ -1,9 +1,9 @@
-import { ReservationMoney, BookingTotals } from "@/components/ReservationMoney";
+import { ReservationMoney, ServerBookingTotals } from "@/components/ReservationMoney";
+import { Pager, usePagedList } from "@/components/Pager";
 import { guestIdComplete, airbnbIdAssumed } from "../../../../lib/guest-id.mjs";
 import { useLocation } from "wouter";
 import { DirectBookingDialog } from "@/components/DirectBookingDialog";
-import { useState, useMemo } from "react";
-import { useGetReservations } from "@workspace/api-client-react";
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,7 +65,6 @@ function QuickAction({ icon: Icon, label, onClick, variant = "ghost" }: {
 }
 
 export default function Reservations() {
-  const { data: apiData } = useGetReservations();
   const { toast } = useToast();
   const [bookingOpen, setBookingOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -74,19 +73,14 @@ export default function Reservations() {
   const [filterPayment, setFilterPayment] = useState("all");
   const [hoveredId, setHoveredId] = useState<number | null>(null);
 
-  const reservations = (apiData ?? []) as any[];
-
-  const filtered = useMemo(() => reservations.filter(r => {
-    const q = search.toLowerCase();
-    const matchSearch = !q || r.guestName.toLowerCase().includes(q) || r.propertyName.toLowerCase().includes(q) || r.bookingRef?.toLowerCase().includes(q);
-    const matchPlatform = filterPlatform === "all" || r.platform === filterPlatform;
-    const matchStatus = filterStatus === "all" || r.status === filterStatus;
-    const matchPayment = filterPayment === "all" || r.paymentStatus === filterPayment;
-    return matchSearch && matchPlatform && matchStatus && matchPayment;
-  }), [reservations, search, filterPlatform, filterStatus, filterPayment]);
-
-  const totalRevenue = filtered.filter(r => r.status !== "cancelled").reduce((s, r) => s + r.revenue, 0);
-  const pendingPayments = filtered.filter(r => r.paymentStatus === "pending" || r.paymentStatus === "partial").length;
+  // Search is sent to the server after a short pause; filtering, paging and all totals happen server-side.
+  const [q, setQ] = useState("");
+  useEffect(() => { const t = setTimeout(() => setQ(search.trim()), 300); return () => clearTimeout(t); }, [search]);
+  const list = usePagedList<any, any>("reservations", "reservations", { q, platform: filterPlatform, status: filterStatus, paymentStatus: filterPayment });
+  const filtered = list.data?.items ?? [];
+  const summary = list.data?.summary;
+  const anyFilter = !!(q || filterPlatform !== "all" || filterStatus !== "all" || filterPayment !== "all");
+  const pendingPayments = summary?.pendingPayments ?? 0;
 
   const [,navigate]=useLocation();
   function handleAction(label: string, res: any) {
@@ -100,7 +94,7 @@ export default function Reservations() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Reservations</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{filtered.length} bookings · {<BookingTotals bookings={filtered}/>} revenue</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{summary ? `${summary.total} booking${summary.total === 1 ? "" : "s"}${anyFilter ? (summary.total === 1 ? " matches" : " match") : ""}` : "Loading…"}</p>
         </div>
         <Button className="gap-2" onClick={() => setBookingOpen(true)}>
           <Plus className="h-4 w-4" /> Add Reservation
@@ -110,10 +104,10 @@ export default function Reservations() {
       {/* Stats strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Total Bookings", val: filtered.length, cls: "text-foreground" },
-          { label: "Verified finances", val: <BookingTotals bookings={filtered}/>, cls: "text-emerald-600" },
+          { label: anyFilter ? "Matching Bookings" : "Total Bookings", val: summary?.total ?? "…", cls: "text-foreground" },
+          { label: "Verified finances (all matching)", val: <ServerBookingTotals finance={summary?.finance}/>, cls: "text-emerald-600" },
           { label: "Pending Payments", val: pendingPayments, cls: pendingPayments > 0 ? "text-amber-600" : "text-muted-foreground" },
-          { label: "Platforms", val: new Set(filtered.map(r => r.platform)).size, cls: "text-blue-600" },
+          { label: "Platforms", val: summary?.platforms ?? "…", cls: "text-blue-600" },
         ].map(s => (
           <div key={s.label} className="bg-card border rounded-xl p-4">
             <div className={`text-xl font-bold ${s.cls}`}>{s.val}</div>
@@ -184,7 +178,7 @@ export default function Reservations() {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="text-center py-16 text-muted-foreground">
-                    {reservations.length === 0 ? (
+                    {list.isLoading ? "Loading reservations…" : list.isError ? "Could not load reservations. Please refresh." : !anyFilter ? (
                       <div className="flex flex-col items-center gap-3">
                         <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
                           <Calendar className="h-7 w-7 text-muted-foreground/40" />
@@ -231,7 +225,7 @@ export default function Reservations() {
                               <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full">ID PENDING</span>
                             )}
                           </div>
-                          <div className="text-[11px] text-muted-foreground font-mono">{res.bookingRef}</div>
+                          <div className="text-[11px] text-muted-foreground font-mono">{res.externalId}</div>
                           {isHovered && (
                             <div className="flex items-center gap-1.5 mt-1.5">
                               <QuickAction icon={Eye} label="View" onClick={() => handleAction("View booking", res)} />
@@ -282,6 +276,8 @@ export default function Reservations() {
           </table>
         </div>
       </div>
+
+      {list.data && <Pager page={list.page} pages={list.data.pages} total={list.data.total} pageSize={list.data.pageSize} onPage={list.setPage} noun="bookings" busy={list.isFetching} />}
 
       <div className="text-xs text-muted-foreground flex items-center gap-2">
         <span className="flex items-center gap-1"><span className="font-mono bg-muted px-1.5 py-0.5 rounded">TD</span> = Tourism Dirham collected</span>

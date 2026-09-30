@@ -1,7 +1,8 @@
 import { CleaningProof } from "@/components/CleaningProof";
 import { apiFetch } from "@/lib/api-fetch";
 import { useState } from "react";
-import { useGetCleaningTasks, useGetProperties, useGetStaff } from "@workspace/api-client-react";
+import { useGetProperties, useGetStaff } from "@workspace/api-client-react";
+import { Pager, usePagedList } from "@/components/Pager";
 import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,7 +37,7 @@ function InfoTip({ text }: { text: string }) {
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-const isTaskOverdue = (t: any) => !["completed", "approved", "cancelled"].includes(t.status) && t.scheduledDate < dubaiToday();
+// Overdue rule (open task scheduled before today, Dubai time) now lives in the API: GET /cleaning?filter=overdue.
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string; icon: any }> = {
   completed:   { label: "Completed",   cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300", icon: CheckCircle2 },
@@ -304,23 +305,17 @@ function CleaningCard({ task, cleaners }: { task: any; cleaners: any[] }) {
 }
 
 export default function Cleaning() {
-  const { data: apiTasks, isLoading, refetch } = useGetCleaningTasks();
   const { data: staff } = useGetStaff();
   const cleaners = ((staff ?? []) as any[]).filter(m => m.active !== false && m.role === "cleaner");
   const [showNew, setShowNew] = useState(false);
   const [filter, setFilter] = useState("all");
 
-  const tasks = (apiTasks ?? []) as any[];
   const requestedTask=Number(new URLSearchParams(window.location.search).get("task"));
-  const filtered = (filter === "all" ? tasks : filter === "overdue" ? tasks.filter(isTaskOverdue) : filter === "pending" ? tasks.filter((t: any) => t.status === "pending" || t.status === "dirty") : tasks.filter((t: any) => t.status === filter)).filter((t:any)=>!requestedTask || t.id===requestedTask);
-
-  const counts = {
-    total: tasks.length,
-    pending: tasks.filter((t: any) => t.status === "pending" || t.status === "dirty").length,
-    inProgress: tasks.filter((t: any) => t.status === "in_progress").length,
-    overdue: tasks.filter(isTaskOverdue).length,
-    completed: tasks.filter((t: any) => t.status === "completed").length,
-  };
+  // Filtering and paging run on the server; the stat cards are server counts over all tasks.
+  const list = usePagedList<any, any>("cleaning", "cleaning", { filter, id: requestedTask > 0 ? requestedTask : null }, 24);
+  const { isLoading, refetch } = list;
+  const filtered = list.data?.items ?? [];
+  const counts = list.data?.summary ?? { total: 0, pending: 0, inProgress: 0, overdue: 0, completed: 0 };
 
   return (
     <div className="p-4 md:p-6 space-y-5">
@@ -381,7 +376,9 @@ export default function Cleaning() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 border-2 border-dashed rounded-xl text-muted-foreground space-y-3">
           <Sparkles className="h-10 w-10 mx-auto text-muted-foreground/30" />
-          {tasks.length === 0 ? (
+          {list.isError ? (
+            <p className="font-medium">Could not load cleaning tasks. Please refresh.</p>
+          ) : counts.total === 0 ? (
             <>
               <p className="font-semibold text-sm text-foreground">No cleaning tasks yet</p>
               <p className="text-xs max-w-xs mx-auto">Tasks are created automatically when a guest checks out, or you can add one manually.</p>
@@ -396,6 +393,7 @@ export default function Cleaning() {
           {filtered.map((task: any) => <CleaningCard key={task.id} task={task} cleaners={cleaners} />)}
         </div>
       )}
+      {list.data && <Pager page={list.page} pages={list.data.pages} total={list.data.total} pageSize={list.data.pageSize} onPage={list.setPage} noun="tasks" busy={list.isFetching} />}
 
       {showNew && <NewTaskModal onClose={() => setShowNew(false)} onSaved={() => refetch()} />}
     </div>

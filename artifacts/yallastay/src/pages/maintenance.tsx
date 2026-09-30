@@ -1,6 +1,7 @@
 import { apiFetch } from "@/lib/api-fetch";
 import { useState, useRef } from "react";
-import { useGetMaintenanceTickets, useGetProperties, useGetStaff } from "@workspace/api-client-react";
+import { useGetProperties, useGetStaff } from "@workspace/api-client-react";
+import { Pager, usePagedList } from "@/components/Pager";
 import { useUpload } from "@workspace/object-storage-web";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -524,20 +525,15 @@ function MaintenanceCard({ ticket, onUpdate }: { ticket: any; onUpdate: () => vo
 }
 
 export default function Maintenance() {
-  const { data: apiTickets, isLoading, refetch } = useGetMaintenanceTickets();
   const [showNew, setShowNew] = useState(false);
   const [filter, setFilter] = useState("all");
 
-  const tickets = (apiTickets ?? []) as any[];
   const requestedTicket=Number(new URLSearchParams(window.location.search).get("ticket"));
-  const filtered = (filter === "all" ? tickets : tickets.filter((t: any) => t.status === filter || t.priority === filter)).filter((t:any)=>!requestedTicket || t.id===requestedTicket);
-
-  const counts = {
-    emergency: tickets.filter((t: any) => t.priority === "emergency").length,
-    approval: tickets.filter((t: any) => t.status === "awaiting_approval").length,
-    open: tickets.filter((t: any) => !["resolved", "completed", "cancelled"].includes(t.status)).length,
-    resolved: tickets.filter((t: any) => t.status === "resolved" || t.status === "completed").length,
-  };
+  // Filtering and paging run on the server (newest first); the stat cards are server counts over all tickets.
+  const list = usePagedList<any, any>("maintenance", "maintenance", { filter, id: requestedTicket > 0 ? requestedTicket : null }, 24);
+  const { isLoading, refetch } = list;
+  const filtered = list.data?.items ?? [];
+  const counts = list.data?.summary ?? { total: 0, emergency: 0, approval: 0, open: 0, resolved: 0 };
 
   return (
     <div className="p-4 md:p-6 space-y-5">
@@ -593,7 +589,9 @@ export default function Maintenance() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 border-2 border-dashed rounded-xl text-muted-foreground space-y-3">
           <Wrench className="h-10 w-10 mx-auto text-muted-foreground/30" />
-          {tickets.length === 0 ? (
+          {list.isError ? (
+            <p className="font-medium">Could not load maintenance tickets. Please refresh.</p>
+          ) : counts.total === 0 ? (
             <>
               <p className="font-semibold text-sm text-foreground">No maintenance tickets</p>
               <p className="text-xs max-w-xs mx-auto">Report a repair, AC issue, or any property problem to track it through to resolution.</p>
@@ -608,6 +606,7 @@ export default function Maintenance() {
           {filtered.map((t: any) => <MaintenanceCard key={t.id} ticket={t} onUpdate={() => refetch()} />)}
         </div>
       )}
+      {list.data && <Pager page={list.page} pages={list.data.pages} total={list.data.total} pageSize={list.data.pageSize} onPage={list.setPage} noun="tickets" busy={list.isFetching} />}
 
       {showNew && <NewTicketModal onClose={() => setShowNew(false)} onSaved={() => refetch()} />}
     </div>

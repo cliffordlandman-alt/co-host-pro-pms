@@ -1,15 +1,34 @@
 import { Router } from "express";
 import { dubaiToday } from "../lib/dubai-date";
 import { db, paymentsTable, propertiesTable, ownersTable, insertPaymentSchema, reservationsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or, ilike, sql, desc } from "drizzle-orm";
+import { pageParams, paged, likeTerm } from "../lib/paging";
 
 const router = Router();
 
 router.get("/payments", async (req, res) => {
-  const { type, propertyId } = req.query as { type?: string; propertyId?: string };
+  const { type, propertyId, status, q } = req.query as { type?: string; propertyId?: string; status?: string; q?: string };
   const conditions = [];
   if (type) conditions.push(eq(paymentsTable.type, type));
   if (propertyId) conditions.push(eq(paymentsTable.propertyId, parseInt(propertyId)));
+  const p = pageParams(req.query as Record<string, unknown>);
+  if (p) {
+    if (status) conditions.push(eq(paymentsTable.status, status));
+    if (q?.trim()) { const t = likeTerm(q.trim()); conditions.push(or(ilike(paymentsTable.description, t), ilike(propertiesTable.name, t), ilike(ownersTable.name, t))!); }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const currency = sql<string>`coalesce(${propertiesTable.currency}, 'AED')`;
+    // Totals per currency and status over every matching payment (never mixed across currencies).
+    const groups = await db.select({ currency, status: paymentsTable.status, count: sql<number>`count(*)::int`, amount: sql<string>`coalesce(sum(${paymentsTable.amount}), 0)::text` })
+      .from(paymentsTable).leftJoin(propertiesTable, eq(paymentsTable.propertyId, propertiesTable.id)).leftJoin(ownersTable, eq(paymentsTable.ownerId, ownersTable.id))
+      .where(where).groupBy(currency, paymentsTable.status);
+    const total = groups.reduce((n, g) => n + g.count, 0);
+    const byCurrency: Record<string, { currency: string; count: number; byStatus: Record<string, number> }> = {};
+    for (const g of groups) { const c = byCurrency[g.currency] ??= { currency: g.currency, count: 0, byStatus: {} }; c.count += g.count; c.byStatus[g.status] = Math.round(Number(g.amount) * 100) / 100; }
+    const rows = await db.select({ id: paymentsTable.id, type: paymentsTable.type, propertyId: paymentsTable.propertyId, propertyName: propertiesTable.name, currency, reservationId: paymentsTable.reservationId, ownerId: paymentsTable.ownerId, ownerName: ownersTable.name, amount: paymentsTable.amount, status: paymentsTable.status, description: paymentsTable.description, dueDate: paymentsTable.dueDate, paidAt: paymentsTable.paidAt, createdAt: paymentsTable.createdAt })
+      .from(paymentsTable).leftJoin(propertiesTable, eq(paymentsTable.propertyId, propertiesTable.id)).leftJoin(ownersTable, eq(paymentsTable.ownerId, ownersTable.id))
+      .where(where).orderBy(desc(paymentsTable.createdAt), desc(paymentsTable.id)).limit(p.pageSize).offset(p.offset);
+    return res.json(paged(rows.map(r => ({ ...r, amount: parseFloat(r.amount || "0"), createdAt: r.createdAt.toISOString() })), total, p, { total, currencies: Object.values(byCurrency) }));
+  }
 
   const rows = await db
     .select({

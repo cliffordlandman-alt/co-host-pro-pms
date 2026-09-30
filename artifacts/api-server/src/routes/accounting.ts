@@ -17,6 +17,7 @@ import {
 } from "@workspace/db";
 import { eq, and, gte, lte, ne, sql, inArray } from "drizzle-orm";
 import { asyncHandler } from "../lib/asyncHandler";
+import { pageParams, paged } from "../lib/paging";
 import { parseId } from "../lib/parseId";
 import { defaultFeeSettings } from "../lib/fee-config";
 import { backfillCleaningExpenses, cleaningVendor, unitLabel } from "../lib/cleaning-costs";
@@ -277,9 +278,30 @@ router.get('/accounting/company-statement',asyncHandler(async(req,res)=>{
 router.get("/accounting/statements", asyncHandler(async (req, res) => {
   const drafts=await db.select({month:ownerStatementsTable.month}).from(ownerStatementsTable).where(eq(ownerStatementsTable.status,"draft"));
   for(const month of new Set(drafts.map(d=>d.month))) await refreshOwnerStatements(month);
-  const { month, ownerId } = req.query as { month?: string; ownerId?: string };
+  const { month, ownerId, status, propertyId } = req.query as { month?: string; ownerId?: string; status?: string; propertyId?: string };
+  const p = pageParams(req.query as Record<string, unknown>);
+  const conds = [];
+  if (month) conds.push(eq(ownerStatementsTable.month, month));
+  if (ownerId) conds.push(eq(ownerStatementsTable.ownerId, parseInt(ownerId)));
+  if (p && status && status !== "all") conds.push(eq(ownerStatementsTable.status, status));
+  if (p && propertyId) conds.push(eq(ownerStatementsTable.propertyId, parseInt(propertyId)));
+  const where = conds.length ? and(...conds) : undefined;
+  let summary: unknown = null, total = 0;
+  if (p) {
+    // Totals per currency over every statement that matches the filters, not just the visible page.
+    const cur = sql<string>`coalesce(${ownerStatementsTable.currency}, 'AED')`;
+    const agg = await db.select({
+      currency: cur,
+      count: sql<number>`count(*)::int`,
+      grossRevenue: sql<string>`coalesce(sum(${ownerStatementsTable.grossRevenue}),0)`,
+      managementFee: sql<string>`coalesce(sum(${ownerStatementsTable.managementFee}),0)`,
+      ownerPayout: sql<string>`coalesce(sum(${ownerStatementsTable.ownerPayout}),0)`,
+    }).from(ownerStatementsTable).where(where).groupBy(cur).orderBy(cur);
+    total = agg.reduce((n, a) => n + a.count, 0);
+    summary = { total, currencies: agg.map(a => ({ currency: a.currency, count: a.count, grossRevenue: Number(a.grossRevenue), managementFee: Number(a.managementFee), ownerPayout: Number(a.ownerPayout) })) };
+  }
 
-  const rows = await db
+  const query = db
     .select({
       tourismFee: ownerStatementsTable.tourismFee,
       bookingDetails: ownerStatementsTable.bookingDetails,
@@ -307,15 +329,11 @@ router.get("/accounting/statements", asyncHandler(async (req, res) => {
     })
     .from(ownerStatementsTable)
     .leftJoin(propertiesTable, eq(ownerStatementsTable.propertyId, propertiesTable.id))
-    .where(
-      month && ownerId ? and(eq(ownerStatementsTable.month, month), eq(ownerStatementsTable.ownerId, parseInt(ownerId))) :
-      month ? eq(ownerStatementsTable.month, month) :
-      ownerId ? eq(ownerStatementsTable.ownerId, parseInt(ownerId)) :
-      undefined
-    )
-    .orderBy(sql`${ownerStatementsTable.month} DESC, ${propertiesTable.name} ASC`);
+    .where(where)
+    .orderBy(sql`${ownerStatementsTable.month} DESC, ${propertiesTable.name} ASC, ${ownerStatementsTable.id} ASC`);
+  const rows = p ? await query.limit(p.pageSize).offset(p.offset) : await query;
 
-  res.json(rows.map(r => ({
+  const items = rows.map(r => ({
     ...r,
     tourismFee: Number(r.tourismFee || 0),
     grossRevenue: parseFloat(r.grossRevenue || "0"),
@@ -327,7 +345,8 @@ router.get("/accounting/statements", asyncHandler(async (req, res) => {
     vatAmount: parseFloat(r.vatAmount || "0"),
     ownerPayout: parseFloat(r.ownerPayout || "0"),
     createdAt: r.createdAt.toISOString(),
-  })));
+  }));
+  res.json(p ? paged(items, total, p, summary) : items);
 }));
 
 // Property/month pairs holding more than one statement (only possible in data from before the unique rule).
