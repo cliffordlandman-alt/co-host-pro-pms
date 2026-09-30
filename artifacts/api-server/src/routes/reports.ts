@@ -1,7 +1,7 @@
 import { financialTotals } from "../../../../lib/reservation-financials.mjs";
 import { earningsDate } from "../../../../lib/company-statement.mjs";
 import { Router } from "express";
-import { db, reservationsTable, propertiesTable, paymentsTable, cleaningTasksTable, maintenanceTicketsTable, airbnbEarningsTable } from "@workspace/db";
+import { db, reservationsTable, propertiesTable, maintenanceTicketsTable, airbnbEarningsTable, accountingTransactionsTable } from "@workspace/db";
 import { eq, ne, and, gte, lte, sql } from "drizzle-orm";
 
 const router = Router();
@@ -47,34 +47,33 @@ router.get("/reports/occupancy", async (req, res) => {
   res.json(result);
 });
 
-// P&L per property
-router.get("/reports/pnl", async (req, res) => {
-  const props = await db.select().from(propertiesTable);
-  const result = await Promise.all(props.map(async (p) => {
-    const [rev] = await db.select({ total: sql<string>`coalesce(sum(revenue),0)` })
-      .from(reservationsTable)
-      .where(and(eq(reservationsTable.propertyId, p.id), ne(reservationsTable.status, "cancelled")));
-    const [maint] = await db.select({ total: sql<string>`coalesce(sum(cost),0)` })
-      .from(maintenanceTicketsTable)
-      .where(eq(maintenanceTicketsTable.propertyId, p.id));
-    const [cleaning] = await db.select({ total: sql<string>`coalesce(sum(amount),0)` })
-      .from(paymentsTable)
-      .where(and(eq(paymentsTable.propertyId, p.id), eq(paymentsTable.type, "cleaning_cost")));
-    const revenue = parseFloat(rev.total);
-    const expenses = parseFloat(maint.total) + parseFloat(cleaning.total);
-    return { propertyId: p.id, propertyName: p.name, revenue, expenses, net: revenue - expenses };
+// P&L per property: verified bookings only, each property in its own currency.
+router.get("/reports/pnl", async (_req, res) => {
+  const [props, bookings, tickets, expenses] = await Promise.all([db.select().from(propertiesTable), db.select().from(reservationsTable), db.select().from(maintenanceTicketsTable), db.select().from(accountingTransactionsTable)]);
+  const cents = (v: unknown) => Math.round(Number(v || 0) * 100);
+  res.json(props.map(p => {
+    const own = bookings.filter(b => b.propertyId === p.id && !["cancelled", "blocked"].includes(b.status));
+    const verified = own.filter(b => b.financeMode === "inclusive-v1");
+    const revenue = verified.reduce((n, b) => n + cents(b.revenue), 0);
+    const maintenance = tickets.filter(t => t.propertyId === p.id && t.status === "completed").reduce((n, t) => n + cents(t.cost), 0);
+    const other = expenses.filter(t => t.propertyId === p.id && t.type === "expense" && t.allocation === "owner").reduce((n, t) => n + cents(t.amount), 0);
+    return { propertyId: p.id, propertyName: p.name, currency: p.currency || "AED", revenue: revenue / 100, expenses: (maintenance + other) / 100, net: (revenue - maintenance - other) / 100, unverifiedBookings: own.length - verified.length };
   }));
-  res.json(result);
 });
 
-// Platform split
+// Platform split: booking counts; revenue is verified net accommodation revenue in the requested currency.
 router.get("/reports/platforms", async (req, res) => {
-  const rows = await db
-    .select({ platform: reservationsTable.platform, count: sql<number>`count(*)`, revenue: sql<string>`coalesce(sum(revenue),0)` })
-    .from(reservationsTable)
-    .where(ne(reservationsTable.status, "cancelled"))
-    .groupBy(reservationsTable.platform);
-  res.json(rows.map(r => ({ platform: r.platform, count: Number(r.count), revenue: parseFloat(r.revenue) })));
+  const currency = String(req.query.currency || "AED");
+  const [bookings, props] = await Promise.all([db.select().from(reservationsTable), db.select().from(propertiesTable)]);
+  const rows: Record<string, { platform: string; count: number; revenue: number; unverified: number }> = {};
+  for (const b of bookings) {
+    if (["cancelled", "blocked"].includes(b.status)) continue;
+    const r = rows[b.platform] ??= { platform: b.platform, count: 0, revenue: 0, unverified: 0 };
+    r.count++;
+    if (b.financeMode === "inclusive-v1" && (props.find(p => p.id === b.propertyId)?.currency || "AED") === currency) r.revenue += Math.round(Number(b.revenue || 0) * 100);
+    else if (b.financeMode !== "inclusive-v1") r.unverified++;
+  }
+  res.json(Object.values(rows).map(r => ({ platform: r.platform, count: r.count, currency, revenue: r.revenue / 100, unverifiedBookings: r.unverified })));
 });
 
 export default router;

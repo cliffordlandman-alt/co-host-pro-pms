@@ -16,17 +16,18 @@ const PLATFORM_META: Record<string, { label: string; color: string }> = {
 
 // Platform-level stats + property connections
 router.get("/platforms", async (_req, res) => {
-  // Aggregate from reservations
-  const stats = await db
-    .select({
-      platform: reservationsTable.platform,
-      bookings: sql<number>`count(*)`,
-      revenue: sql<string>`coalesce(sum(revenue), 0)`,
-      nights: sql<number>`coalesce(sum(nights), 0)`,
-    })
-    .from(reservationsTable)
-    .where(ne(reservationsTable.status, "cancelled"))
-    .groupBy(reservationsTable.platform);
+  // Aggregate from reservations. Revenue only counts bookings whose full breakdown is verified, in AED
+  // (net accommodation revenue, excluding VAT and Tourism Dirham); blocked dates are not bookings.
+  const [bookingRows, propertyRows] = await Promise.all([db.select().from(reservationsTable), db.select().from(propertiesTable)]);
+  const statMap: Record<string, { bookings: number; nights: number; revenue: number; unverified: number }> = {};
+  for (const r of bookingRows) {
+    if (["cancelled", "blocked"].includes(r.status)) continue;
+    const s = statMap[r.platform] ??= { bookings: 0, nights: 0, revenue: 0, unverified: 0 };
+    s.bookings++; s.nights += r.nights;
+    const currency = propertyRows.find(p => p.id === r.propertyId)?.currency || "AED";
+    if (r.financeMode === "inclusive-v1" && currency === "AED") s.revenue += Math.round(Number(r.revenue || 0) * 100);
+    else s.unverified++;
+  }
 
   // Properties with their iCal URLs
   const properties = await db
@@ -50,7 +51,6 @@ router.get("/platforms", async (_req, res) => {
 
   // Build platform list — always include the big 4
   const allPlatforms = ["airbnb", "booking_com", "vrbo", "direct"];
-  const statMap = Object.fromEntries(stats.map(s => [s.platform, s]));
 
   const platforms = allPlatforms.map(key => {
     const s = statMap[key];
@@ -65,9 +65,10 @@ router.get("/platforms", async (_req, res) => {
     return {
       key,
       ...PLATFORM_META[key],
-      bookings: s ? Number(s.bookings) : 0,
-      revenue: s ? parseFloat(s.revenue) : 0,
-      nights: s ? Number(s.nights) : 0,
+      bookings: s ? s.bookings : 0,
+      revenue: s ? s.revenue / 100 : 0,
+      unverifiedBookings: s ? s.unverified : 0,
+      nights: s ? s.nights : 0,
       connectedCount,
       totalProperties: properties.filter(p => p.status === "active").length,
     };

@@ -39,6 +39,21 @@ try {
   assert.equal(await ledger(paidAtCreate.id), 1000, 'booking created as paid has its payment posted');
   passed.push('payments ledger = booking paid amount');
 
+  // Revenue by channel ignores unverified legacy amounts, blocked dates and other currencies.
+  const zarProp = await api('/properties', 'POST', { name: 'Cape Town 1BR', unitNumber: 'Z-1', ownerId: owner.id, bedrooms: 1, city: 'Cape Town', currency: 'ZAR' }, 201);
+  await api('/reservations', 'POST', { propertyId: p.id, guestName: 'Legacy amount', platform: 'direct', checkIn: '2030-03-01', checkOut: '2030-03-03', revenue: 5000, paymentStatus: 'unknown', status: 'confirmed' }, 201);
+  await api('/reservations', 'POST', { propertyId: p.id, guestName: 'Owner block', platform: 'direct', checkIn: '2030-04-01', checkOut: '2030-04-03', revenue: 0, status: 'blocked', paymentStatus: 'unknown' }, 201);
+  await api('/reservations', 'POST', { ...base, propertyId: zarProp.id, dubaiCharges: false, checkIn: '2030-01-01', checkOut: '2030-01-03' }, 201);
+  const verifiedAed = (await api('/reservations')).filter(r => r.financeMode === 'inclusive-v1' && r.propertyId === p.id && r.status !== 'cancelled').reduce((n, r) => n + Math.round(r.revenue * 100), 0) / 100;
+  const direct = (await api('/platforms')).platforms.find(x => x.key === 'direct');
+  assert.equal(direct.revenue, verifiedAed); assert.equal(direct.unverifiedBookings, 2);
+  assert.equal(direct.bookings, 4, 'blocked dates are not bookings');
+  const split = (await api('/reports/platforms')).find(x => x.platform === 'direct');
+  assert.equal(split.revenue, verifiedAed); assert.equal(split.count, 4);
+  const pnl = await api('/reports/pnl');
+  assert.equal(pnl.find(x => x.propertyId === p.id).revenue, verifiedAed); assert.equal(pnl.find(x => x.propertyId === zarProp.id).currency, 'ZAR');
+  passed.push('channel/P&L revenue = verified, per currency, no blocks');
+
   console.log('PASS: ' + passed.join('; '));
 } catch (e) { console.error(e); console.error(logs.slice(-4000)); process.exitCode = 1; }
 finally { child.kill('SIGTERM'); }

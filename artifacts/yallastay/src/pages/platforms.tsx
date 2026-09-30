@@ -674,7 +674,8 @@ export default function Platforms() {
                           </div>
                           <div>
                             <div className="text-xs font-bold">{aed(p.revenue)}</div>
-                            <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Revenue</div>
+                            <div className="text-[10px] text-muted-foreground uppercase tracking-wide" title="Net accommodation revenue from bookings with a verified breakdown (excludes VAT and Tourism Dirham)">Verified revenue</div>
+                            {(p as any).unverifiedBookings > 0 && <div className="text-[10px] text-amber-600">{(p as any).unverifiedBookings} not verified</div>}
                           </div>
                         </div>
                       </CardContent>
