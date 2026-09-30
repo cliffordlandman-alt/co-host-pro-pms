@@ -226,66 +226,6 @@ router.get("/properties/:id/sync-status", asyncHandler(async (req, res) => {
   return res.json(setting.value);
 }));
 
-// ─── iCal helpers ──────────────────────────────────────────────────────────────
-
-function unfoldIcal(raw: string): string {
-  return raw.replace(/\r?\n[ \t]/g, "");
-}
-
-function parseIcalDate(value: string): string | null {
-  const clean = value.replace(/;[^:]*:/g, ":").replace(/^[^:]*:/, "").trim();
-  const basic = clean.replace(/[TZ]/g, "").slice(0, 8);
-  if (!/^\d{8}$/.test(basic)) return null;
-  return `${basic.slice(0, 4)}-${basic.slice(4, 6)}-${basic.slice(6, 8)}`;
-}
-
-interface IcalEvent {
-  uid: string;
-  summary: string;
-  dtstart: string;
-  dtend: string;
-}
-
-function parseIcalEvents(raw: string): IcalEvent[] {
-  const text = unfoldIcal(raw);
-  const events: IcalEvent[] = [];
-  const veventRegex = /BEGIN:VEVENT([\s\S]*?)END:VEVENT/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = veventRegex.exec(text)) !== null) {
-    const block = match[1];
-    const get = (key: string): string => {
-      const re = new RegExp(`^${key}[^:]*:(.*)$`, "im");
-      const m = re.exec(block);
-      return m ? m[1].trim() : "";
-    };
-
-    const uid = get("UID");
-    const summary = get("SUMMARY") || "Airbnb Guest";
-    const dtstartRaw = get("DTSTART");
-    const dtendRaw = get("DTEND");
-
-    const dtstart = parseIcalDate(dtstartRaw);
-    const dtend = parseIcalDate(dtendRaw);
-
-    if (uid && dtstart && dtend && dtstart < dtend) {
-      events.push({ uid, summary, dtstart, dtend });
-    }
-  }
-
-  return events;
-}
-
-// Suppress unused-variable warning — parseIcalEvents is used by sync-scheduler
-void parseIcalEvents;
-
-function nightsBetween(checkIn: string, checkOut: string): number {
-  const msPerDay = 86400000;
-  return Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / msPerDay);
-}
-
-void nightsBetween;
-
 // ─── Sync iCal endpoint ────────────────────────────────────────────────────────
 
 router.post("/properties/:id/sync-ical", asyncHandler(async (req, res) => {
@@ -294,8 +234,9 @@ router.post("/properties/:id/sync-ical", asyncHandler(async (req, res) => {
 
   const airbnbRes = await syncPropertyIcal(id, "airbnb");
   const bookingRes = await syncPropertyIcal(id, "booking_com");
+  const vrboRes = await syncPropertyIcal(id, "vrbo");
 
-  return res.json({ airbnb: airbnbRes, booking: bookingRes });
+  return res.json({ airbnb: airbnbRes, booking: bookingRes, vrbo: vrboRes });
 }));
 
 export default router;

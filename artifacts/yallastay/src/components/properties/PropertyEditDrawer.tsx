@@ -97,7 +97,7 @@ export function PropertyEditDrawer({ propertyId, onClose, onSaved, onDeleted }: 
   const [deleteError, setDeleteError] = useState("");
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [syncingIcal, setSyncingIcal] = useState(false);
-  const [syncResult, setSyncResult] = useState<{ created: number; skipped: number } | null>(null);
+  const [syncResult, setSyncResult] = useState<{ created: number; skipped: number; updated?: number; flagged?: number } | null>(null);
   const [syncError, setSyncError] = useState("");
   const [syncStatus, setSyncStatus] = useState<{ lastSyncAt?: string } | null>(null);
 
@@ -283,12 +283,15 @@ export function PropertyEditDrawer({ propertyId, onClose, onSaved, onDeleted }: 
     setSyncResult(null);
     try {
       const res = await apiFetch(`${API_BASE}/api/properties/${propertyId}/sync-ical`, { method: "POST" });
-      const json = await res.json().catch(() => ({})) as { airbnb?: { created?: number; skipped?: number }; booking?: { created?: number; skipped?: number }; error?: string };
+      type ChannelSync = { created?: number; updated?: number; flagged?: number; skipped?: number; error?: string };
+      const json = await res.json().catch(() => ({})) as { airbnb?: ChannelSync; booking?: ChannelSync; vrbo?: ChannelSync; error?: string };
       if (!res.ok) throw new Error(json.error || `Sync failed (${res.status})`);
-      setSyncResult({
-        created: (json.airbnb?.created ?? 0) + (json.booking?.created ?? 0),
-        skipped: (json.airbnb?.skipped ?? 0) + (json.booking?.skipped ?? 0),
-      });
+      const channels = [["Airbnb", json.airbnb], ["Booking.com", json.booking], ["Vrbo", json.vrbo]] as const;
+      const total = (key: "created" | "updated" | "flagged" | "skipped") => channels.reduce((n, [, c]) => n + (c?.[key] ?? 0), 0);
+      // "No ... iCal URL configured" just means the channel is not linked; any other error is a failed sync and must be shown.
+      const failures = channels.filter(([, c]) => c?.error && !/^No .* iCal URL configured$/.test(c.error)).map(([name, c]) => `${name}: ${c!.error}`);
+      if (failures.length) setSyncError(failures.join(" · "));
+      setSyncResult({ created: total("created"), skipped: total("skipped"), updated: total("updated"), flagged: total("flagged") });
       const statusRes = await apiFetch(`${API_BASE}/api/properties/${propertyId}/sync-status`);
       if (statusRes.ok) setSyncStatus(await statusRes.json());
     } catch (err) {
@@ -622,7 +625,7 @@ export function PropertyEditDrawer({ propertyId, onClose, onSaved, onDeleted }: 
                       <div className="rounded-xl p-3 space-y-3"
                         style={{ background: "rgba(45,212,191,0.05)", border: "1px solid rgba(45,212,191,0.15)" }}>
                         <div className="flex flex-col gap-1.5">
-                          <p className="text-xs text-white/55 leading-relaxed">Pull latest reservations from Airbnb and Booking.com.</p>
+                          <p className="text-xs text-white/55 leading-relaxed">Pull latest reservations from Airbnb, Booking.com and Vrbo calendars.</p>
                           {syncStatus?.lastSyncAt && (
                             <div className="text-[10px] text-teal-400/60 font-medium flex items-center gap-1">
                               <CheckCircle2 className="w-3 h-3" />
@@ -633,9 +636,9 @@ export function PropertyEditDrawer({ propertyId, onClose, onSaved, onDeleted }: 
                         {syncResult && (
                           <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
                             <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
-                            {syncResult.created === 0
-                              ? "Already up to date — no new bookings found"
-                              : `${syncResult.created} booking${syncResult.created !== 1 ? "s" : ""} imported${syncResult.skipped > 0 ? `, ${syncResult.skipped} already existed` : ""}`}
+                            {syncResult.created === 0 && !syncResult.updated && !syncResult.flagged
+                              ? (syncError ? "No changes from the channels that synced" : "Already up to date — no new bookings found")
+                              : [syncResult.created ? `${syncResult.created} imported` : "", syncResult.updated ? `${syncResult.updated} updated` : "", syncResult.flagged ? `${syncResult.flagged} need checking (see notifications)` : "", syncResult.skipped > 0 ? `${syncResult.skipped} unchanged` : ""].filter(Boolean).join(", ")}
                           </div>
                         )}
                         {syncError && (

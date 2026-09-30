@@ -280,6 +280,7 @@ router.patch("/platforms/property/:id", async (req, res) => {
   // Trigger iCal sync immediately when a URL is saved
   if (update.airbnbIcalUrl)     syncPropertyIcal(id, "airbnb").catch(() => {});
   if (update.bookingComIcalUrl) syncPropertyIcal(id, "booking_com").catch(() => {});
+  if (update.vrboIcalUrl)       syncPropertyIcal(id, "vrbo").catch(() => {});
 
   res.json({ ...row, createdAt: row.createdAt.toISOString() });
 });

@@ -1,180 +1,106 @@
-import { db, propertiesTable, reservationsTable, cleaningTasksTable, appSettingsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, propertiesTable, reservationsTable, cleaningTasksTable, appSettingsTable, notificationsTable, ownerStatementsTable } from "@workspace/db";
+import { eq, and, ne } from "drizzle-orm";
+import { parseIcalEvents, planIcalSync, type IcalFlag } from "../../../../lib/ical-sync.mjs";
 
-function unfoldIcal(raw: string): string {
-  return raw.replace(/\r?\n[ \t]/g, "");
-}
+type Platform = "airbnb" | "booking_com" | "vrbo";
+const FEEDS: Record<Platform, { column: "airbnbIcalUrl" | "bookingComIcalUrl" | "vrboIcalUrl"; hosts: string[]; label: string }> = {
+  airbnb: { column: "airbnbIcalUrl", hosts: ["airbnb.com", "airbnb.ae", "airbnb.co.in", "airbnb.co.uk"], label: "Airbnb" },
+  booking_com: { column: "bookingComIcalUrl", hosts: ["booking.com"], label: "Booking.com" },
+  vrbo: { column: "vrboIcalUrl", hosts: ["vrbo.com", "homeaway.com"], label: "Vrbo" },
+};
+const dubaiToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
-function parseIcalDate(value: string): string | null {
-  const clean = value.replace(/;[^:]*:/g, ":").replace(/^[^:]*:/, "").trim();
-  const basic = clean.replace(/[TZ]/g, "").slice(0, 8);
-  if (!/^\d{8}$/.test(basic)) return null;
-  return `${basic.slice(0, 4)}-${basic.slice(4, 6)}-${basic.slice(6, 8)}`;
-}
-
-interface IcalEvent {
-  uid: string;
-  summary: string;
-  dtstart: string;
-  dtend: string;
-}
-
-function parseIcalEvents(raw: string): IcalEvent[] {
-  const text = unfoldIcal(raw);
-  const events: IcalEvent[] = [];
-  const veventRegex = /BEGIN:VEVENT([\s\S]*?)END:VEVENT/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = veventRegex.exec(text)) !== null) {
-    const block = match[1];
-    const get = (key: string): string => {
-      const re = new RegExp(`^${key}[^:]*:(.*)$`, "im");
-      const m = re.exec(block);
-      return m ? m[1].trim() : "";
-    };
-
-    const uid = get("UID");
-    const summary = get("SUMMARY") || "Guest";
-    const dtstartRaw = get("DTSTART");
-    const dtendRaw = get("DTEND");
-
-    const dtstart = parseIcalDate(dtstartRaw);
-    const dtend = parseIcalDate(dtendRaw);
-
-    if (uid && dtstart && dtend && dtstart < dtend) {
-      events.push({ uid, summary, dtstart, dtend });
-    }
+async function raiseOnce(tx: any, flag: IcalFlag, reservationId: number | undefined, propertyName: string) {
+  const entityId = reservationId ? String(reservationId) : null;
+  if (entityId) {
+    const [open] = await tx.select({ id: notificationsTable.id }).from(notificationsTable)
+      .where(and(eq(notificationsTable.type, flag.type), eq(notificationsTable.entityId, entityId), eq(notificationsTable.read, false))).limit(1);
+    if (open) return;
   }
-
-  return events;
+  const titles: Record<string, string> = { ical_overlap: "Possible double booking", ical_missing: "Booking missing from channel calendar", ical_reappeared: "Cancelled stay still on channel calendar", ical_dates_changed: "Channel changed booking dates", ical_locked: "Channel change needs an adjustment" };
+  await tx.insert(notificationsTable).values({ type: flag.type, title: `${titles[flag.type] || "Channel calendar"} · ${propertyName}`, message: flag.message, link: reservationId ? `/reservations/${reservationId}` : null, entityType: "reservation", entityId });
 }
 
-function nightsBetween(checkIn: string, checkOut: string): number {
-  const msPerDay = 86400000;
-  return Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / msPerDay);
-}
-
-export async function syncPropertyIcal(propertyId: number, platform: "airbnb" | "booking_com") {
-  const [property] = await db
-    .select({ 
-      id: propertiesTable.id, 
-      name: propertiesTable.name,
-      airbnbIcalUrl: propertiesTable.airbnbIcalUrl, 
-      bookingComIcalUrl: propertiesTable.bookingComIcalUrl,
-      cleaningFee: propertiesTable.cleaningFee 
-    })
-    .from(propertiesTable)
-    .where(eq(propertiesTable.id, propertyId));
-
+export async function syncPropertyIcal(propertyId: number, platform: Platform) {
+  const feed = FEEDS[platform];
+  if (!feed) return { error: "Unsupported channel" };
+  const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, propertyId));
   if (!property) return { error: "Property not found" };
-  
-  const url = platform === "airbnb" ? property.airbnbIcalUrl : property.bookingComIcalUrl;
-  if (!url) return { error: `No ${platform} iCal URL configured` };
+  const url = property[feed.column];
+  if (!url) return { error: `No ${feed.label} iCal URL configured` };
 
   let icalText: string;
   try {
     const parsedUrl = new URL(url);
-    const hosts = platform === "airbnb" ? ["airbnb.com","airbnb.co.in","airbnb.co.uk"] : ["booking.com"];
-    if(parsedUrl.protocol !== "https:" || parsedUrl.username || parsedUrl.password || (parsedUrl.port && parsedUrl.port !== "443") || !hosts.some(h=>parsedUrl.hostname===h || parsedUrl.hostname.endsWith('.'+h))) throw new Error("Use an official HTTPS channel calendar export URL");
-    const response = await fetch(url,{redirect:"error",signal:AbortSignal.timeout(15000)});
+    if (parsedUrl.protocol !== "https:" || parsedUrl.username || parsedUrl.password || (parsedUrl.port && parsedUrl.port !== "443") || !feed.hosts.some(h => parsedUrl.hostname === h || parsedUrl.hostname.endsWith("." + h))) throw new Error("Use an official HTTPS channel calendar export URL");
+    const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     icalText = await response.text();
+    if (!/BEGIN:VCALENDAR/.test(icalText)) throw new Error("The link did not return a calendar");
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Fetch failed";
     return { error: `Failed to fetch iCal feed: ${msg}` };
   }
 
   const events = parseIcalEvents(icalText);
-  if (events.length === 0) {
-    return { created: 0, skipped: 0, total: 0, message: "No events found in iCal feed" };
-  }
-
-  const existing = await db
-    .select({ checkIn: reservationsTable.checkIn, notes: reservationsTable.notes })
-    .from(reservationsTable)
-    .where(and(eq(reservationsTable.propertyId, propertyId), eq(reservationsTable.platform, platform)));
-
-  const existingUids = new Set(
-    existing
-      .map(r => { const m = r.notes?.match(/ical-uid:([^\s]+)/); return m ? m[1] : null; })
-      .filter(Boolean) as string[]
-  );
-  const existingCheckIns = new Set(existing.map(r => r.checkIn));
-
-  let created = 0;
-  let skipped = 0;
-
-  for (const event of events) {
-    if (existingUids.has(event.uid) || existingCheckIns.has(event.dtstart)) {
-      skipped++;
-      continue;
+  const today = dubaiToday();
+  const result = await db.transaction(async tx => {
+    // Same lock as manual booking saves, so a sync and a manual edit cannot interleave on one property.
+    await tx.select({ id: propertiesTable.id }).from(propertiesTable).where(eq(propertiesTable.id, propertyId)).for("update");
+    const existing = await tx.select().from(reservationsTable).where(eq(reservationsTable.propertyId, propertyId));
+    const plan = planIcalSync({ platform, events, existing, today });
+    const lockedMonths = new Set((await tx.select({ month: ownerStatementsTable.month }).from(ownerStatementsTable)
+      .where(and(eq(ownerStatementsTable.propertyId, propertyId), ne(ownerStatementsTable.status, "draft")))).map(s => s.month));
+    let created = 0, updated = 0, released = 0, flagged = 0;
+    for (const row of plan.inserts) {
+      const { flag, ...values } = row;
+      const [inserted] = await tx.insert(reservationsTable).values({ ...values, propertyId, cleaningFee: values.status === "blocked" ? null : property.cleaningFee ?? null } as any).onConflictDoNothing({ target: reservationsTable.externalId }).returning();
+      if (!inserted) continue;
+      created++;
+      if (inserted.status !== "blocked" && inserted.checkOut >= today) await tx.insert(cleaningTasksTable).values({ propertyId, reservationId: inserted.id, status: "dirty", scheduledDate: inserted.checkOut, scheduledTime: "11:00", price: inserted.cleaningFee });
+      if (flag) { await raiseOnce(tx, flag, inserted.id, property.name); flagged++; }
     }
+    for (const u of plan.updates) {
+      const target = existing.find(r => r.id === u.id)!;
+      const newCheckOut = u.patch.checkOut ?? target.checkOut;
+      const moves = u.patch.checkIn !== undefined || u.patch.status !== undefined;
+      if (moves && target.financeMode === "inclusive-v1" && (lockedMonths.has(target.checkOut.slice(0, 7)) || lockedMonths.has(newCheckOut.slice(0, 7)))) {
+        await raiseOnce(tx, { type: "ical_locked", message: `${feed.label} changed ${target.checkIn} → ${target.checkOut} to ${u.patch.checkIn ?? target.checkIn} → ${newCheckOut}, but the stay is on a published owner statement. Record an adjustment.` }, u.id, property.name);
+        flagged++; continue;
+      }
+      await tx.update(reservationsTable).set(u.patch).where(eq(reservationsTable.id, u.id));
+      if (u.released) released++; else updated++;
+      const tasks = await tx.select().from(cleaningTasksTable).where(eq(cleaningTasksTable.reservationId, u.id));
+      for (const t of tasks) {
+        if (["approved", "completed"].includes(t.status)) continue;
+        if (u.patch.status === "cancelled") await tx.update(cleaningTasksTable).set({ status: "cancelled" }).where(eq(cleaningTasksTable.id, t.id));
+        else if (u.patch.checkOut) await tx.update(cleaningTasksTable).set({ scheduledDate: u.patch.checkOut }).where(eq(cleaningTasksTable.id, t.id));
+      }
+    }
+    for (const f of plan.flags) { await raiseOnce(tx, f, f.reservationId, property.name); flagged++; }
+    return { created, updated, released, flagged, unchanged: plan.unchanged, total: events.length };
+  });
 
-    const nights = nightsBetween(event.dtstart, event.dtend);
-    if (nights <= 0) { skipped++; continue; }
-
-    const guestName = platform === "airbnb" 
-      ? (event.summary.replace(/\s*-?\s*Airbnb\s*\(.*?\)/i, "").trim() || "Airbnb Guest")
-      : (event.summary.trim() || "Booking.com Guest");
-
-    const [row] = await db.insert(reservationsTable).values({
-      propertyId,
-      guestName,
-      platform,
-      checkIn: event.dtstart,
-      checkOut: event.dtend,
-      nights,
-      revenue: "0",
-      paymentStatus: "pending",
-      status: "confirmed",
-      notes: `ical-uid:${event.uid}`,
-      cleaningFee: property.cleaningFee ?? null,
-    }).returning();
-
-    await db.insert(cleaningTasksTable).values({
-      propertyId,
-      reservationId: row.id,
-      status: "dirty",
-      scheduledDate: event.dtend,
-    });
-
-    existingCheckIns.add(event.dtstart);
-    existingUids.add(event.uid);
-    created++;
-  }
-
-  const result = { created, skipped, total: events.length, lastSyncAt: new Date().toISOString() };
-  
-  // Update sync status in app_settings
+  const status = { ...result, platform, lastSyncAt: new Date().toISOString() };
   const syncStatusKey = `ical_sync_${propertyId}`;
   const existingSetting = await db.select().from(appSettingsTable).where(eq(appSettingsTable.key, syncStatusKey)).limit(1);
-  
-  if (existingSetting.length > 0) {
-    await db.update(appSettingsTable)
-      .set({ value: result, updatedAt: new Date() })
-      .where(eq(appSettingsTable.key, syncStatusKey));
-  } else {
-    await db.insert(appSettingsTable).values({
-      key: syncStatusKey,
-      value: result
-    });
-  }
-
-  return result;
+  if (existingSetting.length > 0) await db.update(appSettingsTable).set({ value: status, updatedAt: new Date() }).where(eq(appSettingsTable.key, syncStatusKey));
+  else await db.insert(appSettingsTable).values({ key: syncStatusKey, value: status });
+  return { ...status, skipped: result.unchanged };
 }
 
 export async function runAllSyncs() {
   console.log(`[iCal Sync] Starting scheduled sync at ${new Date().toISOString()}`);
   const properties = await db.select().from(propertiesTable);
-  
   for (const prop of properties) {
-    if (prop.airbnbIcalUrl) {
-      const res = await syncPropertyIcal(prop.id, "airbnb");
-      console.log(`[iCal Sync] Property: ${prop.name} (Airbnb) - Created: ${res.created}, Skipped: ${res.skipped}`);
-    }
-    if (prop.bookingComIcalUrl) {
-      const res = await syncPropertyIcal(prop.id, "booking_com");
-      console.log(`[iCal Sync] Property: ${prop.name} (Booking.com) - Created: ${res.created}, Skipped: ${res.skipped}`);
+    for (const platform of Object.keys(FEEDS) as Platform[]) {
+      if (!prop[FEEDS[platform].column]) continue;
+      try {
+        const res: any = await syncPropertyIcal(prop.id, platform);
+        console.log(`[iCal Sync] ${prop.name} (${FEEDS[platform].label}) - ${res.error ? "Error: " + res.error : `Created ${res.created}, updated ${res.updated}, released ${res.released}, flagged ${res.flagged}`}`);
+      } catch (err) {
+        console.error(`[iCal Sync] ${prop.name} (${FEEDS[platform].label}) failed:`, err instanceof Error ? err.message : err);
+      }
     }
   }
   console.log(`[iCal Sync] Finished scheduled sync at ${new Date().toISOString()}`);
