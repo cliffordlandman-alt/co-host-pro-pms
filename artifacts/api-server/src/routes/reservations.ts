@@ -107,7 +107,9 @@ router.get("/reservations", asyncHandler(async (req, res) => {
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(reservationsTable.checkIn);
 
-  const earnings=await db.select().from(airbnbEarningsTable);
+  // Only load the Airbnb earnings that belong to the listed bookings (not the whole earnings table on every request).
+  const codes=[...new Set(rows.map(r=>r.externalId).filter((x):x is string=>!!x&&x.startsWith("airbnb:")).map(x=>x.slice(7)))];
+  const earnings=codes.length?await db.select().from(airbnbEarningsTable).where(inArray(airbnbEarningsTable.confirmationCode,codes)):[];
   res.json(rows.map(r=>formatReservation(r,earnings)));
 }));
 
@@ -121,7 +123,8 @@ router.get("/reservations/:id", asyncHandler(async (req, res) => {
     .leftJoin(propertiesTable, eq(reservationsTable.propertyId, propertiesTable.id))
     .where(eq(reservationsTable.id, id));
   if (!row) return res.status(404).json({ error: "Not found" });
-  return res.json(formatReservation(row,await db.select().from(airbnbEarningsTable)));
+  const code=row.externalId?.startsWith("airbnb:")?row.externalId.slice(7):null;
+  return res.json(formatReservation(row,code?await db.select().from(airbnbEarningsTable).where(eq(airbnbEarningsTable.confirmationCode,code)):[]));
 }));
 
 

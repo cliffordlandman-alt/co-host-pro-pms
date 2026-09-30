@@ -57,6 +57,13 @@
       "when": 1790700004000,
       "tag": "0007_message_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790700005000,
+      "tag": "0008_query_indexes",
+      "breakpoints": true
     }
   ]
 }
