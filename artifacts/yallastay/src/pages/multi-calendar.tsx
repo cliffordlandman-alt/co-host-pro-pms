@@ -15,10 +15,11 @@ import {
 } from "date-fns";
 
 const PLATFORM_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  airbnb:      { bg: "#059669", text: "#fff", label: "Airbnb" },
-  booking_com: { bg: "#059669", text: "#fff", label: "Booking.com" },
+  airbnb:      { bg: "#E0565B", text: "#fff", label: "Airbnb" },
+  booking_com: { bg: "#003580", text: "#fff", label: "Booking.com" },
   direct:      { bg: "#059669", text: "#fff", label: "Direct" },
-  vrbo:        { bg: "#059669", text: "#fff", label: "VRBO" },
+  vrbo:        { bg: "#195591", text: "#fff", label: "VRBO" },
+  blocked:     { bg: "#6b7280", text: "#fff", label: "Blocked" },
 };
 
 type CalView = "multi" | "monthly" | "yearly";
@@ -229,7 +230,7 @@ export default function MultiCalendar() {
                         const res = getReservation(prop.id, day);
                         const isToday = isSameDay(day, today);
                         const isWeekend = [0, 6].includes(day.getDay());
-                        const colors = res ? (PLATFORM_COLORS[res.platform] ?? PLATFORM_COLORS.direct) : null;
+                        const colors = res ? ((res.status as string) === "blocked" ? PLATFORM_COLORS.blocked : PLATFORM_COLORS[res.platform] ?? PLATFORM_COLORS.direct) : null;
                         const isCheckIn = res ? isSameDay(parseISO(res.checkIn), day) : false;
                         const isCheckOut = res ? format(day, "yyyy-MM-dd") === res.checkOut : false;
 
@@ -314,7 +315,7 @@ function YearlyView({ properties, reservations, anchor, isLoading }: {
     for (const day of days) {
       const ds = format(day, "yyyy-MM-dd");
       const hasRes = reservations.some((r: any) =>
-        r.propertyId === propId && r.status !== "cancelled" &&
+        r.propertyId === propId && r.status !== "cancelled" && r.status !== "blocked" &&
         r.checkIn <= ds && r.checkOut > ds
       );
       if (hasRes) occupied++;
