@@ -1,4 +1,4 @@
-import { refreshOwnerStatements } from "../lib/owner-statements";
+import { refreshOwnerStatements, duplicateOwnerStatements } from "../lib/owner-statements";
 import { dubaiToday } from "../lib/dubai-date";
 import { companyStatement } from "../../../../lib/company-statement.mjs";
 import { airbnbEarningsTable } from "@workspace/db";
@@ -294,6 +294,11 @@ router.get("/accounting/statements", asyncHandler(async (req, res) => {
   })));
 }));
 
+// Property/month pairs holding more than one statement (only possible in data from before the unique rule).
+router.get("/accounting/statements/duplicates", asyncHandler(async (_req, res) => {
+  res.json(await duplicateOwnerStatements());
+}));
+
 router.post("/accounting/statements/generate", asyncHandler(async (req,res)=>{
  const {month} = req.body;
  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month || "")) return res.status(400).json({error:"Valid month required (YYYY-MM)"});
@@ -307,6 +312,8 @@ router.patch("/accounting/statements/:id", asyncHandler(async (req, res) => {
 
   let [existing] = await db.select().from(ownerStatementsTable).where(eq(ownerStatementsTable.id,id));
   if(!existing) return res.status(404).json({error:"Not found"});
+  const twins=await db.select({id:ownerStatementsTable.id}).from(ownerStatementsTable).where(and(eq(ownerStatementsTable.propertyId,existing.propertyId),eq(ownerStatementsTable.month,existing.month),ne(ownerStatementsTable.id,id)));
+  if(twins.length) return res.status(409).json({error:`This property already has another statement for ${existing.month} (#${twins.map(t=>t.id).join(", #")}). Resolve the duplicate before sending or paying either one.`,duplicateOf:twins.map(t=>t.id)});
   if(existing.status==='draft'){
    const refreshed=await refreshOwnerStatements(existing.month);
    if(!refreshed.statements.some(s=>s.id===id))return res.status(409).json({error:'Statement cannot be published: verify every booking, owner and financial breakdown first'});

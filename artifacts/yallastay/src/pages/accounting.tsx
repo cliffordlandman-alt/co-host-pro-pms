@@ -186,14 +186,16 @@ function StatementsTab() {
       queryClient.invalidateQueries({ queryKey: ["statements"] });
       toast({ title: `Generated ${data.generated} statement${data.generated !== 1 ? "s" : ""}`, description: data.skipped?.map((s:any)=>`${s.property}: ${s.reason}`).join("; ") });
     },
-    onError: () => toast({ title: "Generation failed", variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Generation failed", description: e.message, variant: "destructive" }),
   });
 
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) =>
       f(`/api/accounting/statements/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["statements"] }),
+    onError: (e: any) => { queryClient.invalidateQueries({ queryKey: ["statements"] }); toast({ title: "Statement not updated", description: e.message, variant: "destructive" }); },
   });
+  const { data: duplicates } = useQuery({ queryKey: ["statements", "duplicates"], queryFn: () => f("/api/accounting/statements/duplicates") });
 
   const totals = useMemo(() => ({
     gross: statements?.reduce((s: number, st: any) => s + st.grossRevenue, 0) ?? 0,
@@ -216,6 +218,16 @@ function StatementsTab() {
           {generateMutation.isPending ? "Generating…" : "Generate Statements"}
         </Button>
       </div>
+
+      {duplicates?.length > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          <p className="font-medium">Duplicate owner statements need attention</p>
+          <p className="text-xs mt-0.5">These were created before the one-statement-per-month rule. Nothing was deleted. They cannot be recalculated, sent or paid until only one remains per property and month.</p>
+          <ul className="mt-2 space-y-0.5 text-xs">
+            {duplicates.map((d: any) => <li key={`${d.propertyId}-${d.month}`}>{d.propertyName ?? `Property ${d.propertyId}`} · {d.month}: {d.statements.map((s: any) => `#${s.id} (${s.status}, ${s.currency} ${s.ownerPayout.toFixed(2)})`).join(", ")}</li>)}
+          </ul>
+        </div>
+      )}
 
       {/* Summary KPIs */}
       {!isLoading && statements?.length > 0 && (

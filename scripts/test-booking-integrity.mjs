@@ -139,6 +139,15 @@ try {
   assert.deepEqual([bRow.managementFeePercent, bRow.cleaningFee], [16, 80], 'bulk import stores fees in fee settings');
   passed.push('single source for management % and cleaning fee');
 
+  // One owner statement per property per month, however often statements are generated or listed.
+  await api('/accounting/statements/generate', 'POST', { month: '2031-03' });
+  await api('/accounting/statements/generate', 'POST', { month: '2031-03' });
+  await api('/accounting/statements?month=2031-03');
+  const mar = (await api('/accounting/statements?month=2031-03')).filter(s => s.propertyId === fp.id);
+  assert.equal(mar.length, 1, 'one statement per property/month');
+  assert.deepEqual(await api('/accounting/statements/duplicates'), []);
+  passed.push('one owner statement per property/month');
+
   console.log('PASS: ' + passed.join('; '));
 } catch (e) { console.error(e); console.error(logs.slice(-4000)); process.exitCode = 1; }
 finally { child.kill('SIGTERM'); }
