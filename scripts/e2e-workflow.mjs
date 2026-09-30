@@ -115,9 +115,15 @@ try {
   const s2 = await api(`/cleaning/${task.id}`, 'PATCH', { status: 'completed', photos: ['data:image/png;base64,iVBORw0KGgo='], notes: 'Done, towels replaced' }, ctok);
   const s3 = await api(`/cleaning/${task.id}`, 'PATCH', { status: 'approved' });
   rec('11 Assign -> cleaner in progress -> completed -> inspected', assign.status === 200 && mine.length === 1 && s1.status === 200 && s2.status === 200 && s3.status === 200 ? 'OK' : 'FAIL', `assign ${assign.status}, cleaner sees ${mine.length}, in_progress ${s1.status}, completed ${s2.status}, approved ${s3.status}`);
-  const sBack = await api(`/cleaning/${task.id}`, 'PATCH', { status: 'dirty' });
-  rec('11b Illegal status jump blocked (approved -> dirty)', sBack.status >= 400 ? 'OK' : 'GAP', `status ${sBack.status}; no state-machine on cleaning statuses`);
-  if (sBack.status < 400) await api(`/cleaning/${task.id}`, 'PATCH', { status: 'approved' });
+  // Guards: a cleaner cannot change an approved clean; approval needs a completed clean;
+  // a manager may reopen an approved clean (re-clean), which must be completed again before approval.
+  const cBack = await api(`/cleaning/${task.id}`, 'PATCH', { status: 'in_progress' }, ctok);
+  const reopen = await api(`/cleaning/${task.id}`, 'PATCH', { status: 'dirty' });
+  const skip = await api(`/cleaning/${task.id}`, 'PATCH', { status: 'approved' });
+  const redo = await api(`/cleaning/${task.id}`, 'PATCH', { status: 'completed' });
+  const reapprove = await api(`/cleaning/${task.id}`, 'PATCH', { status: 'approved' });
+  rec('11b Cleaning status guards', cBack.status === 409 && reopen.status === 200 && skip.status === 409 && redo.status === 200 && reapprove.status === 200 ? 'OK' : 'GAP',
+    `cleaner edit after approval ${cBack.status}, manager reopen ${reopen.status}, approve-without-completion ${skip.status}, complete ${redo.status}, approve ${reapprove.status}`);
 
   // 12. Cleaning expense recorded
   const tx2 = (await api('/accounting/transactions?month=2026-09')).body;

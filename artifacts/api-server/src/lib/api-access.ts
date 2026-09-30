@@ -63,6 +63,8 @@ export async function apiAccess(req: Request, res: Response, next: NextFunction)
       if(!tasks.some(t=>t.id===id)) return res.status(403).json({error:"This task is not assigned to you"});
       if(req.method==="GET") return next();
       if(req.method==="PATCH") {
+        const task=tasks.find(t=>t.id===id);
+        if(task && ["approved","cancelled"].includes(task.status)) return res.status(409).json({error:task.status==="approved"?"This clean has already been approved; ask a manager to reopen it":"This task was cancelled"});
         if(Object.keys(req.body).some(k=>!["status","notes","checklist","photos","completedAt"].includes(k)) || req.body.status==="approved") return res.status(403).json({error:"Only a manager can approve, reassign or change costs"});
         return next();
       }

@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, cleaningTasksTable, propertiesTable, staffTable, insertCleaningTaskSchema } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, cleaningTasksTable, propertiesTable, staffTable, reservationsTable, insertCleaningTaskSchema } from "@workspace/db";
+import { eq, and, gte, inArray, notInArray } from "drizzle-orm";
 import { notifyManagers, notifyStaffMember } from "../lib/whatsapp";
 import { insertAuditLog } from "../lib/audit";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -17,6 +17,8 @@ const cleaningSelect = {
   id: cleaningTasksTable.id,
   propertyId: cleaningTasksTable.propertyId,
   propertyName: propertiesTable.name,
+  unitNumber: propertiesTable.unitNumber,
+  area: propertiesTable.area,
   reservationId: cleaningTasksTable.reservationId,
   assignedToId: cleaningTasksTable.assignedToId,
   assignedToName: staffTable.name,
@@ -44,7 +46,18 @@ router.get("/cleaning", asyncHandler(async (req, res) => {
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(cleaningTasksTable.scheduledDate);
 
-  res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString() })));
+  // Next guest arrival at each unit on/after the clean date, so the board can flag same-day turnovers.
+  const propIds = [...new Set(rows.map(r => r.propertyId))];
+  const earliest = rows.reduce<string | null>((m, r) => (m === null || r.scheduledDate < m ? r.scheduledDate : m), null);
+  const arrivals = propIds.length && earliest ? await db
+    .select({ propertyId: reservationsTable.propertyId, checkIn: reservationsTable.checkIn })
+    .from(reservationsTable)
+    .where(and(inArray(reservationsTable.propertyId, propIds), gte(reservationsTable.checkIn, earliest), notInArray(reservationsTable.status, ["cancelled", "blocked"])))
+    .orderBy(reservationsTable.checkIn) : [];
+  res.json(rows.map(r => {
+    const next = arrivals.find(a => a.propertyId === r.propertyId && a.checkIn >= r.scheduledDate);
+    return { ...r, nextGuestCheckIn: next?.checkIn ?? null, createdAt: r.createdAt.toISOString() };
+  }));
 }));
 
 router.get("/cleaning/:id", asyncHandler(async (req, res) => {
@@ -107,7 +120,21 @@ router.patch("/cleaning/:id", asyncHandler(async (req, res) => {
   if(body.status && !["dirty","scheduled","pending","in_progress","completed","approved","cancelled"].includes(body.status)) return res.status(400).json({error:"Invalid cleaning status"});
   if(body.photos && (!Array.isArray(body.photos) || body.photos.length>8 || body.photos.some((p:any)=>typeof p!=="string" || p.length>1500000 || !/^data:image\/(jpeg|png|webp);base64,/.test(p)))) return res.status(400).json({error:"Use up to eight JPEG, PNG or WebP photos under 1 MB each"});
   if(body.price!=null && !/^\d+(\.\d{1,2})?$/.test(String(body.price))) return res.status(400).json({error:"Enter a valid cleaning price"});
-  if(["completed","approved"].includes(body.status)) body.completedAt=new Date().toISOString();
+  const [existing] = await db.select().from(cleaningTasksTable).where(eq(cleaningTasksTable.id, id));
+  if (!existing) return res.status(404).json({ error: "Not found" });
+  // Approval is an inspection of finished work, so only a completed clean can be approved.
+  if(body.status==="approved" && !["completed","approved"].includes(existing.status)) return res.status(409).json({error:"Only a completed clean can be approved. Mark it completed first."});
+  if(body.assignedToId!=null) {
+    const [member]=await db.select({id:staffTable.id,active:staffTable.active}).from(staffTable).where(eq(staffTable.id,Number(body.assignedToId)));
+    if(!member || !member.active) return res.status(400).json({error:"Choose an active staff member"});
+  }
+  // Keep the time the clean was actually finished: set it when the job becomes completed, keep it
+  // through approval (approval used to overwrite it), and clear it if the job is reopened.
+  if(body.status && body.status!==existing.status) {
+    if(body.status==="completed") body.completedAt=body.completedAt || new Date().toISOString();
+    else if(body.status==="approved") body.completedAt=existing.completedAt || new Date().toISOString();
+    else if(body.status!=="cancelled") body.completedAt=null;
+  }
   const parsed=insertCleaningTaskSchema.partial().safeParse(body);
   if(!parsed.success) return res.status(400).json({error:parsed.error.message});
   const [row] = await db.update(cleaningTasksTable).set(parsed.data).where(eq(cleaningTasksTable.id, id)).returning();
@@ -121,7 +148,20 @@ router.patch("/cleaning/:id", asyncHandler(async (req, res) => {
     performedBy: req.headers["x-user-id"] as string,
   });
 
-  return res.json({ ...row, createdAt: row.createdAt.toISOString() });
+  res.json({ ...row, createdAt: row.createdAt.toISOString() });
+
+  // Tell a newly assigned cleaner (fire-and-forget; does nothing unless WhatsApp is configured).
+  if (row.assignedToId && row.assignedToId !== existing.assignedToId) {
+    try {
+      const [prop] = await db.select({ name: propertiesTable.name, unitNumber: propertiesTable.unitNumber })
+        .from(propertiesTable).where(eq(propertiesTable.id, row.propertyId));
+      const propLabel = prop ? `${prop.name}${prop.unitNumber ? ` · Unit ${prop.unitNumber}` : ""}` : `Property #${row.propertyId}`;
+      await notifyStaffMember(row.assignedToId, `🧹 *New Cleaning Task*\n\nYou've been assigned a cleaning task.\n\nProperty: ${propLabel}\nDate: ${row.scheduledDate}${row.notes ? `\nNotes: ${row.notes}` : ""}\n\nPlease confirm you've received this in YallaPMS.`);
+    } catch (err: unknown) {
+      console.error("[cleaning] WhatsApp notification error:", err instanceof Error ? err.message : err);
+    }
+  }
+  return;
 }));
 
 export default router;

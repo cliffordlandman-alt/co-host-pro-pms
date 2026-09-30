@@ -1,7 +1,8 @@
 import { CleaningProof } from "@/components/CleaningProof";
 import { apiFetch } from "@/lib/api-fetch";
 import { useState } from "react";
-import { useGetCleaningTasks, useGetProperties } from "@workspace/api-client-react";
+import { useGetCleaningTasks, useGetProperties, useGetStaff } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { dubaiToday } from "@/lib/today-model";
 
 function InfoTip({ text }: { text: string }) {
   return (
@@ -34,6 +36,8 @@ function InfoTip({ text }: { text: string }) {
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+const isTaskOverdue = (t: any) => !["completed", "approved", "cancelled"].includes(t.status) && t.scheduledDate < dubaiToday();
+
 const STATUS_CONFIG: Record<string, { label: string; cls: string; icon: any }> = {
   completed:   { label: "Completed",   cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300", icon: CheckCircle2 },
   in_progress: { label: "In Progress", cls: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", icon: Loader2 },
@@ -41,6 +45,8 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string; icon: any }> =
   pending:     { label: "Pending",     cls: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300", icon: Clock },
   overdue:     { label: "Overdue",     cls: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300", icon: AlertTriangle },
   dirty:       { label: "Dirty",       cls: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300", icon: AlertTriangle },
+  approved:    { label: "Approved",    cls: "bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300", icon: CheckCircle2 },
+  cancelled:   { label: "Cancelled",   cls: "bg-muted text-muted-foreground", icon: AlertTriangle },
 };
 
 function NewTaskModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -109,35 +115,63 @@ function NewTaskModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   );
 }
 
-function CleaningCard({ task }: { task: any }) {
+function CleaningCard({ task, cleaners }: { task: any; cleaners: any[] }) {
   const [expanded, setExpanded] = useState(false);
+  const [busy, setBusy] = useState(false);
   const { toast } = useToast();
+  const qc = useQueryClient();
   const cfg = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.pending;
   const Icon = cfg.icon;
+  const checklist: string[] = Array.isArray(task.checklist) ? task.checklist.filter((i: unknown) => typeof i === "string") : [];
+  const photoCount = Array.isArray(task.photos) ? task.photos.length : 0;
+  const isDone = ["completed", "approved"].includes(task.status);
+  const isClosed = ["approved", "cancelled"].includes(task.status);
 
-  const isUrgent = task.status === "overdue" || task.status === "dirty" ||
-    (task.nextGuestCheckIn === task.scheduledDate && task.status !== "completed");
+  const isOverdue = !isDone && task.status !== "cancelled" && task.scheduledDate < dubaiToday();
+  const isTurnover = !isDone && task.status !== "cancelled" && !!task.nextGuestCheckIn && task.nextGuestCheckIn === task.scheduledDate;
+  const isUrgent = isOverdue || isTurnover;
+
+  async function update(body: Record<string, unknown>, done: string) {
+    setBusy(true);
+    try {
+      const res = await apiFetch(`${API_BASE}/api/cleaning/${task.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Could not update the task");
+      await qc.invalidateQueries();
+      toast({ title: done });
+    } catch (e: any) {
+      toast({ title: "Could not update the task", description: e.message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className={`bg-card border rounded-xl overflow-hidden transition-shadow hover:shadow-md ${isUrgent ? "border-amber-300 dark:border-amber-700" : ""}`}>
       {/* Urgency bar */}
-      <div className={`h-1 ${task.status === "overdue" || task.status === "dirty" ? "bg-red-500" : isUrgent ? "bg-amber-400" : task.status === "completed" ? "bg-emerald-500" : "bg-muted"}`} />
+      <div className={`h-1 ${isOverdue ? "bg-red-500" : isUrgent ? "bg-amber-400" : task.status === "completed" ? "bg-emerald-500" : "bg-muted"}`} />
       <div className="p-4">
         {/* Header */}
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-sm">{task.propertyName}</span>
-              {isUrgent && task.status !== "overdue" && (
+              {isOverdue && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 rounded-full flex items-center gap-1">
+                  <AlertTriangle className="h-2.5 w-2.5" />OVERDUE
+                </span>
+              )}
+              {isTurnover && (
                 <span className="text-[10px] font-bold px-1.5 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 rounded-full flex items-center gap-1">
                   <AlertTriangle className="h-2.5 w-2.5" />SAME-DAY TURNOVER
                 </span>
               )}
             </div>
             <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground flex-wrap">
-              <span className="flex items-center gap-1"><MapPin className="h-2.5 w-2.5" />{task.area}</span>
-              <span>·</span>
-              <span>Unit {task.unitNumber}</span>
+              {task.area && <span className="flex items-center gap-1"><MapPin className="h-2.5 w-2.5" />{task.area}</span>}
+              {task.area && task.unitNumber && <span>·</span>}
+              {task.unitNumber && <span>Unit {task.unitNumber}</span>}
             </div>
           </div>
           <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full flex items-center gap-1 flex-shrink-0 ${cfg.cls}`}>
@@ -166,19 +200,39 @@ function CleaningCard({ task }: { task: any }) {
         </div>
 
         {/* Assigned */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
               <User className="h-3 w-3 text-muted-foreground" />
             </div>
-            <span className="text-sm text-muted-foreground">{task.assignedTo || <span className="text-amber-600">Unassigned</span>}</span>
+            {isClosed ? (
+              <span className="text-sm text-muted-foreground truncate">{task.assignedToName || "Unassigned"}</span>
+            ) : (
+              <Select value={task.assignedToId ? String(task.assignedToId) : ""} disabled={busy}
+                onValueChange={v => update({ assignedToId: Number(v) }, "Cleaner assigned")}>
+                <SelectTrigger className="h-8 text-sm w-full max-w-[200px]" aria-label="Assign cleaner">
+                  <SelectValue placeholder={<span className="text-amber-600">Assign cleaner…</span>} />
+                </SelectTrigger>
+                <SelectContent>
+                  {cleaners.length === 0 && task.assignedToId == null && (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">No active cleaners. Add one under Staff.</div>
+                  )}
+                  {task.assignedToId != null && !cleaners.some(c => c.id === task.assignedToId) && (
+                    <SelectItem value={String(task.assignedToId)}>{task.assignedToName || `Staff #${task.assignedToId}`}</SelectItem>
+                  )}
+                  {cleaners.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
           </div>
-          <button
-            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-            onClick={() => setExpanded(e => !e)}
-          >
-            Checklist {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          </button>
+          {checklist.length > 0 && (
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 flex-shrink-0"
+              onClick={() => setExpanded(e => !e)}
+            >
+              Checklist {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            </button>
+          )}
         </div>
 
         {/* Notes */}
@@ -189,36 +243,59 @@ function CleaningCard({ task }: { task: any }) {
         )}
 
         {/* Checklist */}
-        {expanded && (
-          <div className="border-t pt-3 mb-3 space-y-1.5">
-            {task.checklist.map((item: string) => {
-              const done = task.completedItems.includes(item);
-              return (
-                <div key={item} className="flex items-center gap-2.5">
-                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${done ? "bg-emerald-500 border-emerald-500" : "border-muted-foreground/30"}`}>
-                    {done && <CheckCircle2 className="h-2.5 w-2.5 text-white" />}
-                  </div>
-                  <span className={`text-xs ${done ? "line-through text-muted-foreground" : ""}`}>{item}</span>
-                </div>
-              );
-            })}
-          </div>
+        {expanded && checklist.length > 0 && (
+          <ul className="border-t pt-3 mb-3 space-y-1.5 list-disc pl-5">
+            {checklist.map((item, i) => <li key={i} className="text-xs">{item}</li>)}
+          </ul>
         )}
 
         {/* Actions */}
-        <div className="flex items-center gap-2 pt-2 border-t">
-          {task.status !== "completed" && (
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
+          {!isDone && task.status !== "cancelled" && (
             <>
-              <Button size="sm" variant="outline" className="flex-1 h-8 text-xs gap-1" onClick={() => toast({ title: "Status updated" })}>
-                <CheckCircle2 className="h-3 w-3" />Mark Done
+              <Button size="sm" variant="outline" className="flex-1 h-8 text-xs gap-1" disabled={busy}
+                onClick={() => update({ status: "completed" }, "Marked completed. Approve it after inspection.")}>
+                <CheckCircle2 className="h-3 w-3" />Mark completed
               </Button>
               <CleaningProof task={task} />
             </>
           )}
           {task.status === "completed" && (
-            <div className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
-              <CheckCircle2 className="h-3.5 w-3.5" />Completed · Photo verified
-            </div>
+            <>
+              <div className="w-full text-xs text-emerald-600 font-medium flex items-center gap-1">
+                <CheckCircle2 className="h-3.5 w-3.5" />Completed · {photoCount ? `${photoCount} photo${photoCount === 1 ? "" : "s"}` : "no photos yet"} · awaiting approval
+              </div>
+              <Button size="sm" className="flex-1 h-8 text-xs gap-1" disabled={busy}
+                onClick={() => update({ status: "approved" }, "Clean approved. Unit is ready.")}>
+                <CheckCircle2 className="h-3 w-3" />Approve
+              </Button>
+              <Button size="sm" variant="outline" className="flex-1 h-8 text-xs" disabled={busy}
+                onClick={() => update({ status: "dirty" }, "Sent back for re-cleaning")}>
+                Needs re-clean
+              </Button>
+              <CleaningProof task={task} />
+            </>
+          )}
+          {task.status === "approved" && (
+            <>
+              <div className="flex-1 text-xs text-teal-700 dark:text-teal-300 font-medium flex items-center gap-1">
+                <CheckCircle2 className="h-3.5 w-3.5" />Approved{photoCount ? ` · ${photoCount} photo${photoCount === 1 ? "" : "s"}` : ""}
+              </div>
+              <Button size="sm" variant="ghost" className="h-8 text-xs" disabled={busy}
+                onClick={() => update({ status: "dirty" }, "Reopened for re-cleaning")}>
+                Reopen
+              </Button>
+              {photoCount > 0 && (
+                <div className="w-full flex flex-wrap gap-2">
+                  {task.photos.map((src: string, i: number) => (
+                    <a key={i} href={src} target="_blank" rel="noreferrer"><img src={src} alt={`Cleaning proof ${i + 1}`} className="h-20 w-20 object-cover rounded" /></a>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          {task.status === "cancelled" && (
+            <div className="text-xs text-muted-foreground">Cancelled</div>
           )}
         </div>
       </div>
@@ -228,18 +305,20 @@ function CleaningCard({ task }: { task: any }) {
 
 export default function Cleaning() {
   const { data: apiTasks, isLoading, refetch } = useGetCleaningTasks();
+  const { data: staff } = useGetStaff();
+  const cleaners = ((staff ?? []) as any[]).filter(m => m.active !== false && m.role === "cleaner");
   const [showNew, setShowNew] = useState(false);
   const [filter, setFilter] = useState("all");
 
   const tasks = (apiTasks ?? []) as any[];
   const requestedTask=Number(new URLSearchParams(window.location.search).get("task"));
-  const filtered = (filter === "all" ? tasks : tasks.filter((t: any) => t.status === filter)).filter((t:any)=>!requestedTask || t.id===requestedTask);
+  const filtered = (filter === "all" ? tasks : filter === "overdue" ? tasks.filter(isTaskOverdue) : filter === "pending" ? tasks.filter((t: any) => t.status === "pending" || t.status === "dirty") : tasks.filter((t: any) => t.status === filter)).filter((t:any)=>!requestedTask || t.id===requestedTask);
 
   const counts = {
     total: tasks.length,
     pending: tasks.filter((t: any) => t.status === "pending" || t.status === "dirty").length,
     inProgress: tasks.filter((t: any) => t.status === "in_progress").length,
-    overdue: tasks.filter((t: any) => t.status === "overdue").length,
+    overdue: tasks.filter(isTaskOverdue).length,
     completed: tasks.filter((t: any) => t.status === "completed").length,
   };
 
@@ -263,8 +342,8 @@ export default function Cleaning() {
         {[
           { label: "Total", val: counts.total, cls: "text-foreground" },
           { label: "Pending", val: counts.pending, cls: counts.pending > 0 ? "text-amber-600" : "text-muted-foreground" },
-          { label: "Overdue", val: counts.overdue, cls: counts.overdue > 0 ? "text-red-600" : "text-muted-foreground" },
-          { label: "Completed", val: counts.completed, cls: "text-emerald-600" },
+          { label: "In Progress", val: counts.inProgress, cls: counts.inProgress > 0 ? "text-blue-600" : "text-muted-foreground" },
+          { label: "Awaiting approval", val: counts.completed, cls: counts.completed > 0 ? "text-emerald-600" : "text-muted-foreground" },
         ].map(s => (
           <div key={s.label} className="bg-card border rounded-xl p-4">
             <div className={`text-2xl font-bold ${s.cls}`}>{s.val}</div>
@@ -281,7 +360,8 @@ export default function Cleaning() {
           { val: "overdue", label: "Overdue" },
           { val: "scheduled", label: "Scheduled" },
           { val: "in_progress", label: "In Progress" },
-          { val: "completed", label: "Completed" },
+          { val: "completed", label: "Awaiting approval" },
+          { val: "approved", label: "Approved" },
         ].map(f => (
           <button
             key={f.val}
@@ -313,7 +393,7 @@ export default function Cleaning() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((task: any) => <CleaningCard key={task.id} task={task} />)}
+          {filtered.map((task: any) => <CleaningCard key={task.id} task={task} cleaners={cleaners} />)}
         </div>
       )}
 
