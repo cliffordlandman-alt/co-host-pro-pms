@@ -5,6 +5,7 @@ import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
 const port = Number(process.env.WEB_PORT || 5173);
+const apiPort = Number(process.env.API_PORT || 3001);
 const basePath = process.env.BASE_PATH || "/";
 
 export default defineConfig({
@@ -43,7 +44,7 @@ export default defineConfig({
     port,
     strictPort: true,
     host: "127.0.0.1",
-    proxy: { "/api": "http://127.0.0.1:3001" },
+    proxy: { "/api": `http://127.0.0.1:${apiPort}` },
     fs: {
       strict: true,
     },
