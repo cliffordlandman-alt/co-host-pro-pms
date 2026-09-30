@@ -469,7 +469,7 @@ function SettingsTab() {
     mutationFn: ({ propertyId, data }: { propertyId: number; data: any }) =>
       f(`/api/accounting/settings/${propertyId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }),
     onError: (e:any)=>toast({title:"Could not save fee settings",description:e.message,variant:"destructive"}),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["acc-settings"] }); setEditing(null); toast({ title: "Settings saved" }); },
+    onSuccess: (row: any) => { queryClient.invalidateQueries({ queryKey: ["acc-settings"] }); setEditing(null); toast({ title: "Settings saved", description: row?.bookingsRecalculated != null ? `Owner amounts updated on ${row.bookingsRecalculated} booking(s) to follow the cleaning setting${row.bookingsInPublishedMonths ? `; ${row.bookingsInPublishedMonths} in already sent/paid months left unchanged` : ""}.` : undefined }); },
   });
 
   function startEdit(s: any) {
@@ -529,7 +529,7 @@ function SettingsTab() {
                     {[['tourismEnabled','Tourism fee enabled'],['vatEnabled','VAT enabled']].map(([key,label])=><label key={key} className="flex items-center gap-2 text-xs"><Switch checked={draft[key]} onCheckedChange={v=>setDraft((p:any)=>({...p,[key]:v}))}/>{label}</label>)}
                     <div className="flex items-center gap-2">
                       <Switch id={`cleaning-${s.propertyId}`} checked={draft.includeCleaning} onCheckedChange={v => setDraft((p: any) => ({ ...p, includeCleaning: v }))} />
-                      <Label htmlFor={`cleaning-${s.propertyId}`} className="text-xs">Include cleaning costs</Label>
+                      <Label htmlFor={`cleaning-${s.propertyId}`} className="text-xs">Deduct the booking cleaning fee from the owner's share</Label>
                     </div>
                     <div className="flex items-center gap-2">
                       <Switch id={`ratecard-${s.propertyId}`} checked={!!draft.cleaningRateCard} onCheckedChange={v => setDraft((p: any) => ({ ...p, cleaningRateCard: v }))} />

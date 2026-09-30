@@ -112,7 +112,10 @@ async function prepareFinance(body: any, existing?: any) {
   const finance = bookingFinance({total: input.grossAmount, managementPercent: rates.managementPercent,
     cleaningFee: input.cleaningFee ?? 0, nights, rooms, dubai: rates.tourismEnabled,
     vatRate: rates.vatRate, tourismRate: rates.tourismRate, tourismEnabled: rates.tourismEnabled,
-    channelPercent: rates.channelPercent});
+    channelPercent: rates.channelPercent,
+    // Always the property's current "Include cleaning costs" setting, so the booking's owner amount and
+    // the owner statement agree (the statement applies the same setting).
+    deductCleaning: settings.includeCleaning !== false});
   const result = {...input, ...finance, nights};
   for (const field of ["channelPercent", "channelAmount", "tourismRate", "revenue", "grossAmount", "managementPercent", "managementAmount", "tourismFee", "vatAmount", "vatRate", "ownerAmount", "cleaningFee", "balanceDue"]) {
     if (result[field] != null) result[field] = String(result[field]);
@@ -150,7 +153,7 @@ router.get("/reservations/rates", asyncHandler(async (req, res) => {
   const loaded = await loadPropertyFeeSettings(db, propertyId);
   if (!loaded) return res.status(404).json({ error: "Property not found" });
   const platform = String(req.query.platform || "direct");
-  return res.json({ propertyId, platform, currency: loaded.settings.currency || loaded.property.currency || "AED", ...ratesFromSettings(loaded.settings, platform) });
+  return res.json({ propertyId, platform, currency: loaded.settings.currency || loaded.property.currency || "AED", ...ratesFromSettings(loaded.settings, platform), includeCleaning: loaded.settings.includeCleaning !== false });
 }));
 
 router.get("/reservations/:id", asyncHandler(async (req, res) => {

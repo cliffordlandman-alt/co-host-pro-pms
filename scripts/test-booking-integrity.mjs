@@ -148,6 +148,23 @@ try {
   assert.deepEqual(await api('/accounting/statements/duplicates'), []);
   passed.push('one owner statement per property/month');
 
+  // "Include cleaning costs" off: booking owner amount and owner statement both leave the cleaning fee with the owner.
+  const ownerSum = async () => (await api('/reservations')).filter(r => r.propertyId === fp.id && r.checkOut.startsWith('2031-03') && r.status !== 'cancelled').reduce((n, r) => n + Math.round(Number(r.ownerAmount) * 100), 0) / 100;
+  const stmtFor = async () => (await api('/accounting/statements?month=2031-03')).find(s => s.propertyId === fp.id);
+  const beforeOwner = Number((await api(`/reservations/${snap.id}`)).ownerAmount);
+  const off = await api(`/accounting/settings/${fp.id}`, 'PUT', { includeCleaning: false });
+  assert.ok(off.bookingsRecalculated >= 1);
+  assert.equal(Number((await api(`/reservations/${snap.id}`)).ownerAmount), Math.round((beforeOwner + 140) * 100) / 100, 'owner keeps the cleaning fee when not included');
+  let st = await stmtFor();
+  assert.equal(st.cleaningCosts, 0); assert.equal(st.ownerPayout, await ownerSum(), 'statement payout = booking owner amounts (cleaning off)');
+  const offNew = await api('/reservations', 'POST', { propertyId: fp.id, guestName: 'Off', platform: 'direct', status: 'confirmed', financeMode: 'inclusive-v1', grossAmount: 1000, cleaningFee: 100, checkIn: '2031-03-10', checkOut: '2031-03-12' }, 201);
+  assert.equal(Number(offNew.ownerAmount), Number(offNew.revenue) - Number(offNew.managementAmount) - Number(offNew.channelAmount), 'new booking follows the setting');
+  await api(`/accounting/settings/${fp.id}`, 'PUT', { includeCleaning: true });
+  assert.equal(Number((await api(`/reservations/${snap.id}`)).ownerAmount), beforeOwner);
+  st = await stmtFor();
+  assert.equal(st.cleaningCosts, 240); assert.equal(st.ownerPayout, await ownerSum(), 'statement payout = booking owner amounts (cleaning on)');
+  passed.push('include-cleaning setting: booking owner amount and statement agree');
+
   console.log('PASS: ' + passed.join('; '));
 } catch (e) { console.error(e); console.error(logs.slice(-4000)); process.exitCode = 1; }
 finally { child.kill('SIGTERM'); }

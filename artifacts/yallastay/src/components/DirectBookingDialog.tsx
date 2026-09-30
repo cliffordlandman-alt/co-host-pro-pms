@@ -112,7 +112,7 @@ export function DirectBookingDialog({
     breakdown = bookingFinance({ total: watched.revenue, managementPercent: rates.managementPercent,
       cleaningFee: watched.cleaningFee || 0, nights: differenceInCalendarDays(parseISO(watched.checkOut), parseISO(watched.checkIn)),
       rooms: knownRooms ?? Number(watched.tourismRooms), dubai: rates.tourismEnabled,
-      vatRate: rates.vatRate, tourismRate: rates.tourismRate, tourismEnabled: rates.tourismEnabled, channelPercent: rates.channelPercent });
+      vatRate: rates.vatRate, tourismRate: rates.tourismRate, tourismEnabled: rates.tourismEnabled, channelPercent: rates.channelPercent, deductCleaning: rates.includeCleaning !== false });
   } catch (error) { calculationError = (error as Error).message; }
   const money = (n: number) => `${property?.currency || "AED"} ${n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
 

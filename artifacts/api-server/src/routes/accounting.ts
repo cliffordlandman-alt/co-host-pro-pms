@@ -98,6 +98,29 @@ router.get("/accounting/settings", asyncHandler(async (_req, res) => {
   })));
 }));
 
+/**
+ * "Include cleaning costs" decides whether the booking's cleaning fee is deducted from the owner's share.
+ * The owner statement applies the property's current setting, so when it changes, every verified booking
+ * of the property is brought in line: owner amount = net - management - channel - (cleaning if included).
+ * Rates are not touched. Bookings in months whose statement is already sent or paid are left as they are
+ * (those statements are locked) and counted in the response.
+ */
+async function applyIncludeCleaning(tx: any, propertyId: number, include: boolean) {
+  const locked = new Set((await tx.select({ month: ownerStatementsTable.month }).from(ownerStatementsTable)
+    .where(and(eq(ownerStatementsTable.propertyId, propertyId), ne(ownerStatementsTable.status, "draft")))).map((r: any) => r.month));
+  const bookings = await tx.select().from(reservationsTable).where(and(eq(reservationsTable.propertyId, propertyId), eq(reservationsTable.financeMode, "inclusive-v1")));
+  const c = (v: unknown) => Math.round(Number(v || 0) * 100);
+  let updated = 0, skipped = 0;
+  for (const b of bookings) {
+    if (locked.has(String(b.checkOut).slice(0, 7))) { skipped++; continue; }
+    const owner = c(b.revenue) - c(b.managementAmount) - c(b.channelAmount) - (include ? c(b.cleaningFee) : 0);
+    if (owner === c(b.ownerAmount)) continue;
+    await tx.update(reservationsTable).set({ ownerAmount: (owner / 100).toFixed(2) }).where(eq(reservationsTable.id, b.id));
+    updated++;
+  }
+  return { updated, locked: skipped };
+}
+
 router.put("/accounting/settings/:propertyId", asyncHandler(async (req, res) => {
   const propertyId = parseId(req.params.propertyId);
   if (propertyId === null) return res.status(400).json({ error: "Invalid propertyId" });
@@ -108,11 +131,15 @@ router.put("/accounting/settings/:propertyId", asyncHandler(async (req, res) => 
   const { ownerSplitPercent: _unused, ...data } = parsed.data; // owner share is derived from the management %
   const existing = await db.select().from(propertySettingsTable).where(eq(propertySettingsTable.propertyId, propertyId));
   if (existing.length > 0) {
-    const [row] = await db.update(propertySettingsTable)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(propertySettingsTable.propertyId, propertyId))
-      .returning();
-    return res.json(row);
+    const result = await db.transaction(async tx => {
+      const [row] = await tx.update(propertySettingsTable)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(propertySettingsTable.propertyId, propertyId))
+        .returning();
+      const changed = data.includeCleaning !== undefined && data.includeCleaning !== (existing[0].includeCleaning !== false);
+      return { row, cleaning: changed ? await applyIncludeCleaning(tx, propertyId, data.includeCleaning !== false) : null };
+    });
+    return res.json({ ...result.row, ...(result.cleaning ? { bookingsRecalculated: result.cleaning.updated, bookingsInPublishedMonths: result.cleaning.locked } : {}) });
   }
   const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, propertyId));
   if (!property) return res.status(404).json({ error: "Property not found" });
