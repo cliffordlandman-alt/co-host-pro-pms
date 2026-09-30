@@ -2,7 +2,8 @@ import { reservationFinancials } from "../../../../lib/reservation-financials.mj
 import { airbnbEarningsTable } from "@workspace/db";
 import { bedroomCount, bookingFinance } from "../../../../lib/booking-finance.mjs";
 import { Router } from "express";
-import { db, reservationsTable, propertiesTable, insertReservationSchema, cleaningTasksTable, propertySettingsTable, ownerStatementsTable } from "@workspace/db";
+import { db, reservationsTable, propertiesTable, insertReservationSchema, cleaningTasksTable, propertySettingsTable, ownerStatementsTable, paymentsTable } from "@workspace/db";
+const dubaiToday = () => new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Dubai",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 import { eq, and, ne, lt, gt, inArray } from "drizzle-orm";
 import { insertAuditLog } from "../lib/audit";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -157,6 +158,14 @@ async function saveBooking(input: any, id?: number) {
   const locked = await tx.select({id:ownerStatementsTable.id}).from(ownerStatementsTable).where(and(inArray(ownerStatementsTable.propertyId,[input.propertyId,...(existing?[existing.propertyId]:[])]),inArray(ownerStatementsTable.month,[input.checkOut.slice(0,7),...(existing?[existing.checkOut.slice(0,7)]:[])]),ne(ownerStatementsTable.status,"draft")));
   if (locked.length && (!existing || ["propertyId","financeMode","grossAmount","revenue","managementPercent","managementAmount","cleaningFee","channelPercent","channelAmount","vatRate","vatAmount","tourismRate","tourismFee","ownerAmount","checkIn","checkOut","status"].some(k=>String((existing as any)[k])!==String(input[k])))) throw new Error("This booking belongs to a published statement. Finance changes require an adjustment.");
   const [row] = id ? await tx.update(reservationsTable).set(input).where(eq(reservationsTable.id,id)).returning() : await tx.insert(reservationsTable).values(input).returning();
+  // Keep the payments ledger and the booking balance in step: a balance change made on the booking itself
+  // (e.g. choosing "Paid") is posted as a payment or reversal, so the two can never disagree.
+  if (row.financeMode==="inclusive-v1" && row.balanceDue!=null && (!existing || (existing.financeMode==="inclusive-v1" && existing.balanceDue!=null))) {
+   const cents=(v:unknown)=>Math.round(Number(v||0)*100);
+   const paidNow=cents(row.grossAmount)-cents(row.balanceDue), paidBefore=existing ? cents(existing.grossAmount)-cents(existing.balanceDue) : 0;
+   const delta=paidNow-paidBefore, today=dubaiToday();
+   if (delta!==0) await tx.insert(paymentsTable).values({type:delta>0?"guest_payment":"guest_refund",reservationId:row.id,propertyId:row.propertyId,amount:(Math.abs(delta)/100).toFixed(2),status:"paid",paidAt:today,dueDate:today,description:delta>0?`Recorded from booking #${row.id} payment status`:`Reversal recorded from booking #${row.id} payment status`});
+  }
   const tasks = await tx.select().from(cleaningTasksTable).where(eq(cleaningTasksTable.reservationId,row.id));
   if (["cancelled","blocked"].includes(row.status)) {
    for (const task of tasks) if (!["approved","completed"].includes(task.status)) await tx.update(cleaningTasksTable).set({status:"cancelled"}).where(eq(cleaningTasksTable.id,task.id));
