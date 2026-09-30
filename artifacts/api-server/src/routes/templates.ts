@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { dubaiToday, addDays } from '../lib/dubai-date';
 import { db,templatesTable,insertTemplateSchema,propertiesTable,reservationsTable,cleaningTasksTable,maintenanceTicketsTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import { asyncHandler } from '../lib/asyncHandler';
@@ -11,7 +12,7 @@ router.get('/templates',asyncHandler(async(_req,res)=>{
 }));
 router.get('/templates/queue',asyncHandler(async(_req,res)=>{
  const [templates,bookings,properties,cleaning,maintenance]=await Promise.all([db.select().from(templatesTable),db.select().from(reservationsTable),db.select().from(propertiesTable),db.select().from(cleaningTasksTable),db.select().from(maintenanceTicketsTable)]);
- const cutoff=new Date(Date.now()-7*86400000).toISOString().slice(0,10);const jobs=[];
+ const cutoff=addDays(dubaiToday(),-7);const jobs=[];
  for(const b of bookings.filter(b=>b.checkOut>=cutoff))for(const t of templates){if(t.propertyId&&t.propertyId!==b.propertyId)continue;if(!t.propertyId&&templates.some(o=>o.propertyId===b.propertyId&&o.name===t.name))continue;
  const job=scheduledMessage(t,b,properties.find(p=>p.id===b.propertyId),new Date(),{idComplete:guestIdComplete(b),cleaningIncomplete:cleaning.some(c=>c.reservationId===b.id&&!['completed','approved','cancelled'].includes(c.status)),maintenanceOpen:maintenance.some(m=>m.propertyId===b.propertyId&&!['completed','resolved','cancelled'].includes(m.status))});if(job)jobs.push(job);}
  res.json(jobs.sort((a,b)=>(a.scheduledAt||'9999').localeCompare(b.scheduledAt||'9999')));

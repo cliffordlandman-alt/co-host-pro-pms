@@ -1,9 +1,10 @@
 import { guestIdComplete } from "../../../../lib/guest-id.mjs";
+import { dubaiToday } from '../lib/dubai-date';
 import { Router } from 'express';
 import { db, reservationsTable, propertiesTable, cleaningTasksTable, maintenanceTicketsTable, ownerStatementsTable } from '@workspace/db';
 const router=Router();
 router.get('/task-centre',async (_req,res)=>{
- const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ const today=dubaiToday();
  const [bookings,properties,cleaning,maintenance,statements]=await Promise.all([db.select().from(reservationsTable),db.select().from(propertiesTable),db.select().from(cleaningTasksTable),db.select().from(maintenanceTicketsTable),db.select().from(ownerStatementsTable)]);
  const tasks:any[]=[];const name=(id:number)=>properties.find(p=>p.id===id)?.name || 'Property';
  for(const b of bookings.filter(b=>!['cancelled','blocked'].includes(b.status))) {

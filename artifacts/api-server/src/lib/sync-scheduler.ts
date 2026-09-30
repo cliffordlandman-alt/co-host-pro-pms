@@ -1,4 +1,5 @@
 import { db, propertiesTable, reservationsTable, cleaningTasksTable, appSettingsTable, notificationsTable, ownerStatementsTable } from "@workspace/db";
+import { dubaiToday } from "./dubai-date";
 import { eq, and, ne } from "drizzle-orm";
 import { parseIcalEvents, planIcalSync, type IcalFlag } from "../../../../lib/ical-sync.mjs";
 
@@ -8,7 +9,6 @@ const FEEDS: Record<Platform, { column: "airbnbIcalUrl" | "bookingComIcalUrl" | 
   booking_com: { column: "bookingComIcalUrl", hosts: ["booking.com"], label: "Booking.com" },
   vrbo: { column: "vrboIcalUrl", hosts: ["vrbo.com", "homeaway.com"], label: "Vrbo" },
 };
-const dubaiToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
 async function raiseOnce(tx: any, flag: IcalFlag, reservationId: number | undefined, propertyName: string) {
   const entityId = reservationId ? String(reservationId) : null;

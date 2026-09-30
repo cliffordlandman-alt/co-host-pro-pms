@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { dubaiToday } from "../lib/dubai-date";
 import { db, paymentsTable, propertiesTable, ownersTable, insertPaymentSchema, reservationsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
@@ -57,7 +58,7 @@ router.post("/payments", async (req,res)=>{
     parsed.data.propertyId=booking.propertyId;
     await tx.update(reservationsTable).set({balanceDue:(balance/100).toFixed(2),paymentStatus:balance===0?"paid":"partial"}).where(eq(reservationsTable.id,booking.id));
    } else if(body.type==="guest_payment") throw new Error("Choose a reservation for the payment");
-   const [row]=await tx.insert(paymentsTable).values({...parsed.data,paidAt:body.status==="paid"?new Date().toISOString().slice(0,10):null}).returning();return row;
+   const [row]=await tx.insert(paymentsTable).values({...parsed.data,paidAt:body.status==="paid"?dubaiToday():null}).returning();return row;
   });
   res.status(201).json({...row,amount:Number(row.amount)});
  } catch(e) {res.status(400).json({error:(e as Error).message});}

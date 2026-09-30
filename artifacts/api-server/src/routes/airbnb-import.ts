@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { dubaiToday } from '../lib/dubai-date';
 import { db, propertiesTable, reservationsTable, airbnbEarningsTable, airbnbPayoutsTable, cleaningTasksTable } from '@workspace/db';
 import { eq, and, ne, or, isNull, like } from 'drizzle-orm';
 import { requireAdmin } from '../lib/auth-middleware';
@@ -28,7 +29,7 @@ router.post('/airbnb-data/import',asyncHandler(async(req,res)=>{
    const values={id:r.id,confirmationCode:r.code,propertyId:r.propertyId,guestName:r.guest,checkIn:r.checkIn,checkOut:r.checkOut,kind:r.kind,currency:r.currency,amount:r.amount,status:r.status,payoutId:r.payoutId,sourceDate:r.sourceDate};
    const inserted=await tx.insert(airbnbEarningsTable).values(values).onConflictDoNothing().returning({id:airbnbEarningsTable.id});
    added+=inserted.length;
-   const today=new Date().toISOString().slice(0,10);
+   const today=dubaiToday();
    const booking={externalId:'airbnb:'+r.code,guestName:r.guest,propertyId:r.propertyId,platform:'airbnb',checkIn:r.checkIn,checkOut:r.checkOut,nights:Math.round((Date.parse(r.checkOut)-Date.parse(r.checkIn))/86400000),status:r.checkOut<=today?'checked_out':r.checkIn<=today?'checked_in':'confirmed',paymentStatus:'unknown',notes:`Airbnb ${r.code}. Earnings are recorded separately under Airbnb income; gross booking revenue is not supplied by this payout record.`};
    // The same stay may already exist from the Airbnb calendar feed or manual entry: link it instead of creating a duplicate booking and cleaning task.
    const [known]=await tx.select({id:reservationsTable.id}).from(reservationsTable).where(eq(reservationsTable.externalId,booking.externalId));

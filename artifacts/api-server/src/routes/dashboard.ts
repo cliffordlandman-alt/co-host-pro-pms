@@ -1,4 +1,5 @@
 import { financialTotals } from "../../../../lib/reservation-financials.mjs";
+import { dubaiToday, addDays } from "../lib/dubai-date";
 import { Router } from "express";
 import {
   db, propertiesTable, reservationsTable, cleaningTasksTable,
@@ -9,7 +10,7 @@ import { eq, and, gte, lte, ne, gt, lt, sql } from "drizzle-orm";
 const router = Router();
 
 router.get("/dashboard/summary", async (_req, res) => {
-  const today = new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Dubai",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  const today = dubaiToday();
   const monthStart = today.slice(0, 7) + "-01";
 
   const [financialBookings,financialProperties]=await Promise.all([db.select().from(reservationsTable),db.select().from(propertiesTable)]);
@@ -60,8 +61,7 @@ router.get("/dashboard/summary", async (_req, res) => {
     .where(and(eq(reservationsTable.checkOut, today), ne(reservationsTable.status, "cancelled"), ne(reservationsTable.status, "blocked")));
 
   // Next 7 days arrivals
-  const nextWeek = new Date(); nextWeek.setDate(nextWeek.getDate() + 7);
-  const nextWeekStr = nextWeek.toISOString().split("T")[0];
+  const nextWeekStr = addDays(today, 7);
   const upcomingArrivals = await db
     .select({
       id: reservationsTable.id,

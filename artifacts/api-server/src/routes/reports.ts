@@ -1,4 +1,5 @@
 import { financialTotals } from "../../../../lib/reservation-financials.mjs";
+import { dubaiToday, addDays, addMonths } from "../lib/dubai-date";
 import { earningsDate } from "../../../../lib/company-statement.mjs";
 import { Router } from "express";
 import { db, reservationsTable, propertiesTable, maintenanceTicketsTable, airbnbEarningsTable, accountingTransactionsTable } from "@workspace/db";
@@ -10,8 +11,8 @@ const router = Router();
 router.get('/reports/revenue',async(req,res)=>{
  const currency=String(req.query.currency || 'AED');
  const [bookings,earnings,properties]=await Promise.all([db.select().from(reservationsTable),db.select().from(airbnbEarningsTable),db.select().from(propertiesTable)]);
- const now=new Date();const months=[];
- for(let i=11;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);const month=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+ const thisMonth=dubaiToday().slice(0,7);const months=[];
+ for(let i=11;i>=0;i--){const month=addMonths(thisMonth,-i);
  const bs=bookings.filter(b=>!['cancelled','blocked'].includes(b.status)&&b.checkIn.startsWith(month));
  const verified=bookings.filter(b=>!['cancelled','blocked'].includes(b.status)&&b.financeMode==='inclusive-v1'&&b.checkOut.startsWith(month)&&(properties.find(p=>p.id===b.propertyId)?.currency||'AED')===currency);
  const es=earnings.filter(e=>e.status==='paid'&&earningsDate(e)?.startsWith(month)&&e.currency===currency);
@@ -22,10 +23,8 @@ router.get('/reports/revenue',async(req,res)=>{
 // Occupancy rate per property (last 30 days)
 router.get("/reports/occupancy", async (req, res) => {
   const props = await db.select().from(propertiesTable).where(eq(propertiesTable.status, "active"));
-  const today = new Date(new Date().toISOString().slice(0,10));
-  const thirtyDaysAgo = new Date(today); thirtyDaysAgo.setDate(today.getDate() - 30);
-  const startStr = thirtyDaysAgo.toISOString().split("T")[0];
-  const endStr = today.toISOString().split("T")[0];
+  const endStr = dubaiToday();
+  const startStr = addDays(endStr, -30);
   const result = await Promise.all(props.map(async (p) => {
     const rows = await db.select({ checkIn: reservationsTable.checkIn, checkOut: reservationsTable.checkOut })
       .from(reservationsTable)
@@ -37,9 +36,7 @@ router.get("/reports/occupancy", async (req, res) => {
         gte(reservationsTable.checkOut, startStr),
       ));
     let occupiedDays = 0;
-    const start = new Date(startStr);
-    for (let d = new Date(start); d < today; d.setDate(d.getDate() + 1)) {
-      const ds = d.toISOString().split("T")[0];
+    for (let ds = startStr; ds < endStr; ds = addDays(ds, 1)) {
       if (rows.some(r => r.checkIn <= ds && r.checkOut > ds)) occupiedDays++;
     }
     return { propertyId: p.id, propertyName: p.name, occupancyRate: Math.round((occupiedDays / 30) * 100), occupiedDays };

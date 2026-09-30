@@ -1,9 +1,9 @@
 import { reservationFinancials } from "../../../../lib/reservation-financials.mjs";
+import { dubaiToday } from "../lib/dubai-date";
 import { airbnbEarningsTable } from "@workspace/db";
 import { bedroomCount, bookingFinance } from "../../../../lib/booking-finance.mjs";
 import { Router } from "express";
 import { db, reservationsTable, propertiesTable, insertReservationSchema, cleaningTasksTable, propertySettingsTable, ownerStatementsTable, paymentsTable } from "@workspace/db";
-const dubaiToday = () => new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Dubai",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 import { eq, and, ne, lt, gt, inArray } from "drizzle-orm";
 import { insertAuditLog } from "../lib/audit";
 import { asyncHandler } from "../lib/asyncHandler";

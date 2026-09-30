@@ -1,4 +1,5 @@
 import { refreshOwnerStatements } from "../lib/owner-statements";
+import { dubaiToday } from "../lib/dubai-date";
 import { companyStatement } from "../../../../lib/company-statement.mjs";
 import { airbnbEarningsTable } from "@workspace/db";
 import { Router } from "express";
@@ -178,7 +179,7 @@ router.delete("/accounting/transactions/:id", asyncHandler(async (req, res) => {
 }));
 
 router.get('/accounting/company-statement',asyncHandler(async(req,res)=>{
- const end=String(req.query.end || new Date().toISOString().slice(0,10));const start=String(req.query.start || '0001-01-01');
+ const end=String(req.query.end || dubaiToday());const start=String(req.query.start || '0001-01-01');
  if(![start,end].every(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d))&&new Date(d).toISOString().slice(0,10)===d)||start>end)return res.status(400).json({error:'Invalid statement date range'});
  const [earnings,bookings,transactions,properties,maintenance]=await Promise.all([db.select().from(airbnbEarningsTable),db.select().from(reservationsTable),db.select().from(accountingTransactionsTable),db.select().from(propertiesTable),db.select().from(maintenanceTicketsTable)]);
  res.json(companyStatement({earnings,bookings,transactions,properties,maintenance},start,end));
@@ -263,7 +264,7 @@ router.patch("/accounting/statements/:id", asyncHandler(async (req, res) => {
   const status = req.body.status ?? existing.status;
   if(!["draft","sent","paid"].includes(status) || (existing.status==="paid" && status!=="paid") || (existing.status==="sent" && status==="draft")) return res.status(400).json({error:"Invalid statement transition"});
   if(status==="paid" && Number(existing.ownerPayout)<0) return res.status(400).json({error:"A negative balance cannot be marked as a payout"});
-  const today=new Date().toISOString().slice(0,10);
+  const today=dubaiToday();
   const row = await db.transaction(async tx=>{
     const [locked]=await tx.select().from(ownerStatementsTable).where(eq(ownerStatementsTable.id,id)).for("update");
     if(locked.status==="paid") return locked;
