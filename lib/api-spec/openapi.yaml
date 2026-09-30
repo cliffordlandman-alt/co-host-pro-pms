@@ -1,0 +1,1486 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: YallaStay PMS API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: Storage
+    description: Object storage upload and serving endpoints.
+  - name: health
+    description: Health operations
+  - name: properties
+    description: Property management
+  - name: reservations
+    description: Reservation management
+  - name: cleaning
+    description: Cleaning task management
+  - name: maintenance
+    description: Maintenance ticket management
+  - name: owners
+    description: Owner management
+  - name: staff
+    description: Staff management
+  - name: payments
+    description: Payment and expense tracking
+  - name: dashboard
+    description: Dashboard summaries
+paths:
+  /storage/uploads/request-url:
+    post:
+      tags: [Storage]
+      operationId: requestUploadUrl
+      summary: Request a presigned URL for file upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadUrlRequest'
+      responses:
+        '200':
+          description: Presigned upload URL generated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadUrlResponse'
+        '400':
+          description: Missing or invalid required fields.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Failed to generate upload URL.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /storage/public-objects/{filePath}:
+    get:
+      tags: [Storage]
+      operationId: getPublicObject
+      summary: Serve a public asset from PUBLIC_OBJECT_SEARCH_PATHS
+      parameters:
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Object content streamed with correct Content-Type.
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: File not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Failed to serve public object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /storage/objects/{objectPath}:
+    get:
+      tags: [Storage]
+      operationId: getStorageObject
+      summary: Serve an object entity from PRIVATE_OBJECT_DIR
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Object content streamed with correct Content-Type.
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Object not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Failed to serve object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary stats
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /properties:
+    get:
+      operationId: getProperties
+      tags: [properties]
+      summary: List all properties
+      responses:
+        "200":
+          description: List of properties
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Property"
+    post:
+      operationId: createProperty
+      tags: [properties]
+      summary: Create a property
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Property"
+
+  /properties/{id}:
+    get:
+      operationId: getProperty
+      tags: [properties]
+      summary: Get a property
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Property
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Property"
+    patch:
+      operationId: updateProperty
+      tags: [properties]
+      summary: Update a property
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Property"
+    delete:
+      operationId: deleteProperty
+      tags: [properties]
+      summary: Delete a property
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /reservations:
+    get:
+      operationId: getReservations
+      tags: [reservations]
+      summary: List all reservations
+      parameters:
+        - name: propertyId
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of reservations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Reservation"
+    post:
+      operationId: createReservation
+      tags: [reservations]
+      summary: Create a reservation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReservationInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reservation"
+
+  /reservations/{id}:
+    get:
+      operationId: getReservation
+      tags: [reservations]
+      summary: Get a reservation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Reservation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reservation"
+    patch:
+      operationId: updateReservation
+      tags: [reservations]
+      summary: Update a reservation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReservationUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reservation"
+    delete:
+      operationId: deleteReservation
+      tags: [reservations]
+      summary: Delete a reservation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /cleaning:
+    get:
+      operationId: getCleaningTasks
+      tags: [cleaning]
+      summary: List cleaning tasks
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: propertyId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of cleaning tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CleaningTask"
+    post:
+      operationId: createCleaningTask
+      tags: [cleaning]
+      summary: Create a cleaning task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CleaningTaskInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleaningTask"
+
+  /cleaning/{id}:
+    get:
+      operationId: getCleaningTask
+      tags: [cleaning]
+      summary: Get a cleaning task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Cleaning task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleaningTask"
+    patch:
+      operationId: updateCleaningTask
+      tags: [cleaning]
+      summary: Update a cleaning task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CleaningTaskUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleaningTask"
+
+  /maintenance:
+    get:
+      operationId: getMaintenanceTickets
+      tags: [maintenance]
+      summary: List maintenance tickets
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: priority
+          in: query
+          schema:
+            type: string
+        - name: propertyId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of maintenance tickets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MaintenanceTicket"
+    post:
+      operationId: createMaintenanceTicket
+      tags: [maintenance]
+      summary: Create a maintenance ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaintenanceTicketInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceTicket"
+
+  /maintenance/{id}:
+    get:
+      operationId: getMaintenanceTicket
+      tags: [maintenance]
+      summary: Get a maintenance ticket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Maintenance ticket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceTicket"
+    patch:
+      operationId: updateMaintenanceTicket
+      tags: [maintenance]
+      summary: Update a maintenance ticket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaintenanceTicketUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceTicket"
+    delete:
+      operationId: deleteMaintenanceTicket
+      tags: [maintenance]
+      summary: Delete a maintenance ticket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /owners:
+    get:
+      operationId: getOwners
+      tags: [owners]
+      summary: List all owners
+      responses:
+        "200":
+          description: List of owners
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Owner"
+    post:
+      operationId: createOwner
+      tags: [owners]
+      summary: Create an owner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OwnerInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Owner"
+
+  /owners/{id}:
+    get:
+      operationId: getOwner
+      tags: [owners]
+      summary: Get an owner
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Owner"
+    patch:
+      operationId: updateOwner
+      tags: [owners]
+      summary: Update an owner
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OwnerUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Owner"
+    delete:
+      operationId: deleteOwner
+      tags: [owners]
+      summary: Delete an owner
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /owners/{ownerId}/statement/{year}/{month}:
+    get:
+      operationId: fetchOwnerStatement
+      tags: [owners]
+      summary: Get owner monthly statement
+      parameters:
+        - name: ownerId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: year
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: month
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Owner statement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnerStatement"
+
+  /staff:
+    get:
+      operationId: getStaff
+      tags: [staff]
+      summary: List all staff
+      responses:
+        "200":
+          description: List of staff
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StaffMember"
+    post:
+      operationId: createStaff
+      tags: [staff]
+      summary: Create a staff member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffMember"
+
+  /staff/{id}:
+    get:
+      operationId: getStaffMember
+      tags: [staff]
+      summary: Get a staff member
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Staff member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffMember"
+    patch:
+      operationId: updateStaff
+      tags: [staff]
+      summary: Update a staff member
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffMember"
+    delete:
+      operationId: deleteStaff
+      tags: [staff]
+      summary: Delete a staff member
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /payments:
+    get:
+      operationId: getPayments
+      tags: [payments]
+      summary: List all payments/expenses
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: propertyId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Payment"
+    post:
+      operationId: createPayment
+      tags: [payments]
+      summary: Create a payment record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+
+  /payments/{id}:
+    patch:
+      operationId: updatePayment
+      tags: [payments]
+      summary: Update a payment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+    delete:
+      operationId: deletePayment
+      tags: [payments]
+      summary: Delete a payment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    DashboardSummary:
+      type: object
+      properties:
+        todayCheckIns:
+          type: integer
+        todayCheckOuts:
+          type: integer
+        occupiedUnits:
+          type: integer
+        availableUnits:
+          type: integer
+        cleaningPending:
+          type: integer
+        maintenanceOpen:
+          type: integer
+        paymentsPending:
+          type: integer
+        urgentIssues:
+          type: integer
+        totalRevenue:
+          type: number
+        totalProperties:
+          type: integer
+      required:
+        - todayCheckIns
+        - todayCheckOuts
+        - occupiedUnits
+        - availableUnits
+        - cleaningPending
+        - maintenanceOpen
+        - paymentsPending
+        - urgentIssues
+        - totalRevenue
+        - totalProperties
+
+    Property:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        unitNumber:
+          type: string
+        building:
+          type: ["string", "null"]
+        area:
+          type: ["string", "null"]
+        ownerId:
+          type: ["integer", "null"]
+        ownerName:
+          type: ["string", "null"]
+        bedroomType:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive]
+        airbnbIcalUrl:
+          type: ["string", "null"]
+        bookingComIcalUrl:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - unitNumber
+        - status
+        - createdAt
+
+    PropertyInput:
+      type: object
+      properties:
+        name:
+          type: string
+        unitNumber:
+          type: string
+        building:
+          type: ["string", "null"]
+        area:
+          type: ["string", "null"]
+        ownerId:
+          type: ["integer", "null"]
+        bedroomType:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive]
+        airbnbIcalUrl:
+          type: ["string", "null"]
+        bookingComIcalUrl:
+          type: ["string", "null"]
+      required:
+        - name
+        - unitNumber
+
+    PropertyUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        unitNumber:
+          type: string
+        building:
+          type: ["string", "null"]
+        area:
+          type: ["string", "null"]
+        ownerId:
+          type: ["integer", "null"]
+        bedroomType:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive]
+        airbnbIcalUrl:
+          type: ["string", "null"]
+        bookingComIcalUrl:
+          type: ["string", "null"]
+
+    Reservation:
+      type: object
+      properties:
+        id:
+          type: integer
+        guestName:
+          type: string
+        platform:
+          type: string
+          enum: [airbnb, booking_com, direct]
+        propertyId:
+          type: integer
+        propertyName:
+          type: ["string", "null"]
+        checkIn:
+          type: string
+        checkOut:
+          type: string
+        nights:
+          type: integer
+        revenue:
+          type: number
+        cleaningFee:
+          type: ["number", "null"]
+        balanceDue:
+          type: ["number", "null"]
+        paymentStatus:
+          type: string
+          enum: [pending, partial, paid]
+        notes:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [confirmed, cancelled, checked_in, checked_out]
+        createdAt:
+          type: string
+      required:
+        - id
+        - guestName
+        - platform
+        - propertyId
+        - checkIn
+        - checkOut
+        - nights
+        - revenue
+        - paymentStatus
+        - status
+        - createdAt
+
+    ReservationInput:
+      type: object
+      properties:
+        guestName:
+          type: string
+        platform:
+          type: string
+          enum: [airbnb, booking_com, direct]
+        propertyId:
+          type: integer
+        checkIn:
+          type: string
+        checkOut:
+          type: string
+        nights:
+          type: integer
+        revenue:
+          type: number
+        cleaningFee:
+          type: ["number", "null"]
+        balanceDue:
+          type: ["number", "null"]
+        paymentStatus:
+          type: string
+          enum: [pending, partial, paid]
+        notes:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [confirmed, cancelled, checked_in, checked_out]
+      required:
+        - guestName
+        - platform
+        - propertyId
+        - checkIn
+        - checkOut
+        - nights
+        - revenue
+        - paymentStatus
+        - status
+
+    ReservationUpdate:
+      type: object
+      properties:
+        guestName:
+          type: string
+        platform:
+          type: string
+          enum: [airbnb, booking_com, direct]
+        propertyId:
+          type: integer
+        checkIn:
+          type: string
+        checkOut:
+          type: string
+        nights:
+          type: integer
+        revenue:
+          type: number
+        cleaningFee:
+          type: ["number", "null"]
+        balanceDue:
+          type: ["number", "null"]
+        paymentStatus:
+          type: string
+          enum: [pending, partial, paid]
+        notes:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [confirmed, cancelled, checked_in, checked_out]
+
+    CleaningTask:
+      type: object
+      properties:
+        id:
+          type: integer
+        propertyId:
+          type: integer
+        propertyName:
+          type: ["string", "null"]
+        reservationId:
+          type: ["integer", "null"]
+        assignedToId:
+          type: ["integer", "null"]
+        assignedToName:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [dirty, assigned, in_progress, ready_for_inspection, approved]
+        scheduledDate:
+          type: string
+        completedAt:
+          type: ["string", "null"]
+        checklist:
+          type: ["object", "null"]
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - propertyId
+        - status
+        - scheduledDate
+        - createdAt
+
+    CleaningTaskInput:
+      type: object
+      properties:
+        propertyId:
+          type: integer
+        reservationId:
+          type: ["integer", "null"]
+        assignedToId:
+          type: ["integer", "null"]
+        status:
+          type: string
+          enum: [dirty, assigned, in_progress, ready_for_inspection, approved]
+        scheduledDate:
+          type: string
+        notes:
+          type: ["string", "null"]
+        checklist:
+          type: ["object", "null"]
+      required:
+        - propertyId
+        - scheduledDate
+
+    CleaningTaskUpdate:
+      type: object
+      properties:
+        assignedToId:
+          type: ["integer", "null"]
+        status:
+          type: string
+          enum: [dirty, assigned, in_progress, ready_for_inspection, approved]
+        scheduledDate:
+          type: string
+        notes:
+          type: ["string", "null"]
+        checklist:
+          type: ["object", "null"]
+        completedAt:
+          type: ["string", "null"]
+
+    MaintenanceTicket:
+      type: object
+      properties:
+        id:
+          type: integer
+        propertyId:
+          type: integer
+        propertyName:
+          type: ["string", "null"]
+        issue:
+          type: string
+        priority:
+          type: string
+          enum: [low, medium, high, emergency]
+        assignedToId:
+          type: ["integer", "null"]
+        assignedToName:
+          type: ["string", "null"]
+        cost:
+          type: ["number", "null"]
+        chargeType:
+          type: ["string", "null"]
+          enum: [owner, guest, company, null]
+        status:
+          type: string
+          enum: [reported, assigned, in_progress, waiting_parts, completed]
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        completedAt:
+          type: ["string", "null"]
+      required:
+        - id
+        - propertyId
+        - issue
+        - priority
+        - status
+        - createdAt
+
+    MaintenanceTicketInput:
+      type: object
+      properties:
+        propertyId:
+          type: integer
+        issue:
+          type: string
+        priority:
+          type: string
+          enum: [low, medium, high, emergency]
+        assignedToId:
+          type: ["integer", "null"]
+        cost:
+          type: ["number", "null"]
+        chargeType:
+          type: ["string", "null"]
+          enum: [owner, guest, company, null]
+        status:
+          type: string
+          enum: [reported, assigned, in_progress, waiting_parts, completed]
+        notes:
+          type: ["string", "null"]
+      required:
+        - propertyId
+        - issue
+        - priority
+        - status
+
+    MaintenanceTicketUpdate:
+      type: object
+      properties:
+        issue:
+          type: string
+        priority:
+          type: string
+          enum: [low, medium, high, emergency]
+        assignedToId:
+          type: ["integer", "null"]
+        cost:
+          type: ["number", "null"]
+        chargeType:
+          type: ["string", "null"]
+          enum: [owner, guest, company, null]
+        status:
+          type: string
+          enum: [reported, assigned, in_progress, waiting_parts, completed]
+        notes:
+          type: ["string", "null"]
+        completedAt:
+          type: ["string", "null"]
+
+    Owner:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - createdAt
+
+    OwnerInput:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+      required:
+        - name
+
+    OwnerUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+
+    OwnerStatement:
+      type: object
+      properties:
+        ownerId:
+          type: integer
+        ownerName:
+          type: string
+        month:
+          type: integer
+        year:
+          type: integer
+        totalRevenue:
+          type: number
+        totalExpenses:
+          type: number
+        maintenanceCosts:
+          type: number
+        cleaningCosts:
+          type: number
+        netPayout:
+          type: number
+        properties:
+          type: array
+          items:
+            type: object
+            properties:
+              propertyId:
+                type: integer
+              propertyName:
+                type: string
+              revenue:
+                type: number
+              expenses:
+                type: number
+            required:
+              - propertyId
+              - propertyName
+              - revenue
+              - expenses
+      required:
+        - ownerId
+        - ownerName
+        - month
+        - year
+        - totalRevenue
+        - totalExpenses
+        - maintenanceCosts
+        - cleaningCosts
+        - netPayout
+        - properties
+
+    StaffMember:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        role:
+          type: string
+          enum: [admin, cleaner, maintenance, accountant]
+        active:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - role
+        - active
+        - createdAt
+
+    StaffInput:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        role:
+          type: string
+          enum: [admin, cleaner, maintenance, accountant]
+        active:
+          type: boolean
+      required:
+        - name
+        - role
+
+    StaffUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        role:
+          type: string
+          enum: [admin, cleaner, maintenance, accountant]
+        active:
+          type: boolean
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [owner_payout, guest_balance, cleaning_cost, maintenance_cost, other]
+        propertyId:
+          type: ["integer", "null"]
+        propertyName:
+          type: ["string", "null"]
+        reservationId:
+          type: ["integer", "null"]
+        ownerId:
+          type: ["integer", "null"]
+        ownerName:
+          type: ["string", "null"]
+        amount:
+          type: number
+        status:
+          type: string
+          enum: [pending, paid, overdue]
+        description:
+          type: ["string", "null"]
+        dueDate:
+          type: ["string", "null"]
+        paidAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - type
+        - amount
+        - status
+        - createdAt
+
+    PaymentInput:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [owner_payout, guest_balance, cleaning_cost, maintenance_cost, other]
+        propertyId:
+          type: ["integer", "null"]
+        reservationId:
+          type: ["integer", "null"]
+        ownerId:
+          type: ["integer", "null"]
+        amount:
+          type: number
+        status:
+          type: string
+          enum: [pending, paid, overdue]
+        description:
+          type: ["string", "null"]
+        dueDate:
+          type: ["string", "null"]
+        paidAt:
+          type: ["string", "null"]
+      required:
+        - type
+        - amount
+        - status
+
+    PaymentUpdate:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [owner_payout, guest_balance, cleaning_cost, maintenance_cost, other]
+        amount:
+          type: number
+        status:
+          type: string
+          enum: [pending, paid, overdue]
+        description:
+          type: ["string", "null"]
+        dueDate:
+          type: ["string", "null"]
+        paidAt:
+          type: ["string", "null"]
+
+    UploadUrlRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Original file name.
+        size:
+          type: integer
+          minimum: 1
+          description: File size in bytes.
+        contentType:
+          type: string
+          minLength: 1
+          description: MIME type of the file (e.g. `image/jpeg`).
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+          format: uri
+          description: Presigned GCS URL for PUT upload.
+        objectPath:
+          type: string
+          description: Normalized object path (e.g. `/objects/uploads/uuid`). Store this in your database.
+        metadata:
+          $ref: '#/components/schemas/UploadUrlRequest'
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string

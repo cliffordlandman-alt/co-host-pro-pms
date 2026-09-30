@@ -1,0 +1,13 @@
+import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/api-fetch';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+export function ContactEditor({kind,record,open,onOpenChange}:{kind:'owners'|'staff';record?:any;open:boolean;onOpenChange:(v:boolean)=>void}) {
+ const [form,setForm]=useState<any>({}),[busy,setBusy]=useState(false);const qc=useQueryClient();const {toast}=useToast();
+ useEffect(()=>{if(open)setForm({name:record?.name || '',email:record?.email || '',phone:record?.phone || '',...(kind==='owners'?{address:record?.address || ''}:{role:record?.role || 'cleaner',active:record?.active ?? true})});},[open,record,kind]);
+ async function save(e:React.FormEvent){e.preventDefault();setBusy(true);try{const r=await apiFetch(`/api/${kind}${record?.id?'/'+record.id:''}`,{method:record?.id?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,email:form.email.trim().toLowerCase() || null})});const data=await r.json();if(!r.ok)throw new Error(data.error);await qc.invalidateQueries();onOpenChange(false);toast({title:'Saved'});}catch(e:any){toast({title:'Could not save',description:e.message,variant:'destructive'});}finally{setBusy(false);}}
+ return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>{record?'Edit':'Add'} {kind==='owners'?'owner':'staff member'}</DialogTitle></DialogHeader><form onSubmit={save} className="space-y-3">{['name','email','phone',...(kind==='owners'?['address']:[])].map(k=><label key={k} className="block text-sm capitalize">{k}<Input required={k==='name'} type={k==='email'?'email':'text'} value={form[k] || ''} onChange={e=>setForm((f:any)=>({...f,[k]:e.target.value}))}/></label>)}{kind==='staff'&&<><label className="block text-sm">Role<select className="border p-2 rounded w-full bg-background" value={form.role} onChange={e=>setForm((f:any)=>({...f,role:e.target.value}))}>{['admin','reservations','operations','cleaner','maintenance','accountant','manager'].map(r=><option key={r}>{r}</option>)}</select></label><label className="flex gap-2 text-sm"><input type="checkbox" checked={!!form.active} onChange={e=>setForm((f:any)=>({...f,active:e.target.checked}))}/>Active</label><p className="text-xs text-muted-foreground">Create a login in Settings using the same email address. Cleaners and maintenance staff see only their assigned tasks.</p></>}<Button disabled={busy}>Save</Button></form></DialogContent></Dialog>;
+}

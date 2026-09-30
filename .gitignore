@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.local-data/
+.env
+*.tsbuildinfo
+
+imports/airbnb/
+artifacts/yallastay/public/imported-media/
+
+.local-backups/

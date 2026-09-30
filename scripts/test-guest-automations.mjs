@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {renderGuestMessage,scheduledMessage,DEFAULT_MESSAGE_TEMPLATES} from '../lib/guest-automations.mjs';
+assert.equal(DEFAULT_MESSAGE_TEMPLATES.length,18);
+const b={id:1,guestName:'Test Guest',checkIn:'2026-10-02',checkOut:'2026-10-05',createdAt:'2026-09-30T10:00:00Z',status:'confirmed',balanceDue:100,paymentStatus:'pending'};
+const p={name:'Test Property',messageVariables:{check_in_time:'15:00',check_out_time:'11:00',utc_offset:'+04:00'}};
+const t={id:1,enabled:true,trigger:'before_checkin',offsetHours:24,body:'Hi {{guest_name}}, {property_name}. {{door_code}}'};
+let j=scheduledMessage(t,b,p,new Date('2026-10-01T00:00:00Z'));assert.equal(j.scheduledAt,'2026-10-01T11:00:00.000Z');assert.equal(j.state,'needs_information');assert.deepEqual(j.missing,['door_code']);
+j=scheduledMessage({...t,body:'Hi {{guest_name}}'},b,p,new Date('2026-10-01T00:00:00Z'));assert.equal(j.state,'scheduled');
+assert.equal(scheduledMessage(t,{...b,status:'cancelled'},p),null);assert.equal(scheduledMessage({...t,enabled:false},b,p),null);
+assert.equal(scheduledMessage({...t,trigger:'id_missing'},b,p,new Date('2026-10-01'),{idComplete:true}),null);
+assert.equal(scheduledMessage({...t,trigger:'payment_overdue'},{...b,paymentStatus:'unknown'},p),null);
+assert.equal(scheduledMessage({...t,trigger:'after_checkout',body:'Thanks'},b,p,new Date('2026-10-07')).state,'waiting_for_status');
+assert.equal(scheduledMessage({...t,body:'Hi'},b,{},new Date()).state,'needs_information');
+assert.deepEqual(renderGuestMessage('{{guest_name}} {property_name}',{guest_name:'A',property_name:'B'}),{body:'A B',missing:[]});
+console.log('PASS: default templates, variable rendering, time zone scheduling, missing data, cancellation, paid/ID exclusions and event status gates');
