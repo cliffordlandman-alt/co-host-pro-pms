@@ -1,5 +1,6 @@
 import { db, accountingTransactionsTable, cleaningTasksTable, cleaningCostRatesTable, notificationsTable, propertiesTable, propertySettingsTable, reservationsTable, vendorsTable } from "@workspace/db";
-import { and, asc, eq, gte, inArray, lte, notInArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, like, lte, notInArray, or } from "drizzle-orm";
+import { defaultFeeSettings } from "./fee-config";
 import { addDays, dubaiToday } from "./dubai-date";
 
 /**
@@ -11,8 +12,9 @@ import { addDays, dubaiToday } from "./dubai-date";
  * scheduled date (the checkout day), so it lands in the same period as the booking's cleaning fee
  * income. Manual (non-checkout) cleaning tasks are not priced by the rate card.
  *
- * HOW MUCH: the property's cleaning cost override (Fee settings) if set, otherwise the rate card
- * amount for the unit size (bedroom count; 0 = studio).
+ * HOW MUCH: the property's cleaning cost override (Fee settings) if set, otherwise - only for
+ * properties on the rate card - the rate card amount for the unit size (bedroom count; 0 = studio).
+ * Otherwise "no rate set": nothing is recorded and the clean is flagged.
  */
 type Q = Pick<typeof db, "select" | "insert">;
 type Property = typeof propertiesTable.$inferSelect;
@@ -35,45 +37,64 @@ export async function cleaningVendor(q: Q) {
   return vendor ?? null;
 }
 
-type Cost = { amount: string; currency: string; unitSize: number | null; source: "property override" | "rate card" } | { reason: string; unitSize: number | null };
+type Cost = { amount: string; currency: string; unitSize: number | null; source: "property override" | "rate card" } | { reason: string; unitSize: number | null; noRate?: boolean };
+type CostSettings = { cleaningCostOverride?: string | null; cleaningRateCard?: boolean | null; cleaningCostCurrency?: string | null } | null | undefined;
 
-export function cleaningCostFor(property: Property, settings: { cleaningCostOverride?: string | null } | null | undefined, rates: (typeof cleaningCostRatesTable.$inferSelect)[]): Cost {
-  const currency = property.currency || "AED";
+/**
+ * Which cost applies, in this order: the property's override (in its cleaning cost currency, else the
+ * property's currency); otherwise, only if the property is on the cleaning company's rate card, the
+ * rate for its unit size. Anything else is "no rate set": skipped and flagged, never guessed.
+ */
+export function cleaningCostFor(property: Property, settings: CostSettings, rates: (typeof cleaningCostRatesTable.$inferSelect)[]): Cost {
+  const currency = settings?.cleaningCostCurrency || property.currency || "AED";
   const unitSize = cleaningUnitSize(property);
   if (settings?.cleaningCostOverride != null) return { amount: Number(settings.cleaningCostOverride).toFixed(2), currency, unitSize, source: "property override" };
+  const onRateCard = settings ? !!settings.cleaningRateCard : defaultFeeSettings(property).cleaningRateCard;
+  if (!onRateCard) return { reason: "No rate set: this property is not on the cleaning company's rate card and has no cleaning cost override", unitSize, noRate: true };
   if (unitSize == null) return { reason: "Unit size unknown: set the property's bedroom count (0 = studio) or a cleaning cost override", unitSize };
   const rate = rates.find(r => r.bedrooms === unitSize);
-  if (!rate) return { reason: `No rate card amount for ${unitLabel(unitSize)}: add one or set a cleaning cost override`, unitSize };
-  if (rate.currency !== currency) return { reason: `Rate card is in ${rate.currency} but the property uses ${currency}: set a cleaning cost override`, unitSize };
+  if (!rate) return { reason: `No rate set for ${unitLabel(unitSize)} on the rate card: add one or set a cleaning cost override`, unitSize, noRate: true };
+  if (rate.currency !== currency) return { reason: `Rate card is in ${rate.currency} but this property's cleaning is paid in ${currency}: set a cleaning cost override`, unitSize };
   return { amount: Number(rate.amount).toFixed(2), currency, unitSize, source: "rate card" };
 }
 
-type Plan = { taskId: number | null; reservationId: number; propertyId: number; property: string; checkout: string; unitSize: string; amount: number | null; currency: string | null; action: "record" | "already recorded" | "skip"; reason?: string };
+type Plan = { taskId: number | null; reservationId: number; propertyId: number; property: string; checkout: string; unitSize: string; amount: number | null; currency: string | null; action: "record" | "already recorded" | "skip"; reason?: string; noRate?: boolean };
+type Booking = typeof reservationsTable.$inferSelect;
+type Task = typeof cleaningTasksTable.$inferSelect;
 
-async function planForTask(q: Q, task: typeof cleaningTasksTable.$inferSelect, ctx: { rates: any[]; vendor: any }) {
-  const base = { taskId: task.id, reservationId: task.reservationId as number, propertyId: task.propertyId, checkout: task.scheduledDate };
-  const [property] = await q.select().from(propertiesTable).where(eq(propertiesTable.id, task.propertyId));
-  const plan: Plan = { ...base, property: property?.name ?? `Property #${task.propertyId}`, unitSize: unitLabel(property ? cleaningUnitSize(property) : null), amount: null, currency: null, action: "skip" };
-  const [existing] = await q.select().from(accountingTransactionsTable).where(eq(accountingTransactionsTable.cleaningTaskId, task.id));
+/** Existing automatic cleaning cost for this clean or this checkout (one per booking). */
+async function existingCost(q: Q, taskId: number | null, reservationId: number) {
+  const [row] = await q.select().from(accountingTransactionsTable).where(or(
+    taskId != null ? eq(accountingTransactionsTable.cleaningTaskId, taskId) : undefined,
+    and(eq(accountingTransactionsTable.reservationId, reservationId), like(accountingTransactionsTable.reference, "cleaning:%")),
+  ));
+  return row ?? null;
+}
+
+async function planCheckout(q: Q, booking: Booking | undefined, task: Task | null, ctx: { rates: any[]; vendor: any }) {
+  const reservationId = (booking?.id ?? task?.reservationId) as number;
+  const propertyId = booking?.propertyId ?? (task as Task).propertyId;
+  const [property] = await q.select().from(propertiesTable).where(eq(propertiesTable.id, propertyId));
+  const plan: Plan = { taskId: task?.id ?? null, reservationId, propertyId, checkout: task?.scheduledDate ?? (booking as Booking).checkOut, property: property?.name ?? `Property #${propertyId}`, unitSize: unitLabel(property ? cleaningUnitSize(property) : null), amount: null, currency: null, action: "skip" };
+  const existing = reservationId ? await existingCost(q, plan.taskId, reservationId) : null;
   if (existing) return { ...plan, amount: Number(existing.amount), currency: existing.currency, action: "already recorded" as const };
-  if (!task.reservationId) return { ...plan, reason: "Not a checkout clean" };
-  if (task.status === "cancelled") return { ...plan, reason: "Cleaning task cancelled" };
-  const [booking] = await q.select().from(reservationsTable).where(eq(reservationsTable.id, task.reservationId));
+  if (!reservationId) return { ...plan, reason: "Not a checkout clean" };
+  if (task?.status === "cancelled") return { ...plan, reason: "Cleaning task cancelled" };
   if (!booking || ["cancelled", "blocked"].includes(booking.status)) return { ...plan, reason: "Booking cancelled or blocked dates" };
   if (!property) return { ...plan, reason: "Property not found" };
   if (!ctx.vendor) return { ...plan, reason: "No active cleaning company (vendor) set up" };
   const [settings] = await q.select().from(propertySettingsTable).where(eq(propertySettingsTable.propertyId, property.id));
   const cost = cleaningCostFor(property, settings, ctx.rates);
-  if ("reason" in cost) return { ...plan, reason: cost.reason };
-  return { ...plan, amount: Number(cost.amount), currency: cost.currency, action: "record" as const, reason: cost.source };
+  if ("reason" in cost) return { ...plan, reason: cost.reason, noRate: cost.noRate };
+  return { ...plan, amount: Number(cost.amount), currency: cost.currency, action: "record" as const, reason: task ? cost.source : `${cost.source}; past checkout with no cleaning task` };
 }
 
 async function insertExpense(q: Q, plan: Plan, vendorId: number) {
-  if (plan.action !== "record" || plan.taskId == null || plan.amount == null) return false;
+  if (plan.action !== "record" || plan.amount == null) return false;
   const rows = await q.insert(accountingTransactionsTable).values({
     date: plan.checkout, propertyId: plan.propertyId, reservationId: plan.reservationId, type: "expense", category: "Cleaning",
     description: `Checkout clean · ${plan.property} · ${plan.unitSize}`, amount: plan.amount.toFixed(2), currency: plan.currency ?? "AED",
-    allocation: "company", reference: `cleaning:${plan.taskId}`, vendorId, cleaningTaskId: plan.taskId,
+    allocation: "company", reference: plan.taskId != null ? `cleaning:${plan.taskId}` : `cleaning:booking:${plan.reservationId}`, vendorId, cleaningTaskId: plan.taskId,
     notes: `Automatic cleaning cost (${plan.reason}).`,
   }).onConflictDoNothing().returning({ id: accountingTransactionsTable.id });
   return rows.length > 0;
@@ -88,7 +109,8 @@ export async function recordCleaningExpenseForTask(taskId: number) {
   const [task] = await db.select().from(cleaningTasksTable).where(eq(cleaningTasksTable.id, taskId));
   if (!task || !task.reservationId || !["completed", "approved"].includes(task.status)) return null;
   const ctx = await context(db);
-  const plan = await planForTask(db, task, ctx);
+  const [booking] = await db.select().from(reservationsTable).where(eq(reservationsTable.id, task.reservationId));
+  const plan = await planCheckout(db, booking, task, ctx);
   if (plan.action === "record") { await insertExpense(db, plan, ctx.vendor.id); return plan; }
   if (plan.action === "skip") {
     const [already] = await db.select({ id: notificationsTable.id }).from(notificationsTable).where(and(eq(notificationsTable.type, "cleaning_cost"), eq(notificationsTable.entityType, "cleaning"), eq(notificationsTable.entityId, String(task.id))));
@@ -98,30 +120,33 @@ export async function recordCleaningExpenseForTask(taskId: number) {
 }
 
 /**
- * Backfill: one cleaning expense for every checkout in the last `days` days (Dubai dates, today
- * included) that has a checkout cleaning task and no expense yet. Idempotent; dryRun only previews.
+ * Backfill: one cleaning expense for every checkout in the period (Dubai dates): the last `days` days
+ * (today included) or a calendar month (up to today). A checkout with a cleaning task is costed on that
+ * task; a past checkout without one (e.g. imported history) is costed on the booking. Either way, one
+ * cost per checkout. Idempotent; dryRun only previews. "No rate set" checkouts are skipped and flagged.
  */
-export async function backfillCleaningExpenses({ days = 30, dryRun = true, today = dubaiToday() }: { days?: number; dryRun?: boolean; today?: string }) {
-  const from = addDays(today, -days);
+export async function backfillCleaningExpenses({ days = 30, month, dryRun = true, today = dubaiToday() }: { days?: number; month?: string; dryRun?: boolean; today?: string }) {
+  let from = addDays(today, -days), to = today;
+  if (month) {
+    from = `${month}-01`;
+    const [y, m] = month.split("-").map(Number);
+    to = addDays(m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`, -1);
+    if (to > today) to = today;
+    if (from > today) return { error: "That month has not started yet (Dubai time)" } as const;
+  }
   return db.transaction(async tx => {
     const ctx = await context(tx);
-    const bookings = await tx.select().from(reservationsTable).where(and(gte(reservationsTable.checkOut, from), lte(reservationsTable.checkOut, today), notInArray(reservationsTable.status, ["cancelled", "blocked"]))).orderBy(asc(reservationsTable.checkOut), asc(reservationsTable.id));
+    const bookings = await tx.select().from(reservationsTable).where(and(gte(reservationsTable.checkOut, from), lte(reservationsTable.checkOut, to), notInArray(reservationsTable.status, ["cancelled", "blocked"]))).orderBy(asc(reservationsTable.checkOut), asc(reservationsTable.id));
     const tasks = bookings.length ? await tx.select().from(cleaningTasksTable).where(inArray(cleaningTasksTable.reservationId, bookings.map(b => b.id))).orderBy(asc(cleaningTasksTable.id)) : [];
-    const properties = await tx.select().from(propertiesTable);
     const items: Plan[] = [];
     for (const b of bookings) {
-      const task = tasks.find(t => t.reservationId === b.id && t.status !== "cancelled") ?? tasks.find(t => t.reservationId === b.id);
-      if (!task) {
-        const p = properties.find(x => x.id === b.propertyId);
-        items.push({ taskId: null, reservationId: b.id, propertyId: b.propertyId, property: p?.name ?? `Property #${b.propertyId}`, checkout: b.checkOut, unitSize: unitLabel(p ? cleaningUnitSize(p) : null), amount: null, currency: null, action: "skip", reason: "No checkout cleaning task for this booking" });
-        continue;
-      }
-      items.push(await planForTask(tx, task, ctx));
+      const task = tasks.find(t => t.reservationId === b.id && t.status !== "cancelled") ?? tasks.find(t => t.reservationId === b.id) ?? null;
+      items.push(await planCheckout(tx, b, task, ctx));
     }
     let recorded = 0;
     if (!dryRun) for (const item of items) if (await insertExpense(tx, item, ctx.vendor?.id)) recorded++;
     const totals: Record<string, number> = {};
     for (const i of items) if (i.action === "record" && i.amount != null) totals[i.currency ?? "AED"] = Math.round(((totals[i.currency ?? "AED"] ?? 0) + i.amount) * 100) / 100;
-    return { from, to: today, dryRun, vendor: ctx.vendor?.name ?? null, items, toRecord: items.filter(i => i.action === "record").length, alreadyRecorded: items.filter(i => i.action === "already recorded").length, skipped: items.filter(i => i.action === "skip").length, totals: Object.entries(totals).map(([currency, amount]) => ({ currency, amount })), recorded };
+    return { error: null, from, to, month: month ?? null, dryRun, vendor: ctx.vendor?.name ?? null, items, toRecord: items.filter(i => i.action === "record").length, alreadyRecorded: items.filter(i => i.action === "already recorded").length, skipped: items.filter(i => i.action === "skip").length, noRateSet: items.filter(i => i.noRate).length, totals: Object.entries(totals).map(([currency, amount]) => ({ currency, amount })), recorded };
   });
 }

@@ -46,6 +46,8 @@ const accountingSettingsSchema = z.object({
   currency: z.string().max(3).optional(),
   cleaningFee: z.union([z.null(), z.coerce.number().finite().min(0).max(100000).transform(n => n.toFixed(2))]).optional(),
   cleaningCostOverride: z.union([z.null(), z.coerce.number().finite().min(0).max(100000).transform(n => n.toFixed(2))]).optional(),
+  cleaningRateCard: z.boolean().optional(),
+  cleaningCostCurrency: z.union([z.null(), z.literal("").transform(() => null), z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, "Currency must be a 3-letter code such as AED or ZAR")]).optional(),
 }).strict();
 
 // ── Property Settings ──────────────────────────────────────────────────────────
@@ -69,6 +71,9 @@ router.get("/accounting/settings", asyncHandler(async (_req, res) => {
       includeMaintenance: propertySettingsTable.includeMaintenance,
       currency: propertySettingsTable.currency,
       cleaningCostOverride: propertySettingsTable.cleaningCostOverride,
+      cleaningRateCard: propertySettingsTable.cleaningRateCard,
+      cleaningCostCurrency: propertySettingsTable.cleaningCostCurrency,
+      propertyCurrency: propertiesTable.currency,
       cleaningFee: propertySettingsTable.cleaningFee,
     })
     .from(propertySettingsTable)
@@ -77,7 +82,7 @@ router.get("/accounting/settings", asyncHandler(async (_req, res) => {
   const allProps = await db.select().from(propertiesTable);
   const withSettings = allProps.map(p => {
     const s = rows.find(r => r.propertyId === p.id);
-    return s ?? { ...defaultFeeSettings(p), propertyName: p.name };
+    return s ?? { ...defaultFeeSettings(p), propertyName: p.name, propertyCurrency: p.currency };
   });
 
   res.json(withSettings.map(r => ({
@@ -112,7 +117,7 @@ router.put("/accounting/settings/:propertyId", asyncHandler(async (req, res) => 
   const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, propertyId));
   if (!property) return res.status(404).json({ error: "Property not found" });
   const d = defaultFeeSettings(property);
-  const [row] = await db.insert(propertySettingsTable).values({ propertyId, tourismEnabled: d.tourismEnabled, vatEnabled: d.vatEnabled, currency: d.currency, ...data }).returning();
+  const [row] = await db.insert(propertySettingsTable).values({ propertyId, tourismEnabled: d.tourismEnabled, vatEnabled: d.vatEnabled, currency: d.currency, cleaningRateCard: d.cleaningRateCard, ...data }).returning();
   return res.status(201).json(row);
 }));
 
@@ -214,18 +219,22 @@ router.put("/accounting/cleaning-costs", asyncHandler(async (req, res) => {
   return res.json({ vendor, rates: rates.map(r => ({ bedrooms: r.bedrooms, label: unitLabel(r.bedrooms), amount: Number(r.amount), currency: r.currency })) });
 }));
 
-// Record cleaning expenses for all checkouts in the last N days (Dubai dates). Preview is the default;
-// recording requires an administrator. Safe to run repeatedly: each cleaning task is expensed once.
+// Record cleaning expenses for all checkouts in the last N days or a given month (Dubai dates). Preview is
+// the default; recording requires an administrator. Safe to run repeatedly: each checkout is expensed once.
 router.post("/accounting/cleaning-expenses/backfill", asyncHandler(async (req, res) => {
+  // Period: a calendar month (month=YYYY-MM, capped at today), or the last N days (days, default 30).
+  const month = req.body?.month;
+  if (month != null && !/^\d{4}-(0[1-9]|1[0-2])$/.test(String(month))) return res.status(400).json({ error: "Month must look like 2026-09" });
   const days = req.body?.days == null ? 30 : Number(req.body.days);
-  if (!Number.isInteger(days) || days < 1 || days > 366) return res.status(400).json({ error: "Choose between 1 and 366 days" });
+  if (month == null && (!Number.isInteger(days) || days < 1 || days > 366)) return res.status(400).json({ error: "Choose between 1 and 366 days" });
   const dryRun = req.body?.dryRun !== false;
   if (!dryRun) {
     const [user] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, Number(req.headers["x-user-id"])));
     if (!user || !["admin", "super_admin"].includes(user.role)) return res.status(403).json({ error: "Only an administrator can record cleaning expenses in bulk" });
   }
-  const result = await backfillCleaningExpenses({ days, dryRun });
-  if (!dryRun) await insertAuditLog({ action: "create", entity: "cleaning_expense_backfill", entityId: 0, details: { days, recorded: result.recorded, from: result.from, to: result.to }, performedBy: req.headers["x-user-id"] as string });
+  const result = await backfillCleaningExpenses({ days, month: month ?? undefined, dryRun });
+  if (result.error) return res.status(400).json({ error: result.error });
+  if (!dryRun) await insertAuditLog({ action: "create", entity: "cleaning_expense_backfill", entityId: 0, details: { days: month ? null : days, month: month ?? null, recorded: result.recorded, from: result.from, to: result.to }, performedBy: req.headers["x-user-id"] as string });
   return res.json(result);
 }));
 

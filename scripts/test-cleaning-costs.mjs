@@ -48,7 +48,7 @@ try {
   assert.equal(preview.from, shift(-30)); assert.equal(preview.to, today);
   assert.deepEqual([byProp['Studio A'].amount, byProp['One Bed'].amount, byProp['Three Bed'].amount, byProp['Typed 2 Bedroom'].amount], [140, 180, 300, 250]);
   assert.equal(byProp['Studio A'].unitSize, 'Studio'); assert.equal(byProp['Typed 2 Bedroom'].unitSize, '2BR');
-  assert.equal(byProp['Five Bed'].action, 'skip'); assert.match(byProp['Five Bed'].reason, /No rate card amount for 5BR/);
+  assert.equal(byProp['Five Bed'].action, 'skip'); assert.match(byProp['Five Bed'].reason, /No rate set for 5BR/); assert.equal(byProp['Five Bed'].noRate, true); assert.equal(preview.noRateSet, 1);
   assert.equal(preview.items.length, 5, 'cancelled, out-of-window and future checkouts are excluded');
   assert.deepEqual(preview.totals, [{ currency: 'AED', amount: 870 }]);
   assert.equal((await api('/accounting/transactions')).filter(t => t.category === 'Cleaning').length, 0, 'preview records nothing');
@@ -87,6 +87,48 @@ try {
   const company = await api(`/accounting/company-statement?start=${shift(-30)}&end=${shift(30)}`);
   const c = company.cleaning.find(x => x.currency === 'AED');
   assert.equal(c.cleans, 5); assert.equal(c.expenses, 1010); assert.equal(c.income, 150 * 6);
+  // Scope: the rate card only covers properties on it; others have "no rate set" (skipped + flagged) until
+  // they get an override, which is paid in the property's cleaning currency.
+  const sa = await api('/properties', 'POST', { name: 'Grey House', unitNumber: 'GH', ownerId: owner.id, city: 'Gqeberha', country: 'South Africa', currency: 'ZAR', bedrooms: 2 }, 201);
+  const saAed = await api('/properties', 'POST', { name: 'Garden Retreat', unitNumber: 'GR', ownerId: owner.id, city: 'Gqeberha', country: 'South Africa', currency: 'AED', bedrooms: 1 }, 201);
+  const feeRows = await api('/accounting/settings');
+  assert.equal(feeRows.find(r => r.propertyId === sa.id).cleaningRateCard, false, 'non-Dubai property starts with no rate set');
+  assert.equal(feeRows.find(r => r.propertyId === one.id).cleaningRateCard, true, 'Dubai property starts on the rate card');
+  // Past Airbnb stays arrive through the Airbnb Reservations export (no cleaning task for past checkouts).
+  const m = shift(-1).slice(0, 7);
+  const d = n => { const [y, mo, da] = shift(n).split('-'); return `${Number(mo)}/${Number(da)}/${y}`; };
+  const csv = ['"Confirmation code","Status","Guest name","Contact","# of adults","# of children","# of infants","Start date","End date","# of nights","Booked","Listing","Earnings"',
+    `"HMTESTSA01","Past guest","Guest SA","","2","0","0","${d(-4)}","${d(-2)}","2","${shift(-30)}","Grey House","R\u00a01,085.14"`,
+    `"HMTESTSA02","Past guest","Guest GR","","1","0","0","${d(-4)}","${d(-1)}","3","${shift(-30)}","Garden Retreat","\ufea9.\ufe87\u00a0292.10"`,
+    `"HMTESTSA03","Canceled by guest","Guest X","","1","0","0","${d(-4)}","${d(-1)}","3","${shift(-30)}","Grey House","R\u00a00.00"`].join('\n');
+  const imp = await api('/airbnb-data/import', 'POST', { csv });
+  assert.deepEqual([imp.bookingsCreated, imp.cancelled, imp.added], [3, 1, 2]);
+  const imported = (await api('/reservations')).filter(r => r.externalId?.startsWith('airbnb:HMTESTSA'));
+  assert.equal(imported.find(r => r.externalId === 'airbnb:HMTESTSA03').status, 'cancelled');
+  assert.ok(imported.every(r => r.financeMode !== 'inclusive-v1'), 'imported Airbnb stays stay unverified');
+  const earnings = (await api('/airbnb-data')).rows;
+  assert.deepEqual(earnings.filter(e => e.confirmationCode.startsWith('HMTESTSA')).map(e => [e.currency, e.amount, e.status]).sort(), [['AED', 292.1, 'expected'], ['ZAR', 1085.14, 'expected']]);
+  let scoped = await api('/accounting/cleaning-expenses/backfill', 'POST', { days: 30, dryRun: true });
+  const saItems = scoped.items.filter(i => ['Grey House', 'Garden Retreat'].includes(i.property));
+  assert.equal(saItems.length, 2, 'cancelled import is not a turnover');
+  assert.ok(saItems.every(i => i.action === 'skip' && i.noRate && /No rate set/.test(i.reason)));
+  await api(`/accounting/settings/${sa.id}`, 'PUT', { cleaningCostOverride: 350 });
+  await api(`/accounting/settings/${saAed.id}`, 'PUT', { cleaningCostOverride: 300, cleaningCostCurrency: 'zar' });
+  await api(`/accounting/settings/${saAed.id}`, 'PUT', { cleaningCostCurrency: 'RANDS' }, 400);
+  scoped = await api('/accounting/cleaning-expenses/backfill', 'POST', { days: 30, dryRun: false });
+  const got = (await api('/accounting/transactions')).filter(t => t.category === 'Cleaning' && [sa.id, saAed.id].includes(t.propertyId));
+  assert.deepEqual(got.map(t => [t.currency, t.amount, t.cleaningTaskId]).sort(), [['ZAR', 300, null], ['ZAR', 350, null]], 'override in the property cleaning currency, costed on the booking');
+  const again = await api('/accounting/cleaning-expenses/backfill', 'POST', { month: m, dryRun: false });
+  assert.equal(again.recorded, 0, 'month run after a days run adds nothing');
+  assert.equal(again.from, `${m}-01`);
+  await api('/accounting/cleaning-expenses/backfill', 'POST', { month: '2099-01', dryRun: true }, 400);
+  await api('/accounting/cleaning-expenses/backfill', 'POST', { month: '2026-13', dryRun: true }, 400);
+  // Taking a property off the rate card makes it "no rate set" again for new cleans.
+  await api(`/accounting/settings/${one.id}`, 'PUT', { cleaningRateCard: false });
+  const off = await api('/accounting/cleaning-expenses/backfill', 'POST', { days: 30, dryRun: true });
+  assert.equal(off.items.find(i => i.property === 'One Bed').action, 'already recorded', 'recorded costs are never changed');
+
+  console.log('PASS: rate card scope, no-rate flag, per-property currency, reservations-export import, month backfill;');
   console.log('PASS: rate card seeded; override; unit size from bedrooms/unit type; admin-only idempotent backfill; one cost per clean on completion; notification when unpriced; cleaning income vs cost');
 } catch (e) { console.error(e); console.error(logs.slice(-3000)); process.exitCode = 1; }
 finally { child.kill('SIGTERM'); }

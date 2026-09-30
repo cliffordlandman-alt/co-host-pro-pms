@@ -27,6 +27,10 @@ export const propertySettingsTable = pgTable("property_settings", {
   cleaningFee: numeric("cleaning_fee", { precision: 10, scale: 2 }),
   /** Optional per-property cleaning cost (what the cleaning company charges); overrides the rate card. */
   cleaningCostOverride: numeric("cleaning_cost_override", { precision: 10, scale: 2 }),
+  /** Cleaned by the rate-card cleaning company. False + no override = "no rate set": cleans are skipped and flagged. */
+  cleaningRateCard: boolean("cleaning_rate_card").notNull().default(false),
+  /** Currency of cleaningCostOverride; null = the property's currency. */
+  cleaningCostCurrency: text("cleaning_cost_currency"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

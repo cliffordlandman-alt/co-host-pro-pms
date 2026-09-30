@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
  * Accounting → Fee settings). A property without a record uses the same defaults the Fee settings
  * screen shows for it. Rates sent by the browser are never used for booking calculations.
  */
-export type PropertyLike = { id: number; city?: string | null; currency?: string | null };
+export type PropertyLike = { id: number; city?: string | null; area?: string | null; currency?: string | null };
 type Settings = typeof propertySettingsTable.$inferSelect;
 type Reader = Pick<typeof db, "select">;
 
@@ -25,6 +25,9 @@ export function defaultFeeSettings(p: PropertyLike) {
     includeCleaning: true, includeMaintenance: true,
     currency: p.currency || "AED",
     cleaningCostOverride: null as string | null,
+    // The cleaning-company rate card is for Dubai units; elsewhere the property starts with "no rate set".
+    cleaningRateCard: /dubai/i.test(`${p.city || ""} ${p.area || ""}`),
+    cleaningCostCurrency: null as string | null,
   };
 }
 
@@ -109,7 +112,7 @@ export async function saveFeeFields(q: Writer, property: PropertyLike, fields: {
   if (!existing) {
     const d = defaultFeeSettings(property), nd = await newPropertyDefaults(q);
     const [row] = await q.insert(propertySettingsTable).values({
-      propertyId: property.id, tourismEnabled: d.tourismEnabled, vatEnabled: d.vatEnabled, currency: d.currency,
+      propertyId: property.id, tourismEnabled: d.tourismEnabled, vatEnabled: d.vatEnabled, currency: d.currency, cleaningRateCard: d.cleaningRateCard,
       managementFeePercent: fields.managementFeePercent ?? nd.managementFeePercent,
       cleaningFee: fields.cleaningFee !== undefined ? fields.cleaningFee : nd.cleaningFee,
     }).returning();

@@ -14,7 +14,11 @@ async function send(url: string, body?: unknown, method = 'POST') {
   return d;
 }
 
-// Cleaning company rate card (company expense per checkout clean) and the 30-day backfill.
+// Cleaning company rate card (company expense per checkout clean) and the backfill for past checkouts.
+function recentMonths() {
+  const [y, m] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dubai', year: 'numeric', month: '2-digit' }).format(new Date()).split('-').map(Number);
+  return Array.from({ length: 6 }, (_, i) => { const d = new Date(Date.UTC(y, m - 1 - i, 1)); return { value: d.toISOString().slice(0, 7), label: d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }) }; });
+}
 export function CleaningCostSettings() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -24,6 +28,7 @@ export function CleaningCostSettings() {
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<any>(null);
   const [busy, setBusy] = useState(false);
+  const [period, setPeriod] = useState(''); // '' = last 30 days, else YYYY-MM
   useEffect(() => {
     if (!data) return;
     setVendorName(data.vendor?.name ?? '');
@@ -43,7 +48,9 @@ export function CleaningCostSettings() {
   async function runBackfill(dryRun: boolean) {
     setBusy(true);
     try {
-      const result = await send('/api/accounting/cleaning-expenses/backfill', { days: 30, dryRun });
+      // Recording always uses exactly the period that was previewed.
+      const month = dryRun ? period : (preview?.month ?? '');
+      const result = await send('/api/accounting/cleaning-expenses/backfill', month ? { month, dryRun } : { days: 30, dryRun });
       setPreview(result);
       if (!dryRun) { await qc.invalidateQueries(); toast({ title: `${result.recorded} cleaning ${result.recorded === 1 ? 'expense' : 'expenses'} recorded` }); }
     } catch (e) { toast({ title: dryRun ? 'Could not preview' : 'Could not record expenses', description: (e as Error).message, variant: 'destructive' }); }
@@ -71,16 +78,22 @@ export function CleaningCostSettings() {
         <Button type="button" size="sm" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save rate card'}</Button>
       </div>
       <div className="border-t pt-3 space-y-2">
-        <p className="text-sm font-medium">Record cleaning costs for the last 30 days</p>
-        <p className="text-xs text-muted-foreground">For every checkout in the last 30 days (Dubai dates) that has a checkout clean and no cleaning cost yet. Preview first; recording is safe to repeat and never creates duplicates. Recording needs an administrator.</p>
-        <div className="flex flex-wrap gap-2">
+        <p className="text-sm font-medium">Record cleaning costs for past checkouts</p>
+        <p className="text-xs text-muted-foreground">One cost for every checkout in the period (Dubai dates) that has no cleaning cost yet. Properties with no rate set are listed and skipped, never guessed. Preview first; recording is safe to repeat and never creates duplicates. Recording needs an administrator.</p>
+        <div className="flex flex-wrap gap-2 items-center">
+          <label className="text-xs flex items-center gap-2">Period
+            <select aria-label="Backfill period" className="border rounded p-1.5 bg-background" value={period} onChange={e => { setPeriod(e.target.value); setPreview(null); }}>
+              <option value="">Last 30 days</option>
+              {recentMonths().map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </label>
           <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => runBackfill(true)}>Preview</Button>
           {preview?.dryRun && preview.toRecord > 0 && <Button type="button" size="sm" disabled={busy} onClick={() => runBackfill(false)}>Record {preview.toRecord} {preview.toRecord === 1 ? 'expense' : 'expenses'}</Button>}
         </div>
         {preview && <div className="text-xs space-y-2">
-          <p>{preview.from} to {preview.to} · {preview.dryRun ? 'Preview' : `Recorded ${preview.recorded}`} · to record {preview.toRecord} · already recorded {preview.alreadyRecorded} · skipped {preview.skipped}{preview.totals.length ? ` · total ${preview.totals.map((t: any) => money(t.amount, t.currency)).join(', ')}` : ''}</p>
+          <p>{preview.from} to {preview.to} · {preview.dryRun ? 'Preview' : `Recorded ${preview.recorded}`} · to record {preview.toRecord} · already recorded {preview.alreadyRecorded} · skipped {preview.skipped}{preview.noRateSet ? ` (no rate set: ${preview.noRateSet})` : ''}{preview.totals.length ? ` · total ${preview.totals.map((t: any) => money(t.amount, t.currency)).join(', ')}` : ''}</p>
           {preview.items.length > 0 && <div className="overflow-x-auto"><table className="w-full text-left min-w-[520px]"><thead><tr className="border-b"><th className="py-1 pr-2">Property</th><th className="pr-2">Checkout</th><th className="pr-2">Unit</th><th className="pr-2">Amount</th><th>Status</th></tr></thead>
-            <tbody>{preview.items.map((i: any) => <tr key={`${i.reservationId}-${i.taskId}`} className="border-b last:border-0"><td className="py-1 pr-2">{i.property}</td><td className="pr-2">{i.checkout}</td><td className="pr-2">{i.unitSize}</td><td className="pr-2">{money(i.amount, i.currency)}</td><td>{i.action === 'record' ? (preview.dryRun ? 'Will record' : 'Recorded') : i.action === 'already recorded' ? 'Already recorded' : `Skipped: ${i.reason}`}</td></tr>)}</tbody></table></div>}
+            <tbody>{preview.items.map((i: any) => <tr key={`${i.reservationId}-${i.taskId}`} className={`border-b last:border-0 ${i.noRate ? 'text-amber-700 dark:text-amber-300' : ''}`}><td className="py-1 pr-2">{i.property}</td><td className="pr-2">{i.checkout}</td><td className="pr-2">{i.unitSize}</td><td className="pr-2">{money(i.amount, i.currency)}</td><td>{i.action === 'record' ? (preview.dryRun ? 'Will record' : 'Recorded') : i.action === 'already recorded' ? 'Already recorded' : `${i.noRate ? 'No rate set' : 'Skipped'}: ${i.reason}`}</td></tr>)}</tbody></table></div>}
         </div>}
       </div>
     </>}
