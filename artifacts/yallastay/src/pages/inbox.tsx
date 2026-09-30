@@ -269,12 +269,16 @@ export default function Inbox() {
                     </div>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
-                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => toast({ title: "Guest calling is not connected" })}>
-                      <Phone className="h-3 w-3" />Call
-                    </Button>
-                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => toast({ title: "Email delivery is not connected" })}>
-                      <Mail className="h-3 w-3" />Email
-                    </Button>
+                    {(selectedRes as any)?.guestPhone && (
+                      <Button asChild size="sm" variant="outline" className="h-8 text-xs gap-1">
+                        <a href={`tel:${String((selectedRes as any).guestPhone).replace(/[^\d+]/g, "")}`}><Phone className="h-3 w-3" />Call</a>
+                      </Button>
+                    )}
+                    {(selectedRes as any)?.guestEmail && (
+                      <Button asChild size="sm" variant="outline" className="h-8 text-xs gap-1">
+                        <a href={`mailto:${(selectedRes as any).guestEmail}`}><Mail className="h-3 w-3" />Email</a>
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>

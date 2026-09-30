@@ -481,10 +481,11 @@ function MaintenanceCard({ ticket, onUpdate }: { ticket: any; onUpdate: () => vo
           </div>
 
           <div className="flex gap-1.5 flex-shrink-0">
-            <Button size="sm" variant="outline" className="h-7 px-2 text-[11px] gap-1"
-              onClick={() => toast({ title: "Calling vendor…" })}>
-              <Phone className="h-3 w-3" />Call
-            </Button>
+            {ticket.assignedToPhone && (
+              <Button asChild size="sm" variant="outline" className="h-7 px-2 text-[11px] gap-1">
+                <a href={`tel:${String(ticket.assignedToPhone).replace(/[^\d+]/g, "")}`}><Phone className="h-3 w-3" />Call</a>
+              </Button>
+            )}
 
             {ticket.status === "reported" && ticket.assignedToId && (
               <Button size="sm" variant="outline" className="h-7 px-2 text-[11px] gap-1"

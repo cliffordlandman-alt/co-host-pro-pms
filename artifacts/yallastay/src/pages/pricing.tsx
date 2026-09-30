@@ -354,14 +354,12 @@ function PropertyPricingCard({ property, onReview }: {
               <Zap className="h-3 w-3" />Apply AI Price
             </Button>
           ) : (
-            <Button size="sm" variant="outline" className="flex-1 h-8 text-xs gap-1 text-emerald-600 border-emerald-300"
-              onClick={() => toast({ title: "Price locked ✓", description: "Current rate confirmed for next 7 days." })}>
-              <Lock className="h-3 w-3" />Lock Price
-            </Button>
+            <div className="flex-1 h-8 text-xs flex items-center gap-1 text-emerald-600">
+              <Lock className="h-3 w-3" />Rate looks right
+            </div>
           )}
-          <Button size="sm" variant="outline" className="h-8 px-3 text-xs gap-1"
-            onClick={() => toast({ title: "Viewing calendar for " + property.name })}>
-            <Calendar className="h-3 w-3" />Calendar
+          <Button asChild size="sm" variant="outline" className="h-8 px-3 text-xs gap-1">
+            <a href="/multi-calendar"><Calendar className="h-3 w-3" />Calendar</a>
           </Button>
         </div>
       </div>

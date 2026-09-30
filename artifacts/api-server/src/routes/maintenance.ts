@@ -20,6 +20,7 @@ const maintenanceSelect = {
   priority: maintenanceTicketsTable.priority,
   assignedToId: maintenanceTicketsTable.assignedToId,
   assignedToName: staffTable.name,
+  assignedToPhone: staffTable.phone,
   cost: maintenanceTicketsTable.cost,
   chargeType: maintenanceTicketsTable.chargeType,
   status: maintenanceTicketsTable.status,
