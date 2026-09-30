@@ -8,3 +8,7 @@ imports/airbnb/
 artifacts/yallastay/public/imported-media/
 
 .local-backups/
+
+# Private channel data (iCal links, reservation exports) must never be committed
+airbnb/
+*.ics
