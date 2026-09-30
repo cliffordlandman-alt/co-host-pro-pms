@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, ownersTable, propertiesTable, reservationsTable, maintenanceTicketsTable, paymentsTable, insertOwnerSchema, ownerStatementsTable } from "@workspace/db";
+import { db, ownersTable, propertiesTable, reservationsTable, maintenanceTicketsTable, paymentsTable, insertOwnerSchema, ownerStatementsTable, ownerOtpTable } from "@workspace/db";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 
 const router = Router();
@@ -25,13 +25,25 @@ router.post("/owners", async (req, res) => {
 
 router.patch("/owners/:id", async (req, res) => {
   const id = parseInt(req.params.id);
-  const [row] = await db.update(ownersTable).set(req.body).where(eq(ownersTable.id, id)).returning();
+  const parsed = insertOwnerSchema.partial().safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+  if (!Object.keys(parsed.data).length) return res.status(400).json({ error: "Nothing to update" });
+  if (parsed.data.email) parsed.data.email = parsed.data.email.trim().toLowerCase();
+  const [row] = await db.update(ownersTable).set(parsed.data).where(eq(ownersTable.id, id)).returning();
   if (!row) return res.status(404).json({ error: "Not found" });
   res.json({ ...row, createdAt: row.createdAt.toISOString() });
 });
 
 router.delete("/owners/:id", async (req, res) => {
   const id = parseInt(req.params.id);
+  const [[property], [statement], [payment]] = await Promise.all([
+    db.select({ id: propertiesTable.id }).from(propertiesTable).where(eq(propertiesTable.ownerId, id)).limit(1),
+    db.select({ id: ownerStatementsTable.id }).from(ownerStatementsTable).where(eq(ownerStatementsTable.ownerId, id)).limit(1),
+    db.select({ id: paymentsTable.id }).from(paymentsTable).where(eq(paymentsTable.ownerId, id)).limit(1),
+  ]);
+  if (property) return res.status(409).json({ error: "Reassign or archive this owner's properties before deleting the owner." });
+  if (statement || payment) return res.status(409).json({ error: "This owner has statements or payouts on record, so the owner cannot be deleted." });
+  await db.delete(ownerOtpTable).where(eq(ownerOtpTable.ownerId, id));
   await db.delete(ownersTable).where(eq(ownersTable.id, id));
   res.status(204).send();
 });

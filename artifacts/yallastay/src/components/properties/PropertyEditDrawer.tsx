@@ -268,7 +268,7 @@ export function PropertyEditDrawer({ propertyId, onClose, onSaved, onDeleted }: 
     setDeleteError("");
     try {
       const res = await apiFetch(`${API_BASE}/api/properties/${propertyId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Delete failed");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Delete failed");
       onDeleted();
       onClose();
     } catch (err) {

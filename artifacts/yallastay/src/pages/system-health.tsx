@@ -127,13 +127,13 @@ export default function SystemHealth() {
   const deleteProperty = useMutation({
     mutationFn: async (id: number) => {
       const r = await apiFetch(`/api/properties/${id}`, { method: "DELETE" });
-      if (!r.ok) throw new Error("Delete failed");
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Delete failed");
     },
     onSuccess: () => {
       toast({ title: "Property deleted" });
       qc.invalidateQueries({ queryKey: ["system-health"] });
     },
-    onError: () => toast({ title: "Delete failed", variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
   });
 
   if (isLoading) {

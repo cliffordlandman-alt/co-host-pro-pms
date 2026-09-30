@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, propertiesTable, ownersTable, insertPropertySchema, appSettingsTable, importLogsTable } from "@workspace/db";
+import { db, propertiesTable, ownersTable, insertPropertySchema, appSettingsTable, importLogsTable, reservationsTable, cleaningTasksTable, maintenanceTicketsTable, paymentsTable, accountingTransactionsTable, ownerStatementsTable, airbnbEarningsTable, reviewsTable, documentsTable, propertySettingsTable, templatesTable } from "@workspace/db";
 import { eq, and, inArray, isNull, sql } from "drizzle-orm";
 import { syncPropertyIcal } from "../lib/sync-scheduler";
 import { insertAuditLog } from "../lib/audit";
@@ -198,6 +198,7 @@ router.patch("/properties/:id", asyncHandler(async (req, res) => {
   const body = req.body as Record<string, unknown>;
   if (body.airbnbIcalUrl)      syncPropertyIcal(id, "airbnb").catch(() => {});
   if (body.bookingComIcalUrl)  syncPropertyIcal(id, "booking_com").catch(() => {});
+  if (body.vrboIcalUrl)        syncPropertyIcal(id, "vrbo").catch(() => {});
 
   return res.json({ ...row, createdAt: row.createdAt.toISOString() });
 }));
@@ -205,7 +206,17 @@ router.patch("/properties/:id", asyncHandler(async (req, res) => {
 router.delete("/properties/:id", asyncHandler(async (req, res) => {
   const id = parseId(req.params.id);
   if (id === null) return res.status(400).json({ error: "Invalid id" });
-  await db.delete(propertiesTable).where(eq(propertiesTable.id, id));
+  // Never destroy operating or financial history: a property with any bookings, tasks or money records is archived instead.
+  const history = await Promise.all([reservationsTable, cleaningTasksTable, maintenanceTicketsTable, paymentsTable, accountingTransactionsTable, ownerStatementsTable, airbnbEarningsTable, reviewsTable, documentsTable]
+    .map(t => db.select({ id: t.id }).from(t as any).where(eq((t as any).propertyId, id)).limit(1)));
+  if (history.some(rows => rows.length)) return res.status(409).json({ error: "This property has bookings, tasks or financial records, so it cannot be deleted. Set its status to inactive to archive it instead." });
+  const deleted = await db.transaction(async tx => {
+    await tx.delete(propertySettingsTable).where(eq(propertySettingsTable.propertyId, id));
+    await tx.delete(templatesTable).where(eq(templatesTable.propertyId, id));
+    await tx.delete(appSettingsTable).where(eq(appSettingsTable.key, `ical_sync_${id}`));
+    return tx.delete(propertiesTable).where(eq(propertiesTable.id, id)).returning({ id: propertiesTable.id });
+  });
+  if (!deleted.length) return res.status(404).json({ error: "Not found" });
 
   await insertAuditLog({
     action: "delete",

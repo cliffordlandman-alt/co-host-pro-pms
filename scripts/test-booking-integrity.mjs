@@ -54,6 +54,23 @@ try {
   assert.equal(pnl.find(x => x.propertyId === p.id).revenue, verifiedAed); assert.equal(pnl.find(x => x.propertyId === zarProp.id).currency, 'ZAR');
   passed.push('channel/P&L revenue = verified, per currency, no blocks');
 
+  // History is never destroyed by deletes; empty records can still be removed.
+  await api(`/properties/${p.id}`, 'DELETE', undefined, 409);
+  await api(`/owners/${owner.id}`, 'DELETE', undefined, 409);
+  const spare = await api('/properties', 'POST', { name: 'Spare', unitNumber: 'S-1' }, 201);
+  await api(`/accounting/settings/${spare.id}`, 'PUT', { managementFeePercent: 15 }, 201);
+  await api(`/properties/${spare.id}`, 'DELETE', undefined, 204);
+  const cleaner = await api('/staff', 'POST', { name: 'Has history', role: 'cleaner', active: true }, 201);
+  const task = (await api('/cleaning')).find(t => t.reservationId === b.id);
+  await api(`/cleaning/${task.id}`, 'PATCH', { assignedToId: cleaner.id });
+  await api(`/staff/${cleaner.id}`, 'DELETE', undefined, 409);
+  await api(`/staff/${cleaner.id}`, 'PATCH', { active: false });
+  await api(`/staff/${cleaner.id}`, 'PATCH', { id: 999 }, 400);
+  await api(`/owners/${owner.id}`, 'PATCH', { id: 999 }, 400);
+  const lonely = await api('/owners', 'POST', { name: 'No properties' }, 201);
+  await api(`/owners/${lonely.id}`, 'DELETE', undefined, 204);
+  passed.push('deletes keep history; owner/staff edits validated');
+
   console.log('PASS: ' + passed.join('; '));
 } catch (e) { console.error(e); console.error(logs.slice(-4000)); process.exitCode = 1; }
 finally { child.kill('SIGTERM'); }
