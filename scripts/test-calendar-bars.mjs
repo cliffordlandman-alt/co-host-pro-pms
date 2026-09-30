@@ -1,6 +1,7 @@
 // Calendar bars: one continuous bar per stay per row, name once per row, round ends only at check-in/checkout.
 import assert from 'node:assert/strict';
 import { layoutBars } from '../artifacts/yallastay/src/lib/calendar-bars.ts';
+import { calendarBookingName, isChannelBlock } from '../artifacts/yallastay/src/lib/calendar-labels.ts';
 const week = d => Array.from({ length: 7 }, (_, i) => { const x = new Date(Date.UTC(2026, 8, d + i)); return x.toISOString().slice(0, 10); });
 const w3 = week(13), w4 = week(20); // Sun 13 - Sat 19 Sep, Sun 20 - Sat 26 Sep 2026
 const theriza = { id: 84, checkIn: '2026-09-15', checkOut: '2026-09-18' };
@@ -24,4 +25,12 @@ const clash = layoutBars([{ id: 5, checkIn: '2026-09-14', checkOut: '2026-09-17'
 assert.equal(clash.lanes, 2);
 // Outside the row or zero nights: nothing drawn.
 assert.equal(layoutBars([{ id: 7, checkIn: '2026-10-01', checkOut: '2026-10-03' }, { id: 8, checkIn: '2026-09-15', checkOut: '2026-09-15' }], w3).bars.length, 0);
-console.log('PASS: continuous bars, name once per row, round ends only at check-in/checkout, no fragments, lanes for overlaps');
+// Block labels: channel blocks say where they came from; manual blocks keep their own label; stays unchanged.
+assert.equal(calendarBookingName({ platform: 'airbnb', status: 'blocked', guestName: 'Airbnb blocked dates' }), 'Blocked on Airbnb');
+assert.equal(calendarBookingName({ platform: 'booking_com', status: 'blocked', guestName: 'Booking.com blocked dates' }), 'Blocked on Booking.com');
+assert.equal(calendarBookingName({ platform: 'vrbo', status: 'blocked' }), 'Blocked on Vrbo');
+assert.equal(calendarBookingName({ platform: 'some_channel', status: 'blocked' }), 'Blocked on Some channel');
+assert.equal(calendarBookingName({ platform: 'direct', status: 'blocked', guestName: 'Blocked: Owner stay' }), 'Blocked: Owner stay');
+assert.equal(isChannelBlock({ platform: 'direct', status: 'blocked' }), false);
+assert.equal(calendarBookingName({ platform: 'airbnb', status: 'confirmed', guestName: 'Theriza Le Roux' }), 'Theriza Le Roux');
+console.log('PASS: "Blocked on <channel>" labels, manual block labels kept; continuous bars, name once per row, round ends only at check-in/checkout, no fragments, lanes for overlaps');

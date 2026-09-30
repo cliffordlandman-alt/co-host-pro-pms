@@ -1,5 +1,5 @@
 import { ReservationMoney } from "@/components/ReservationMoney";
-import { CalendarBookingLabel, calendarBookingName } from "@/components/CalendarBookingLabel";
+import { CalendarBookingLabel, calendarBookingName, isBlock } from "@/components/CalendarBookingLabel";
 import { CalendarBarsOverlay } from "@/components/CalendarBars";
 import { layoutBars } from "@/lib/calendar-bars";
 import { useState, useMemo } from "react";
@@ -41,6 +41,9 @@ const PLATFORM_STYLES: Record<string, { bg: string; text: string; label: string 
   booking_com: { bg: "bg-emerald-600",  text: "text-white", label: "Booking.com" },
   direct:      { bg: "bg-emerald-600", text: "text-white", label: "Direct" },
 };
+
+// Blocked dates (channel "Not available" blocks and manual blocks) are grey and never count as stays.
+const BLOCK_STYLE = { bg: "bg-slate-500", text: "text-white", label: "Blocked" };
 
 type Reservation = import("@workspace/api-client-react").Reservation;
 
@@ -191,7 +194,7 @@ export default function Calendar() {
         laneHeight={laneHeight}
         barHeight={barHeight}
         onOpen={(res: any, e) => openDetail(res, e)}
-        look={(res: any) => { const st = PLATFORM_STYLES[res.platform] ?? PLATFORM_STYLES.direct; return { className: `${st.bg} ${st.text}` }; }}
+        look={(res: any) => { const st = isBlock(res) ? BLOCK_STYLE : PLATFORM_STYLES[res.platform] ?? PLATFORM_STYLES.direct; return { className: `${st.bg} ${st.text}` }; }}
         label={(res: any) => <CalendarBookingLabel booking={res} />}
         title={(res: any) => `${calendarBookingName(res)} · ${res.propertyName ?? ""} · ${res.checkIn} → ${res.checkOut}`}
         testId={(res: any) => `reservation-bar-${res.id}`}
@@ -216,7 +219,7 @@ export default function Calendar() {
         <div className="flex items-center gap-2 flex-wrap">
           {/* Platform legend */}
           <div className="flex items-center gap-2 mr-2">
-            {Object.entries(PLATFORM_STYLES).map(([key, s]) => (
+            {Object.entries({ ...PLATFORM_STYLES, blocked: BLOCK_STYLE }).map(([key, s]) => (
               <span key={key} className="flex items-center gap-1 text-xs">
                 <span className={`inline-block w-3 h-3 rounded-sm ${s.bg}`} />
                 {s.label}
@@ -469,7 +472,7 @@ export default function Calendar() {
             <DialogHeader>
               <div className="flex items-center justify-between">
                 <DialogTitle>
-                  {editMode ? "Edit Booking" : (detailRes as any).guestName}
+                  {editMode ? "Edit Booking" : calendarBookingName(detailRes as any)}
                 </DialogTitle>
                 <Badge className={`${PLATFORM_STYLES[(detailRes as any).platform]?.bg} ${PLATFORM_STYLES[(detailRes as any).platform]?.text} border-0`}>
                   {PLATFORM_STYLES[(detailRes as any).platform]?.label}
@@ -528,7 +531,7 @@ export default function Calendar() {
               <div className="space-y-3">
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
                   Are you sure you want to cancel this booking for{" "}
-                  <strong>{(detailRes as any).guestName}</strong>? This will remove it from the calendar.
+                  <strong>{calendarBookingName(detailRes as any)}</strong>? This will remove it from the calendar.
                 </div>
               </div>
             ) : (
