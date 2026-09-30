@@ -478,7 +478,7 @@ function SettingsTab() {
                   <h3 className="font-semibold text-sm">{s.propertyName}</h3>
                   {editing !== s.propertyId && (
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Mgmt {s.managementFeePercent}% · Airbnb {s.platformFeeAirbnb}% · Booking {s.platformFeeBookingCom}% · VAT {s.vatPercent}%
+                      Mgmt {s.managementFeePercent}% · Airbnb {s.platformFeeAirbnb}% · Booking {s.platformFeeBookingCom}% · Direct {s.platformFeeDirect}% · Vrbo {s.platformFeeVrbo ?? 0}% · VAT {s.vatEnabled ? `${s.vatPercent}%` : "off"} · Tourism {s.tourismEnabled ? s.tourismRate : "off"}
                     </p>
                   )}
                 </div>
@@ -500,6 +500,7 @@ function SettingsTab() {
                     { key: "platformFeeAirbnb", label: "Airbnb Fee %" },
                     { key: "platformFeeBookingCom", label: "Booking.com Fee %" },
                     { key: "platformFeeDirect", label: "Direct Fee %" },
+                    { key: "platformFeeVrbo", label: "Vrbo Fee %" },
                     { key: "vatPercent", label: "VAT %" },
                     { key: "tourismRate", label: "Tourism / bedroom / night" },
                   ].map(({ key, label }) => (

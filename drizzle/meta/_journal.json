@@ -64,6 +64,13 @@
       "when": 1790700005000,
       "tag": "0008_query_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790700006000,
+      "tag": "0009_vrbo_channel_fee",
+      "breakpoints": true
     }
   ]
 }

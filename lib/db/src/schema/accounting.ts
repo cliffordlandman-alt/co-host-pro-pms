@@ -14,6 +14,7 @@ export const propertySettingsTable = pgTable("property_settings", {
   platformFeeAirbnb: numeric("platform_fee_airbnb", { precision: 5, scale: 2 }).notNull().default("3"),
   platformFeeBookingCom: numeric("platform_fee_booking_com", { precision: 5, scale: 2 }).notNull().default("15"),
   platformFeeDirect: numeric("platform_fee_direct", { precision: 5, scale: 2 }).notNull().default("0"),
+  platformFeeVrbo: numeric("platform_fee_vrbo", { precision: 5, scale: 2 }).notNull().default("0"),
   ownerSplitPercent: numeric("owner_split_percent", { precision: 5, scale: 2 }).notNull().default("80"),
   vatPercent: numeric("vat_percent", { precision: 5, scale: 2 }).notNull().default("5"),
   includeCleaning: boolean("include_cleaning").notNull().default(true),

@@ -2,6 +2,7 @@ import { reservationFinancials } from "../../../../lib/reservation-financials.mj
 import { dubaiToday } from "../lib/dubai-date";
 import { airbnbEarningsTable } from "@workspace/db";
 import { bedroomCount, bookingFinance } from "../../../../lib/booking-finance.mjs";
+import { loadPropertyFeeSettings, ratesFromSettings } from "../lib/fee-config";
 import { Router } from "express";
 import { db, reservationsTable, propertiesTable, insertReservationSchema, cleaningTasksTable, propertySettingsTable, ownerStatementsTable, paymentsTable } from "@workspace/db";
 import { eq, and, ne, lt, gt, inArray } from "drizzle-orm";
@@ -68,23 +69,46 @@ function formatReservation(r: {
   };
 }
 
-async function prepareFinance(input: any) {
+// Rates and derived amounts are decided by the server, never taken from the browser.
+const SERVER_FINANCE_FIELDS = ["managementPercent", "managementAmount", "channelPercent", "channelAmount", "vatRate", "vatAmount", "tourismRate", "tourismFee", "tourismNights", "ownerAmount", "dubaiCharges"];
+
+/**
+ * Builds the booking's financial snapshot.
+ * - New calculation (new booking, first verification, property change, or refreshRates): rates come
+ *   from the property's fee settings (lib/fee-config.ts).
+ * - Editing an already verified booking: the rates snapshotted on that booking are kept, so a later
+ *   change to the property's fee settings never rewrites past bookings.
+ * The calculation itself (lib/booking-finance.mjs) is unchanged.
+ */
+async function prepareFinance(body: any, existing?: any) {
+  const refreshRates = body.refreshRates === true;
+  const tourismRoomsHint = body.tourismRooms;
+  const clean: any = { ...body };
+  for (const f of [...SERVER_FINANCE_FIELDS, "refreshRates", "tourismRooms"]) delete clean[f];
+  const input: any = { ...(existing ?? {}), ...clean };
   if (input.financeMode !== "inclusive-v1") return input;
-  const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, Number(input.propertyId)));
-  if (!property) throw new Error("Choose an existing property");
+  const loaded = await loadPropertyFeeSettings(db, Number(input.propertyId));
+  if (!loaded) throw new Error("Choose an existing property");
+  const { property, settings } = loaded;
   for (const field of ["checkIn", "checkOut"]) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input[field]) || new Date(input[field]).toISOString().slice(0,10) !== input[field]) throw new Error("Enter valid booking dates");
   }
   const nights = (Date.parse(input.checkOut)-Date.parse(input.checkIn))/86400000;
-  const dubai = input.dubaiCharges === undefined ? (input.tourismRooms != null ? Number(input.tourismRooms) > 0 : Number(input.vatRate) === 5) : input.dubaiCharges === true;
-  const rooms = bedroomCount(property) ?? Number(input.tourismRooms);
-  const finance = bookingFinance({total: input.grossAmount, managementPercent: input.managementPercent,
-    cleaningFee: input.cleaningFee ?? 0, nights, rooms, dubai,
-    vatRate: input.vatRate == null ? (dubai ? 5 : 0) : Number(input.vatRate),
-    tourismRate: input.tourismRate ?? 10, tourismEnabled: dubai,
-    channelPercent: input.channelPercent ?? 0});
+  const keepSnapshot = !refreshRates && existing?.financeMode === "inclusive-v1" && Number(existing.propertyId) === Number(input.propertyId) && existing.managementPercent != null;
+  const current = ratesFromSettings(settings, input.platform);
+  const rates = keepSnapshot ? {
+    managementPercent: Number(existing.managementPercent),
+    channelPercent: existing.platform === input.platform && existing.channelPercent != null ? Number(existing.channelPercent) : current.channelPercent,
+    vatRate: Number(existing.vatRate ?? 0),
+    tourismEnabled: Number(existing.tourismRooms) > 0,
+    tourismRate: Number(existing.tourismRate ?? current.tourismRate),
+  } : current;
+  const rooms = bedroomCount(property) ?? Number(tourismRoomsHint ?? existing?.tourismRooms);
+  const finance = bookingFinance({total: input.grossAmount, managementPercent: rates.managementPercent,
+    cleaningFee: input.cleaningFee ?? 0, nights, rooms, dubai: rates.tourismEnabled,
+    vatRate: rates.vatRate, tourismRate: rates.tourismRate, tourismEnabled: rates.tourismEnabled,
+    channelPercent: rates.channelPercent});
   const result = {...input, ...finance, nights};
-  delete result.dubaiCharges;
   for (const field of ["channelPercent", "channelAmount", "tourismRate", "revenue", "grossAmount", "managementPercent", "managementAmount", "tourismFee", "vatAmount", "vatRate", "ownerAmount", "cleaningFee", "balanceDue"]) {
     if (result[field] != null) result[field] = String(result[field]);
   }
@@ -111,6 +135,17 @@ router.get("/reservations", asyncHandler(async (req, res) => {
   const codes=[...new Set(rows.map(r=>r.externalId).filter((x):x is string=>!!x&&x.startsWith("airbnb:")).map(x=>x.slice(7)))];
   const earnings=codes.length?await db.select().from(airbnbEarningsTable).where(inArray(airbnbEarningsTable.confirmationCode,codes)):[];
   res.json(rows.map(r=>formatReservation(r,earnings)));
+}));
+
+// Rates the server will apply to a new calculation for this property and channel (read-only preview
+// for the booking forms; available to anyone who can create reservations).
+router.get("/reservations/rates", asyncHandler(async (req, res) => {
+  const propertyId = parseId(String(req.query.propertyId ?? ""));
+  if (propertyId === null) return res.status(400).json({ error: "Choose a property" });
+  const loaded = await loadPropertyFeeSettings(db, propertyId);
+  if (!loaded) return res.status(404).json({ error: "Property not found" });
+  const platform = String(req.query.platform || "direct");
+  return res.json({ propertyId, platform, currency: loaded.settings.currency || loaded.property.currency || "AED", ...ratesFromSettings(loaded.settings, platform) });
 }));
 
 router.get("/reservations/:id", asyncHandler(async (req, res) => {
@@ -199,7 +234,7 @@ router.patch("/reservations/:id", asyncHandler(async (req,res)=>{
  const [existing] = await db.select().from(reservationsTable).where(eq(reservationsTable.id,id));
  if (!existing) return res.status(404).json({error:"Not found"});
  try {
-  let input = validateBooking(await prepareFinance({...existing,...req.body}));
+  let input = validateBooking(await prepareFinance({...req.body}, existing));
   if (existing.financeMode === "inclusive-v1" && input.financeMode !== "inclusive-v1") throw new Error("Financial calculation cannot be removed");
   const total = Number(input.grossAmount ?? input.revenue ?? 0);
   const previousPaid = Math.max(0,Number(existing.grossAmount ?? existing.revenue)-Number(existing.balanceDue ?? 0));

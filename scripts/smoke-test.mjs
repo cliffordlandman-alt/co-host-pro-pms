@@ -42,6 +42,8 @@ try {
  assert.equal(bookingFinance({total:10500,managementPercent:0,nights:40,rooms:1,dubai:true}).tourismFee,300);
  assert.throws(()=>bookingFinance({total:10,managementPercent:20,nights:3,rooms:2,dubai:true}));
  const prop2=await request('/properties','POST',{name:'Sample Dubai 2 Bedroom',unitNumber:'TEST-202',ownerId:owner.id,bedrooms:2,city:'Dubai',currency:'AED'},201);
+ // Rates come from the property's fee settings (the server ignores rates sent with the booking).
+ await request('/accounting/settings/'+prop2.id,'PUT',{managementFeePercent:20,platformFeeDirect:3,tourismEnabled:true,tourismRate:10,vatEnabled:true,vatPercent:5},201);
  const payload={propertyId:prop2.id,guestName:'Sample Guest',guestEmail:'guest@example.invalid',checkIn:'2026-09-29',checkOut:'2026-10-02',status:'confirmed',platform:'direct',financeMode:'inclusive-v1',grossAmount:1110,managementPercent:20,cleaningFee:100,dubaiCharges:true,channelPercent:3};
  const b=await request('/reservations','POST',payload,201);
  assert.equal(b.ownerAmount,670);assert.equal(b.balanceDue,1110);
@@ -74,10 +76,12 @@ try {
  const october=await request('/accounting/statements/generate','POST',{month:'2026-10'});
  const statement=october.statements.find(s=>s.propertyId===prop2.id);
  assert.equal(Number(statement.vatAmount),50);assert.equal(Number(statement.tourismFee),60);assert.equal(Number(statement.ownerPayout),645); // Repair recognized in its actual completion month.
- await request('/reservations/'+b.id,'PATCH',{managementPercent:25});
+ await request('/accounting/settings/'+prop2.id,'PUT',{managementFeePercent:25});
+ await request('/reservations/'+b.id,'PATCH',{refreshRates:true});
  assert.equal((await request('/accounting/statements?month=2026-10')).find(s=>s.id===statement.id).ownerPayout,595);
  assert.equal((await request('/reservations/'+b.id)).financials.managementAmount,250);
- await request('/reservations/'+b.id,'PATCH',{managementPercent:20});
+ await request('/accounting/settings/'+prop2.id,'PUT',{managementFeePercent:20});
+ await request('/reservations/'+b.id,'PATCH',{refreshRates:true});
  assert.equal((await request('/accounting/statements?month=2026-10')).find(s=>s.id===statement.id).ownerPayout,645);
  await request('/accounting/statements/'+statement.id,'PATCH',{status:'sent'});
  await request('/accounting/statements/'+statement.id,'PATCH',{status:'paid'});

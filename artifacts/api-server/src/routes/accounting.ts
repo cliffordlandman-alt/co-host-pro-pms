@@ -18,6 +18,7 @@ import {
 import { eq, and, gte, lte, ne, sql, inArray } from "drizzle-orm";
 import { asyncHandler } from "../lib/asyncHandler";
 import { parseId } from "../lib/parseId";
+import { defaultFeeSettings } from "../lib/fee-config";
 
 const router = Router();
 
@@ -34,6 +35,7 @@ const accountingSettingsSchema = z.object({
   platformFeeAirbnb: toDecimalStr,
   platformFeeBookingCom: toDecimalStr,
   platformFeeDirect: toDecimalStr,
+  platformFeeVrbo: toDecimalStr,
   ownerSplitPercent: toDecimalStr,
   vatPercent: toDecimalStr,
   includeCleaning: z.boolean().optional(),
@@ -56,6 +58,7 @@ router.get("/accounting/settings", asyncHandler(async (_req, res) => {
       platformFeeAirbnb: propertySettingsTable.platformFeeAirbnb,
       platformFeeBookingCom: propertySettingsTable.platformFeeBookingCom,
       platformFeeDirect: propertySettingsTable.platformFeeDirect,
+      platformFeeVrbo: propertySettingsTable.platformFeeVrbo,
       ownerSplitPercent: propertySettingsTable.ownerSplitPercent,
       vatPercent: propertySettingsTable.vatPercent,
       includeCleaning: propertySettingsTable.includeCleaning,
@@ -68,21 +71,7 @@ router.get("/accounting/settings", asyncHandler(async (_req, res) => {
   const allProps = await db.select().from(propertiesTable);
   const withSettings = allProps.map(p => {
     const s = rows.find(r => r.propertyId === p.id);
-    return s ?? {
-      id: null,
-      propertyId: p.id,
-      propertyName: p.name,
-      tourismRate: "10", tourismEnabled: /dubai/i.test(p.city || ""), vatEnabled: /dubai/i.test(p.city || ""),
-      managementFeePercent: p.managementFee || "20",
-      platformFeeAirbnb: "3",
-      platformFeeBookingCom: "15",
-      platformFeeDirect: "0",
-      ownerSplitPercent: "80",
-      vatPercent: "5",
-      includeCleaning: true,
-      includeMaintenance: true,
-      currency: p.currency || "AED",
-    };
+    return s ?? { ...defaultFeeSettings(p), propertyName: p.name };
   });
 
   res.json(withSettings.map(r => ({
@@ -91,6 +80,7 @@ router.get("/accounting/settings", asyncHandler(async (_req, res) => {
     platformFeeAirbnb: parseFloat(r.platformFeeAirbnb || "3"),
     platformFeeBookingCom: parseFloat(r.platformFeeBookingCom || "15"),
     platformFeeDirect: parseFloat(r.platformFeeDirect || "0"),
+    platformFeeVrbo: parseFloat(r.platformFeeVrbo || "0"),
     ownerSplitPercent: parseFloat(r.ownerSplitPercent || "80"),
     vatPercent: parseFloat(r.vatPercent || "5"),
   })));

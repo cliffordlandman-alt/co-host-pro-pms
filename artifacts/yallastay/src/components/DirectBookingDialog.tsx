@@ -26,9 +26,7 @@ const directBookingSchema = z
     checkOut: z.string().min(1, "Check-out date is required"),
     revenue: z.string().regex(/^\d+(\.\d{1,2})?$/, "Enter a non-negative amount with up to 2 decimal places"),
     cleaningFee: z.string().regex(/^(\d+(\.\d{1,2})?)?$/, "Enter a non-negative amount with up to 2 decimal places").optional(),
-    managementPercent: z.string().min(1, "Enter the company percentage"),
     tourismRooms: z.string(),
-    dubaiCharges: z.boolean(),
     notes: z.string().optional(),
   })
   .refine((data) => data.checkOut > data.checkIn, {
@@ -55,7 +53,7 @@ export function DirectBookingDialog({
   const queryClient = useQueryClient();
   const { data: properties } = useGetProperties();
   const createReservation = useCreateReservation();
-  const {data:feeSettings} = useQuery({queryKey:["acc-settings"], queryFn:async()=>{const r=await apiFetch('/api/accounting/settings'); if(!r.ok) return []; return r.json();}});
+
 
   function getDefaults() {
     const today = format(new Date(), "yyyy-MM-dd");
@@ -76,7 +74,7 @@ export function DirectBookingDialog({
       ...getDefaults(),
       revenue: "",
       cleaningFee: "",
-      managementPercent: "", tourismRooms: "", dubaiCharges: false,
+      tourismRooms: "",
       notes: "",
     },
   });
@@ -89,7 +87,7 @@ export function DirectBookingDialog({
         ...getDefaults(),
         revenue: "",
         cleaningFee: "",
-        managementPercent: "", tourismRooms: "", dubaiCharges: false,
+        tourismRooms: "",
       notes: "",
       });
     }
@@ -98,21 +96,23 @@ export function DirectBookingDialog({
   const watched = form.watch();
   const property = properties?.find(p => String(p.id) === watched.propertyId) as any;
   const knownRooms = bedroomCount(property);
-  const rules = feeSettings?.find((s:any)=>s.propertyId===property?.id);
+  // Rates are shown read-only: the server applies this property's fee settings to every booking.
+  const { data: rates, error: ratesError } = useQuery<any>({
+    queryKey: ["booking-rates", property?.id, "direct"], enabled: !!property?.id,
+    queryFn: async () => { const r = await apiFetch(`/api/reservations/rates?propertyId=${property.id}&platform=direct`); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Could not load this property's fee settings"); return r.json(); },
+  });
   useEffect(() => {
-    form.setValue("dubaiCharges", rules?.tourismEnabled ?? /dubai/i.test(property?.city || ""));
-    form.setValue("managementPercent", String(rules?.managementFeePercent ?? property?.managementFee ?? ""));
     form.setValue("cleaningFee", String(property?.cleaningFee ?? ""));
     form.setValue("tourismRooms", knownRooms == null ? "" : String(knownRooms));
-  }, [open, watched.propertyId, property?.city, knownRooms, rules?.propertyId, rules?.managementFeePercent]);
+  }, [open, watched.propertyId, knownRooms]);
   let breakdown: any = null;
   let calculationError = "";
   try {
-    breakdown = bookingFinance({ total: watched.revenue, managementPercent: watched.managementPercent,
+    if (!rates) throw new Error(ratesError ? (ratesError as Error).message : "Loading this property's fee settings…");
+    breakdown = bookingFinance({ total: watched.revenue, managementPercent: rates.managementPercent,
       cleaningFee: watched.cleaningFee || 0, nights: differenceInCalendarDays(parseISO(watched.checkOut), parseISO(watched.checkIn)),
-      rooms: knownRooms ?? Number(watched.tourismRooms), dubai: watched.dubaiCharges,
-      vatRate: rules ? (rules.vatEnabled ? rules.vatPercent : 0) : watched.dubaiCharges ? 5 : 0,
-      tourismRate: rules?.tourismRate ?? 10, channelPercent: rules?.platformFeeDirect ?? 0 });
+      rooms: knownRooms ?? Number(watched.tourismRooms), dubai: rates.tourismEnabled,
+      vatRate: rates.vatRate, tourismRate: rates.tourismRate, tourismEnabled: rates.tourismEnabled, channelPercent: rates.channelPercent });
   } catch (error) { calculationError = (error as Error).message; }
   const money = (n: number) => `${property?.currency || "AED"} ${n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
 
@@ -131,9 +131,9 @@ export function DirectBookingDialog({
           checkIn: values.checkIn,
           checkOut: values.checkOut,
           nights: Math.max(nights, 1),
-          ...breakdown,
-          dubaiCharges: values.dubaiCharges,
-          revenue: breakdown.revenue,
+          financeMode: "inclusive-v1",
+          grossAmount: parseFloat(values.revenue),
+          tourismRooms: knownRooms == null && values.tourismRooms ? Number(values.tourismRooms) : undefined,
           cleaningFee: values.cleaningFee ? parseFloat(values.cleaningFee) : null,
           balanceDue: parseFloat(values.revenue),
           paymentStatus: "pending",
@@ -260,19 +260,17 @@ export function DirectBookingDialog({
               />
             </div>
 
-            <FormField control={form.control} name="managementPercent" render={({field}) => (
-              <FormItem><FormLabel>Company management fee (%)</FormLabel><FormControl><Input type="number" min="0" max="100" step="0.01" placeholder="e.g. 20" {...field}/></FormControl><FormMessage/></FormItem>
-            )}/>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" {...form.register("dubaiCharges")}/>Tourism Dirham enabled</label>
-            {watched.dubaiCharges && <div className="text-sm space-y-2">
-              {knownRooms == null ? <FormField control={form.control} name="tourismRooms" render={({field}) => (
+            {rates && <div className="text-sm space-y-2 rounded-lg border p-3">
+              <p className="font-medium">Rates from this property’s fee settings</p>
+              <p className="text-muted-foreground">Management {rates.managementPercent}% · Direct channel {rates.channelPercent}% · VAT {rates.vatRate}% · Tourism Dirham {rates.tourismEnabled ? `${property?.currency || "AED"} ${rates.tourismRate} per room per night (max 30 nights)` : "off"}</p>
+              {rates.tourismEnabled && knownRooms == null && <FormField control={form.control} name="tourismRooms" render={({field}) => (
                 <FormItem><FormLabel>Bedrooms (studio = 1)</FormLabel><FormControl><Input type="number" min="1" step="1" {...field}/></FormControl><FormMessage/></FormItem>
-              )}/> : <p>{knownRooms} {knownRooms === 1 ? "room" : "rooms"} × AED 10 per night · maximum 30 nights</p>}
-              <p className="text-xs text-muted-foreground">Tourism is removed first. VAT is extracted from the remaining total using this property’s fee settings.</p>
+              )}/>}
+              <p className="text-xs text-muted-foreground">To change these rates, edit the property under Accounting → Fee settings. Tourism is removed first, then VAT is extracted from the remaining total.</p>
             </div>}
             {breakdown ? <div className="rounded-lg bg-muted/50 p-4 text-sm space-y-2" aria-live="polite">
               {[["Guest total", breakdown.grossAmount], ["Tourism fee", breakdown.tourismFee], [`VAT (${breakdown.vatRate}%) included`, breakdown.vatAmount], ["Net booking revenue", breakdown.revenue], [`Company share (${breakdown.managementPercent}%)`, breakdown.managementAmount], ["Channel deduction", breakdown.channelAmount], ["Cleaning deduction", Number(watched.cleaningFee || 0)], ["Owner receives", breakdown.ownerAmount]].map(([label,value]) => <div className="flex justify-between gap-3" key={String(label)}><span>{label}</span><strong>{money(Number(value))}</strong></div>)}
-            </div> : watched.revenue && watched.managementPercent ? <p role="alert" className="text-sm text-red-600">{calculationError}</p> : null}
+            </div> : watched.revenue && watched.propertyId ? <p role="alert" className="text-sm text-red-600">{calculationError}</p> : null}
 
             <FormField
               control={form.control}

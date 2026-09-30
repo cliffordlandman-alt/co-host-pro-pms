@@ -91,6 +91,23 @@ try {
   token = admin;
   passed.push('cleaner email case-insensitive');
 
+  // Rates come from the property's fee settings, never from the browser; verified bookings keep their snapshot.
+  const rp = await api('/properties', 'POST', { name: 'Rates 2BR', unitNumber: 'R-2', ownerId: owner.id, bedrooms: 2, city: 'Dubai', currency: 'AED' }, 201);
+  await api(`/accounting/settings/${rp.id}`, 'PUT', { managementFeePercent: 20, platformFeeBookingCom: 15, platformFeeVrbo: 8, tourismRate: 10, tourismEnabled: true, vatEnabled: true, vatPercent: 5 }, 201);
+  const preview = await api(`/reservations/rates?propertyId=${rp.id}&platform=booking_com`);
+  assert.deepEqual([preview.managementPercent, preview.channelPercent, preview.vatRate, preview.tourismEnabled, preview.tourismRate], [20, 15, 5, true, 10]);
+  const forged = await api('/reservations', 'POST', { propertyId: rp.id, guestName: 'Forged rates', platform: 'booking_com', status: 'confirmed', financeMode: 'inclusive-v1', grossAmount: 3300, cleaningFee: 200, checkIn: '2031-01-01', checkOut: '2031-01-04',
+    managementPercent: 1, channelPercent: 0, vatRate: 0, tourismRate: 0, dubaiCharges: false, managementAmount: 1, ownerAmount: 3000, vatAmount: 0 }, 201);
+  assert.deepEqual([forged.managementPercent, forged.channelPercent, forged.vatRate, forged.tourismFee, forged.ownerAmount], [20, 15, 5, 60, 1805.71], 'client-sent rates are ignored');
+  const vr = await api('/reservations', 'POST', { propertyId: rp.id, guestName: 'Vrbo guest', platform: 'vrbo', status: 'confirmed', financeMode: 'inclusive-v1', grossAmount: 1000, cleaningFee: 0, checkIn: '2031-02-01', checkOut: '2031-02-02' }, 201);
+  assert.equal(vr.channelPercent, 8, 'Vrbo uses its own channel fee');
+  await api(`/accounting/settings/${rp.id}`, 'PUT', { managementFeePercent: 25 });
+  const edited = await api(`/reservations/${forged.id}`, 'PATCH', { grossAmount: 3300, managementPercent: 99, notes: 'edited' });
+  assert.equal(edited.managementPercent, 20, 'verified booking keeps its snapshot rate after the property rate changes');
+  const refreshed = await api(`/reservations/${forged.id}`, 'PATCH', { refreshRates: true });
+  assert.equal(refreshed.managementPercent, 25, 'explicit re-apply uses the current property rate');
+  passed.push('server-authoritative rates + booking snapshot');
+
   console.log('PASS: ' + passed.join('; '));
 } catch (e) { console.error(e); console.error(logs.slice(-4000)); process.exitCode = 1; }
 finally { child.kill('SIGTERM'); }
