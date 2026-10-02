@@ -1,5 +1,6 @@
 import { CompanyFinance } from "@/components/CompanyFinance";
 import { EntryDialog } from "@/components/EntryDialog";
+import { printStatement } from "@/lib/print-statement";
 import { CleaningCostSettings } from "@/components/CleaningCostSettings";
 import { apiFetch } from "@/lib/api-fetch";
 import { Pager, usePagedList } from "@/components/Pager";
@@ -155,7 +156,7 @@ function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id
               </div>
             </div>
 
-            {stmt.bookingDetails && <div className="sm:col-span-2 overflow-x-auto"><p className="text-xs text-muted-foreground mb-2">Bookings recognized in checkout month</p><table className="w-full text-xs"><thead><tr>{["Guest","Dates","Total","VAT","Tourism","Company","Owner"].map(h=><th className="text-left p-2" key={h}>{h}</th>)}</tr></thead><tbody>{JSON.parse(stmt.bookingDetails).map((r:any)=><tr key={r.id} className="border-t"><td className="p-2">{r.guestName}</td><td className="p-2 whitespace-nowrap">{r.checkIn} → {r.checkOut}</td>{["grossAmount","vatAmount","tourismFee","managementAmount","ownerAmount"].map(k=><td className="p-2 whitespace-nowrap" key={k}>{aed(Number(r[k]),stmt.currency || "AED")}</td>)}</tr>)}</tbody></table><p className="text-xs text-muted-foreground mt-2">{stmt.notes}</p><Button size="sm" variant="outline" className="mt-2" onClick={()=>window.print()}>Print / Save PDF</Button></div>}
+            {stmt.bookingDetails && <div className="sm:col-span-2 overflow-x-auto"><p className="text-xs text-muted-foreground mb-2">Bookings recognized in checkout month</p><table className="w-full text-xs"><thead><tr>{["Guest","Dates","Total","VAT","Tourism","Company","Owner"].map(h=><th className="text-left p-2" key={h}>{h}</th>)}</tr></thead><tbody>{JSON.parse(stmt.bookingDetails).map((r:any)=><tr key={r.id} className="border-t"><td className="p-2">{r.guestName}</td><td className="p-2 whitespace-nowrap">{r.checkIn} → {r.checkOut}</td>{["grossAmount","vatAmount","tourismFee","managementAmount","ownerAmount"].map(k=><td className="p-2 whitespace-nowrap" key={k}>{aed(Number(r[k]),stmt.currency || "AED")}</td>)}</tr>)}</tbody></table><p className="text-xs text-muted-foreground mt-2">{stmt.notes}</p><Button size="sm" variant="outline" className="mt-2" onClick={async()=>{const rows=stmt.otherExpenses>0?(ownerLines??(await f(`/api/accounting/transactions?month=${stmt.month}&propertyId=${stmt.propertyId}`)).filter((r:any)=>r.type==="expense"&&r.allocation==="owner")):[];printStatement(stmt,rows);}}>Print / Save PDF</Button></div>}
             {/* Actions */}
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</p>
