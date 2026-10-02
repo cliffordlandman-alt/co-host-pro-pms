@@ -13,13 +13,8 @@ import {
 import { format } from "date-fns";
 import { useAuth } from "@/contexts/auth-context";
 import logoPath from "../assets/yallastay-logo.png";
+import { channelColor } from "@/lib/channel-colors";
 
-const PLATFORM_COLORS: Record<string, string> = {
-  airbnb:      "bg-red-500",
-  booking_com: "bg-blue-600",
-  direct:      "bg-emerald-500",
-  vrbo:        "bg-sky-600",
-};
 
 function aed(n: number) {
   return `AED ${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
@@ -28,7 +23,7 @@ function aed(n: number) {
 function GuestRow({ guest, type }: { guest: any; type: "in" | "out" }) {
   return (
     <div className="flex items-center gap-3 py-2.5 border-b last:border-0">
-      <div className={`w-1.5 h-8 rounded-full flex-shrink-0 ${PLATFORM_COLORS[guest.platform] ?? "bg-muted"}`} />
+      <div className="w-1.5 h-8 rounded-full flex-shrink-0" style={{ background: channelColor(guest).bg }} />
       <div className="flex-1 min-w-0">
         <div className="font-medium text-sm leading-tight">{guest.guestName}</div>
         <div className="text-xs text-muted-foreground truncate">{guest.propertyName} · {guest.unitNumber}</div>
@@ -295,7 +290,7 @@ export default function Dashboard() {
               <div className="space-y-1.5">
                 {apiUpcoming.map((r: any) => (
                   <div key={r.id} className="flex items-center gap-2.5 py-1.5">
-                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PLATFORM_COLORS[r.platform] ?? "bg-muted"}`} />
+                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: channelColor(r).bg }} />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium leading-tight truncate">{r.guestName}</div>
                       <div className="text-xs text-muted-foreground truncate">{r.propertyName}</div>

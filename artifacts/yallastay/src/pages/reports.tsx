@@ -11,6 +11,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { TrendingUp, DollarSign, Home, Percent } from "lucide-react";
+import { platformColor, platformLabel } from "@/lib/channel-colors";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -20,8 +21,7 @@ async function fetchJson(path: string) {
   return res.json();
 }
 
-const COLORS = ["#ef4444", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6"];
-const PLATFORM_LABELS: Record<string, string> = { airbnb: "Airbnb", booking_com: "Booking.com", direct: "Direct" };
+// Channel slices use the shared channel colours (lib/channel-colors.ts), so Airbnb is coral here too.
 
 function formatMoney(n: number, currency="AED") {
   return `${currency} ${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -122,16 +122,16 @@ export default function Reports() {
                 <ResponsiveContainer width="55%" height={180}>
                   <PieChart>
                     <Pie data={platforms} dataKey="count" nameKey="platform" cx="50%" cy="50%" outerRadius={70} label={false}>
-                      {platforms?.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                      {platforms?.map((p: any) => <Cell key={p.platform} fill={platformColor(p.platform).bg} />)}
                     </Pie>
-                    <Tooltip formatter={(v: any, name: any) => [v, PLATFORM_LABELS[name] ?? name]} />
+                    <Tooltip formatter={(v: any, name: any) => [v, platformLabel(name)]} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="flex flex-col gap-2">
-                  {platforms?.map((p: any, i: number) => (
+                  {platforms?.map((p: any) => (
                     <div key={p.platform} className="flex items-center gap-2 text-sm">
-                      <span className="w-3 h-3 rounded-sm inline-block flex-shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
-                      <span className="text-muted-foreground">{PLATFORM_LABELS[p.platform] ?? p.platform}</span>
+                      <span className="w-3 h-3 rounded-sm inline-block flex-shrink-0" style={{ background: platformColor(p.platform).bg }} />
+                      <span className="text-muted-foreground">{platformLabel(p.platform)}</span>
                       <Badge variant="secondary" className="ml-auto">{p.count}</Badge>
                     </div>
                   ))}

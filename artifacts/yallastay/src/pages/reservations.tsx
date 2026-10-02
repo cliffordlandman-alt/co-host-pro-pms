@@ -14,13 +14,8 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { entryBadgeLabel, entryBadgeStyle } from "@/lib/channel-colors";
 
-const PLATFORM_STYLES: Record<string, { bg: string; text: string; label: string; dot: string }> = {
-  airbnb:      { bg: "bg-red-100 dark:bg-red-950", text: "text-red-700 dark:text-red-300", label: "Airbnb", dot: "bg-red-500" },
-  booking_com: { bg: "bg-blue-100 dark:bg-blue-950", text: "text-blue-700 dark:text-blue-300", label: "Booking.com", dot: "bg-blue-500" },
-  direct:      { bg: "bg-emerald-100 dark:bg-emerald-950", text: "text-emerald-700 dark:text-emerald-300", label: "Direct", dot: "bg-emerald-500" },
-  expedia:     { bg: "bg-amber-100 dark:bg-amber-950", text: "text-amber-700 dark:text-amber-300", label: "Expedia", dot: "bg-amber-500" },
-};
 
 const STATUS_STYLES: Record<string, { label: string; cls: string }> = {
   confirmed:   { label: "Confirmed",   cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" },
@@ -200,7 +195,6 @@ export default function Reservations() {
                   </td>
                 </tr>
               ) : filtered.map(res => {
-                const plat = PLATFORM_STYLES[res.platform] ?? PLATFORM_STYLES.direct;
                 const st = STATUS_STYLES[res.status] ?? STATUS_STYLES.confirmed;
                 const pay = PAYMENT_STYLES[res.paymentStatus] ?? PAYMENT_STYLES.pending;
                 const clean = CLEANING_STYLES[res.cleaningStatus] ?? CLEANING_STYLES.not_started;
@@ -246,8 +240,8 @@ export default function Reservations() {
                       </div>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
-                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${plat.bg} ${plat.text}`}>
-                        {plat.label}
+                      <span className="text-xs font-medium px-2 py-1 rounded-full border whitespace-nowrap" style={entryBadgeStyle(res)}>
+                        {entryBadgeLabel(res)}
                       </span>
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell">

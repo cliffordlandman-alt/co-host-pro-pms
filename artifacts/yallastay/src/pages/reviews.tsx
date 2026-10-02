@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Star, MessageSquare, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO } from "date-fns";
+import { badgeStyle } from "@/lib/channel-colors";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -22,11 +23,7 @@ async function fetchJson(path: string) {
   return res.json();
 }
 
-const PLATFORM_STYLES: Record<string, string> = {
-  airbnb: "bg-red-100 text-red-700 border-red-200",
-  booking_com: "bg-blue-100 text-blue-700 border-blue-200",
-  direct: "bg-emerald-100 text-emerald-700 border-emerald-200",
-};
+// Channel badge colours come from the shared map in lib/channel-colors.ts.
 const PLATFORM_LABELS: Record<string, string> = { airbnb: "Airbnb", booking_com: "Booking.com", direct: "Direct" };
 
 function StarRating({ rating }: { rating: number }) {
@@ -108,7 +105,7 @@ export default function Reviews() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="font-semibold">{r.guestName}</span>
-                      <Badge className={`text-xs border ${PLATFORM_STYLES[r.platform] ?? ""}`}>{PLATFORM_LABELS[r.platform] ?? r.platform}</Badge>
+                      <Badge className="text-xs border" style={badgeStyle(r.platform)}>{PLATFORM_LABELS[r.platform] ?? r.platform}</Badge>
                       <span className="text-xs text-muted-foreground">{r.propertyName}</span>
                     </div>
                     <StarRating rating={r.rating} />

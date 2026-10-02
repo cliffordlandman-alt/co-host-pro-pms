@@ -19,6 +19,7 @@ import {
 } from "date-fns";
 import logoPath from "../assets/yallastay-logo.png";
 import { useToast } from "@/hooks/use-toast";
+import { CHANNEL_COLORS, LEGEND, barStyle, channelColor } from "@/lib/channel-colors";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const fj = async (url: string, opts?: RequestInit) => {
@@ -32,11 +33,6 @@ function aed(n: number, currency="AED") {
   return `${currency} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-const PLATFORM_STYLES: Record<string, { bg: string; label: string }> = {
-  airbnb:      { bg: "bg-red-500",     label: "Airbnb" },
-  booking_com: { bg: "bg-blue-500",    label: "Booking.com" },
-  direct:      { bg: "bg-emerald-500", label: "Direct" },
-};
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   draft: { label: "Draft",  color: "bg-slate-100 text-slate-700 border-slate-200" },
@@ -93,10 +89,10 @@ function OwnerCalendar({ properties }: { properties: any[] }) {
 
       {/* Legend */}
       <div className="flex items-center gap-4 flex-wrap">
-        {Object.entries(PLATFORM_STYLES).map(([k, s]) => (
+        {LEGEND.map(k => (
           <span key={k} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className={`inline-block w-3 h-3 rounded-sm ${s.bg}`} />
-            {s.label}
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ background: CHANNEL_COLORS[k].bg }} />
+            {CHANNEL_COLORS[k].label}
           </span>
         ))}
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -147,7 +143,7 @@ function OwnerCalendar({ properties }: { properties: any[] }) {
                 </td>
                 {days.map(day => {
                   const res = getCell(prop.id, day);
-                  const style = res ? (PLATFORM_STYLES[res.platform] ?? PLATFORM_STYLES.direct) : null;
+                  const style = res ? barStyle(res) : null;
                   const isCI = res ? isSameDay(parseISO(res.checkIn), day) : false;
 
                   return (
@@ -158,9 +154,9 @@ function OwnerCalendar({ properties }: { properties: any[] }) {
                       {res && style ? (
                         <div
                           title={`${res.guestName} · ${res.checkIn} → ${res.checkOut}`}
+                          style={style}
                           className={[
-                            "h-6 mx-0.5 flex items-center justify-center text-[10px] font-medium text-white px-1 truncate",
-                            style.bg,
+                            "h-6 mx-0.5 flex items-center justify-center text-[10px] font-medium px-1 truncate",
                             isCI ? "rounded-l-full ml-1" : "",
                             res.checkOut === format(new Date(new Date(day).setDate(day.getDate() + 1)), "yyyy-MM-dd") ? "rounded-r-full mr-1" : "",
                           ].join(" ")}
@@ -194,7 +190,7 @@ function OwnerCalendar({ properties }: { properties: any[] }) {
               {upcoming.map((r: any) => (
                 <div key={r.id} className="flex items-center justify-between gap-3 bg-card border rounded-lg px-4 py-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-2 h-8 rounded-full flex-shrink-0 ${PLATFORM_STYLES[r.platform]?.bg ?? "bg-muted"}`} />
+                    <div className="w-2 h-8 rounded-full flex-shrink-0" style={{ background: channelColor(r).bg }} />
                     <div className="min-w-0">
                       <div className="font-medium text-sm">{r.guestName}</div>
                       <div className="text-xs text-muted-foreground">{r.propertyName ?? properties.find((p: any) => p.id === r.propertyId)?.name}</div>

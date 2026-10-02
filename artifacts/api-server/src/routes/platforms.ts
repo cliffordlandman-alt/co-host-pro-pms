@@ -6,11 +6,12 @@ import { syncPropertyIcal } from "../lib/sync-scheduler";
 
 const router = Router();
 
+// Same colours as the web app's shared map (artifacts/yallastay/src/lib/channel-colors.ts), which the UI uses.
 const PLATFORM_META: Record<string, { label: string; color: string }> = {
   airbnb:      { label: "Airbnb",          color: "#FF5A5F" },
   booking_com: { label: "Booking.com",     color: "#003580" },
-  vrbo:        { label: "Vrbo",            color: "#195591" },
-  direct:      { label: "Direct Bookings", color: "#10b981" },
+  vrbo:        { label: "Vrbo",            color: "#14B8A6" },
+  direct:      { label: "Direct Bookings", color: "#15803D" },
   expedia:     { label: "Expedia",         color: "#FFC107" },
 };
 

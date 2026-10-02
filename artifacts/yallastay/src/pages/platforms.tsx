@@ -20,6 +20,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
 } from "recharts";
+import { platformColor } from "@/lib/channel-colors";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const fj = async (url: string, opts?: RequestInit) => {
@@ -28,28 +29,28 @@ const fj = async (url: string, opts?: RequestInit) => {
   return res.json();
 };
 
+// Channel colours come from the shared map in lib/channel-colors.ts.
 const PLATFORM_CONFIG: Record<string, {
-  label: string; color: string; bgClass: string; textClass: string;
-  borderClass: string; logoSvg?: string; icalField?: string; listingField?: string;
+  label: string; logoSvg?: string; icalField?: string; listingField?: string;
   icalFieldLabel?: string; listingFieldLabel?: string;
 }> = {
   airbnb: {
-    label: "Airbnb", color: "#FF5A5F", bgClass: "bg-[#FF385C]", textClass: "text-[#FF385C]", borderClass: "border-red-200",
+    label: "Airbnb",
     icalField: "airbnbIcalUrl", listingField: "airbnbListingId",
     icalFieldLabel: "Airbnb iCal Export URL", listingFieldLabel: "Listing ID",
   },
   booking_com: {
-    label: "Booking.com", color: "#003580", bgClass: "bg-blue-700", textClass: "text-blue-700", borderClass: "border-blue-200",
+    label: "Booking.com",
     icalField: "bookingComIcalUrl", listingField: "bookingComPropertyId",
     icalFieldLabel: "Booking.com iCal URL", listingFieldLabel: "Property ID",
   },
   vrbo: {
-    label: "Vrbo", color: "#195591", bgClass: "bg-sky-600", textClass: "text-sky-700", borderClass: "border-sky-200",
+    label: "Vrbo",
     icalField: "vrboIcalUrl", listingField: "vrboListingId",
     icalFieldLabel: "Vrbo iCal URL", listingFieldLabel: "Listing ID",
   },
   direct: {
-    label: "Direct", color: "#10b981", bgClass: "bg-emerald-500", textClass: "text-emerald-600", borderClass: "border-emerald-200",
+    label: "Direct",
   },
 };
 
@@ -125,7 +126,7 @@ function ConnectionDialog({ open, onClose, property, platformKey }: {
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <span className="font-bold" style={{ color: cfg.color }}>{cfg.label}</span>
+            <span className="font-bold" style={{ color: platformColor(platformKey).softText }}>{cfg.label}</span>
             <span className="text-muted-foreground font-normal">·</span>
             <span className="font-normal text-muted-foreground text-sm">{property.name}</span>
           </DialogTitle>
@@ -312,7 +313,7 @@ function SystemHealthTab() {
       {/* Summary stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Airbnb Connected", value: totalConnected, total: health.length, icon: AirbnbLogo, color: "#FF385C", good: totalConnected > 0 },
+          { label: "Airbnb Connected", value: totalConnected, total: health.length, icon: AirbnbLogo, color: platformColor("airbnb").bg, good: totalConnected > 0 },
           { label: "iCal Syncing", value: totalIcal, total: health.length, icon: Wifi, color: "#0d9488", good: totalIcal > 0 },
           { label: "Missing iCal", value: totalNoIcal, total: health.length, icon: WifiOff, color: "#f59e0b", good: totalNoIcal === 0 },
           { label: "Missing Photos", value: totalMissingPhotos, total: health.length, icon: Image, color: "#6b7280", good: totalMissingPhotos === 0 },
@@ -368,7 +369,7 @@ function SystemHealthTab() {
 
                   {/* Airbnb status */}
                   <div className="text-center w-28 hidden sm:block">
-                    <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${h.airbnbConnected ? "bg-red-50 text-[#FF385C] dark:bg-red-950/20" : "bg-muted text-muted-foreground"}`}>
+                    <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${h.airbnbConnected ? "" : "bg-muted text-muted-foreground"}`} style={h.airbnbConnected ? { background: platformColor("airbnb").softBg, color: platformColor("airbnb").softText } : undefined}>
                       <AirbnbLogo className="w-3 h-3" />
                       {h.airbnbConnected ? "Connected" : "Not set"}
                     </div>
@@ -648,7 +649,7 @@ export default function Platforms() {
                   const connected = p.connectedCount > 0 || p.key === "direct";
                   return (
                     <Card key={p.key} className={`overflow-hidden border ${connected ? "" : "opacity-60"}`}>
-                      <div className="h-1 w-full" style={{ background: p.color }} />
+                      <div className="h-1 w-full" style={{ background: platformColor(p.key).bg }} />
                       <CardContent className="pt-4 pb-4">
                         <div className="flex items-start justify-between mb-3">
                           <div>
@@ -700,7 +701,7 @@ export default function Platforms() {
                       <Tooltip formatter={(v: any) => aed(Number(v))} />
                       <Bar dataKey="revenue" radius={[6, 6, 0, 0]} name="Revenue">
                         {platforms.filter(p => p.revenue > 0).map((p, i) => (
-                          <Cell key={i} fill={p.color} />
+                          <Cell key={i} fill={platformColor(p.key).bg} />
                         ))}
                       </Bar>
                     </BarChart>
@@ -723,7 +724,7 @@ export default function Platforms() {
                       return (
                         <th key={key} className="px-4 py-3 text-center">
                           <div className="flex items-center justify-center gap-1.5">
-                            <span className={`inline-block w-2 h-2 rounded-full ${cfg.bgClass}`} />
+                            <span className="inline-block w-2 h-2 rounded-full" style={{ background: platformColor(key).bg }} />
                             <span className="font-medium text-xs uppercase tracking-wide text-muted-foreground">{cfg.label}</span>
                           </div>
                         </th>

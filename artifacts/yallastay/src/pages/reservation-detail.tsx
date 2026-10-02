@@ -18,13 +18,8 @@ import {
   FileText, CheckCircle2, Clock, Tag, Pencil, Save, X,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
+import { entryBadgeLabel, entryBadgeStyle } from "@/lib/channel-colors";
 
-const PLATFORM_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  airbnb:      { bg: "bg-red-100 dark:bg-red-950",     text: "text-red-700 dark:text-red-300",     label: "Airbnb" },
-  booking_com: { bg: "bg-blue-100 dark:bg-blue-950",   text: "text-blue-700 dark:text-blue-300",   label: "Booking.com" },
-  direct:      { bg: "bg-emerald-100 dark:bg-emerald-950", text: "text-emerald-700 dark:text-emerald-300", label: "Direct" },
-  expedia:     { bg: "bg-amber-100 dark:bg-amber-950", text: "text-amber-700 dark:text-amber-300", label: "Expedia" },
-};
 
 const STATUS_OPTIONS = [
   {value:"blocked",label:"Blocked dates"},
@@ -152,7 +147,6 @@ export default function ReservationDetail() {
     );
   }
 
-  const plat = PLATFORM_STYLES[reservation.platform] ?? PLATFORM_STYLES.direct;
 
   return (
     <div className="p-4 md:p-6 max-w-2xl mx-auto space-y-5">
@@ -174,8 +168,8 @@ export default function ReservationDetail() {
           <p className="text-xs text-muted-foreground font-mono">{reservation.bookingRef}</p>
         </div>
         <div className="ml-auto flex items-center gap-2 shrink-0">
-          <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${plat.bg} ${plat.text}`}>
-            {plat.label}
+          <span className="text-xs font-medium px-2.5 py-1 rounded-full border" style={entryBadgeStyle(reservation)}>
+            {entryBadgeLabel(reservation)}
           </span>
           {!editing && (
             <Button

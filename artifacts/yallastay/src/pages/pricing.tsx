@@ -30,6 +30,7 @@ import {
   startOfMonth, getDay, isSaturday, isSunday, parseISO, isWithinInterval,
 } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { badgeStyle, platformLabel } from "@/lib/channel-colors";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // API CLIENT
@@ -341,8 +342,8 @@ function PropertyPricingCard({ property, onReview }: {
         {/* Platforms */}
         <div className="flex gap-1.5 mb-3">
           {property.platforms.map(p => (
-            <span key={p} className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${p === "airbnb" ? "bg-red-100 text-red-700" : p === "booking_com" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700"}`}>
-              {p === "airbnb" ? "Airbnb" : p === "booking_com" ? "Booking.com" : "Direct"}
+            <span key={p} className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={badgeStyle(p)}>
+              {platformLabel(p)}
             </span>
           ))}
         </div>

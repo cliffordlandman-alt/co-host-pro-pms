@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { format, formatDistanceToNow, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { badgeStyle, platformLabel } from "@/lib/channel-colors";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -21,12 +22,8 @@ async function fetchJson(path: string) {
   return res.json();
 }
 
-const PLATFORM_STYLES: Record<string, { cls: string; label: string; icon: string }> = {
-  airbnb:      { cls: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 border-red-200", label: "Airbnb", icon: "🏠" },
-  booking_com: { cls: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border-blue-200", label: "Booking.com", icon: "🔵" },
-  direct:      { cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-200", label: "Direct", icon: "✉️" },
-  whatsapp:    { cls: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 border-green-200", label: "WhatsApp", icon: "💬" },
-};
+// Channel badge colours come from the shared map in lib/channel-colors.ts.
+const CHANNEL_ICONS: Record<string, string> = { airbnb: "🏠", booking_com: "🔵", vrbo: "🏖️", direct: "✉️", whatsapp: "💬" };
 
 const SENTIMENT_CONFIG: Record<string, { cls: string; label: string }> = {
   positive: { cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300", label: "😊 Positive" },
@@ -194,7 +191,6 @@ export default function Inbox() {
                 <p className="text-xs text-muted-foreground/70">Internal booking notes. Channel messaging is not connected.</p>
               </div>
             ) : visibleThreads.map(thread => {
-              const plat = PLATFORM_STYLES[thread.channel] ?? PLATFORM_STYLES.direct;
               const isSelected = selectedId === thread.id;
               return (
                 <button
@@ -215,8 +211,8 @@ export default function Inbox() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 mb-1">
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${plat.cls}`}>
-                      {plat.icon} {plat.label}
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full border" style={badgeStyle(thread.channel)}>
+                      {CHANNEL_ICONS[thread.channel] ?? CHANNEL_ICONS.direct} {platformLabel(thread.channel)}
                     </span>
                     <span className="text-[11px] text-muted-foreground truncate">{thread.propertyName}</span>
                   </div>
@@ -251,8 +247,8 @@ export default function Inbox() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold">{selectedThread.guestName}</span>
-                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${(PLATFORM_STYLES[selectedThread.channel] ?? PLATFORM_STYLES.direct).cls}`}>
-                          {(PLATFORM_STYLES[selectedThread.channel] ?? PLATFORM_STYLES.direct).label}
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full border" style={badgeStyle(selectedThread.channel)}>
+                          {platformLabel(selectedThread.channel)}
                         </span>
                         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${(SENTIMENT_CONFIG[selectedThread.sentiment] ?? SENTIMENT_CONFIG.neutral).cls}`}>
                           {(SENTIMENT_CONFIG[selectedThread.sentiment] ?? SENTIMENT_CONFIG.neutral).label}

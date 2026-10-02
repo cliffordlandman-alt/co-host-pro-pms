@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import { CalendarBarsOverlay } from "@/components/CalendarBars";
 import { layoutBars } from "@/lib/calendar-bars";
+import { CHANNEL_COLORS, LEGEND, barStyle } from "@/lib/channel-colors";
 import { useState, useMemo } from "react";
 import { useGetReservations, useGetProperties } from "@workspace/api-client-react";
 import { Input } from "@/components/ui/input";
@@ -16,13 +17,7 @@ import {
   addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval,
 } from "date-fns";
 
-const PLATFORM_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  airbnb:      { bg: "#E0565B", text: "#fff", label: "Airbnb" },
-  booking_com: { bg: "#003580", text: "#fff", label: "Booking.com" },
-  direct:      { bg: "#059669", text: "#fff", label: "Direct" },
-  vrbo:        { bg: "#7c3aed", text: "#fff", label: "VRBO" },
-  blocked:     { bg: "#6b7280", text: "#fff", label: "Blocked" },
-};
+// Channel colours come from the shared map in lib/channel-colors.ts (same as the month calendar and legends).
 
 type CalView = "multi" | "monthly" | "yearly";
 
@@ -238,7 +233,7 @@ export default function MultiCalendar() {
                                 laneHeight={32}
                                 barHeight={28}
                                 onOpen={(res: any) => navigate(`/reservations/${res.id}`)}
-                                look={(res: any) => { const c = res.status === "blocked" ? PLATFORM_COLORS.blocked : PLATFORM_COLORS[res.platform] ?? PLATFORM_COLORS.direct; return { style: { background: c.bg, color: c.text } }; }}
+                                look={(res: any) => ({ style: barStyle(res) })}
                                 label={(res: any) => <CalendarBookingLabel booking={res} />}
                                 title={(res: any) => `${calendarBookingName(res)} (${res.checkIn} → ${res.checkOut})`}
                                 testId={(res: any) => `multi-bar-${res.id}`}
@@ -258,7 +253,7 @@ export default function MultiCalendar() {
 
       {/* Footer */}
       {!isLoading && filtered.length > 0 && (
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
           <span>Show
             <select
               value={perPage}
@@ -271,11 +266,11 @@ export default function MultiCalendar() {
             </select>
             per page
           </span>
-          <div className="flex gap-3 ml-auto">
-            {Object.entries(PLATFORM_COLORS).map(([k, v]) => (
-              <span key={k} className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: v.bg }} />
-                {v.label}
+          <div className="flex flex-wrap gap-x-3 gap-y-1 ml-auto">
+            {LEGEND.map(k => (
+              <span key={k} className="flex items-center gap-1.5" data-testid={`multi-legend-${k}`}>
+                <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: CHANNEL_COLORS[k].bg }} />
+                {CHANNEL_COLORS[k].label}
               </span>
             ))}
           </div>

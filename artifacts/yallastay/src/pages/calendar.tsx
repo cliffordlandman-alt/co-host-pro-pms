@@ -1,7 +1,8 @@
 import { ReservationMoney } from "@/components/ReservationMoney";
-import { CalendarBookingLabel, calendarBookingName, isBlock } from "@/components/CalendarBookingLabel";
+import { CalendarBookingLabel, calendarBookingName } from "@/components/CalendarBookingLabel";
 import { CalendarBarsOverlay } from "@/components/CalendarBars";
 import { layoutBars } from "@/lib/calendar-bars";
+import { CHANNEL_COLORS, LEGEND, barStyle, channelColor, entryLabel } from "@/lib/channel-colors";
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import {
@@ -36,14 +37,8 @@ import {
   differenceInCalendarDays,
 } from "date-fns";
 
-const PLATFORM_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  airbnb:      { bg: "bg-emerald-600",   text: "text-white", label: "Airbnb" },
-  booking_com: { bg: "bg-emerald-600",  text: "text-white", label: "Booking.com" },
-  direct:      { bg: "bg-emerald-600", text: "text-white", label: "Direct" },
-};
-
-// Blocked dates (channel "Not available" blocks and manual blocks) are grey and never count as stays.
-const BLOCK_STYLE = { bg: "bg-slate-500", text: "text-white", label: "Blocked" };
+// Channel colours (Airbnb coral, Booking.com blue, Vrbo teal, direct green, owner stays purple, blocks grey) come from
+// the shared map in lib/channel-colors.ts. Blocks never count as stays.
 
 type Reservation = import("@workspace/api-client-react").Reservation;
 
@@ -194,7 +189,7 @@ export default function Calendar() {
         laneHeight={laneHeight}
         barHeight={barHeight}
         onOpen={(res: any, e) => openDetail(res, e)}
-        look={(res: any) => { const st = isBlock(res) ? BLOCK_STYLE : PLATFORM_STYLES[res.platform] ?? PLATFORM_STYLES.direct; return { className: `${st.bg} ${st.text}` }; }}
+        look={(res: any) => ({ style: barStyle(res) })}
         label={(res: any) => <CalendarBookingLabel booking={res} />}
         title={(res: any) => `${calendarBookingName(res)} · ${res.propertyName ?? ""} · ${res.checkIn} → ${res.checkOut}`}
         testId={(res: any) => `reservation-bar-${res.id}`}
@@ -218,11 +213,11 @@ export default function Calendar() {
         <h1 className="text-2xl font-bold tracking-tight">Calendar</h1>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Platform legend */}
-          <div className="flex items-center gap-2 mr-2">
-            {Object.entries({ ...PLATFORM_STYLES, blocked: BLOCK_STYLE }).map(([key, s]) => (
-              <span key={key} className="flex items-center gap-1 text-xs">
-                <span className={`inline-block w-3 h-3 rounded-sm ${s.bg}`} />
-                {s.label}
+          <div className="flex items-center gap-x-3 gap-y-1 flex-wrap mr-2">
+            {LEGEND.map(key => (
+              <span key={key} className="flex items-center gap-1 text-xs" data-testid={`legend-${key}`}>
+                <span className="inline-block w-3 h-3 rounded-sm" style={{ background: CHANNEL_COLORS[key].bg }} />
+                {CHANNEL_COLORS[key].label}
               </span>
             ))}
           </div>
@@ -474,8 +469,8 @@ export default function Calendar() {
                 <DialogTitle>
                   {editMode ? "Edit Booking" : calendarBookingName(detailRes as any)}
                 </DialogTitle>
-                <Badge className={`${PLATFORM_STYLES[(detailRes as any).platform]?.bg} ${PLATFORM_STYLES[(detailRes as any).platform]?.text} border-0`}>
-                  {PLATFORM_STYLES[(detailRes as any).platform]?.label}
+                <Badge className="border-0" style={{ background: channelColor(detailRes as any).bg, color: channelColor(detailRes as any).text }}>
+                  {entryLabel(detailRes as any)}
                 </Badge>
               </div>
             </DialogHeader>
