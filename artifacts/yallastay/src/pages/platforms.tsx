@@ -126,7 +126,7 @@ function ConnectionDialog({ open, onClose, property, platformKey }: {
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <span className="font-bold" style={{ color: platformColor(platformKey).softText }}>{cfg.label}</span>
+            <span className="font-bold" style={{ color: platformColor(platformKey).ink }}>{cfg.label}</span>
             <span className="text-muted-foreground font-normal">·</span>
             <span className="font-normal text-muted-foreground text-sm">{property.name}</span>
           </DialogTitle>
@@ -203,7 +203,7 @@ function ConnectAirbnbModal({ open, onClose }: { open: boolean; onClose: () => v
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#FF385C] flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-[#DC2626] flex items-center justify-center">
               <AirbnbLogo className="w-4 h-4 text-white" />
             </div>
             Connect Airbnb
@@ -223,7 +223,7 @@ function ConnectAirbnbModal({ open, onClose }: { open: boolean; onClose: () => v
           {/* Option 1 */}
           <div className="rounded-xl border p-4 space-y-1.5">
             <div className="flex items-center gap-2 font-semibold text-sm">
-              <div className="w-6 h-6 rounded-full bg-[#FF385C] flex items-center justify-center text-white text-xs font-bold">1</div>
+              <div className="w-6 h-6 rounded-full bg-[#DC2626] flex items-center justify-center text-white text-xs font-bold">1</div>
               Import a New Listing
             </div>
             <p className="text-xs text-muted-foreground ml-8">Paste any Airbnb listing URL. YallaPMS will import photos, description, amenities, and property details automatically.</p>
@@ -452,7 +452,7 @@ function SystemHealthTab() {
             { n: 3, text: 'Click "Export Calendar" → Copy link' },
           ].map(({ n, text }) => (
             <div key={n} className="flex items-start gap-2.5">
-              <div className="w-5 h-5 rounded-full bg-[#FF385C] text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">{n}</div>
+              <div className="w-5 h-5 rounded-full bg-[#DC2626] text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">{n}</div>
               <span className="text-muted-foreground">{text}</span>
             </div>
           ))}
@@ -575,7 +575,7 @@ export default function Platforms() {
         <Button
           onClick={() => setShowConnect(true)}
           className="gap-2 flex-shrink-0"
-          style={{ background: "#FF385C", border: "none" }}
+          style={{ background: "#DC2626", border: "none" }}
         >
           <AirbnbLogo className="w-4 h-4 text-white" />
           Connect Airbnb
@@ -584,8 +584,8 @@ export default function Platforms() {
 
       {/* Airbnb connection status banner */}
       <div className="rounded-xl border p-4 flex items-center gap-4"
-        style={{ background: airbnbConnectedCount > 0 ? "rgba(255,56,92,0.05)" : "rgba(0,0,0,0.02)", borderColor: airbnbConnectedCount > 0 ? "rgba(255,56,92,0.2)" : undefined }}>
-        <div className="w-10 h-10 rounded-xl bg-[#FF385C] flex items-center justify-center flex-shrink-0">
+        style={{ background: airbnbConnectedCount > 0 ? "rgba(220,38,38,0.05)" : "rgba(0,0,0,0.02)", borderColor: airbnbConnectedCount > 0 ? "rgba(220,38,38,0.2)" : undefined }}>
+        <div className="w-10 h-10 rounded-xl bg-[#DC2626] flex items-center justify-center flex-shrink-0">
           <AirbnbLogo className="w-5 h-5 text-white" />
         </div>
         <div className="flex-1 min-w-0">

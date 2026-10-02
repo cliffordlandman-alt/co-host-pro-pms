@@ -21,7 +21,7 @@ async function fetchJson(path: string) {
   return res.json();
 }
 
-// Channel slices use the shared channel colours (lib/channel-colors.ts), so Airbnb is coral here too.
+// Channel slices use the shared channel colours (lib/channel-colors.ts), so Airbnb is red here too.
 
 function formatMoney(n: number, currency="AED") {
   return `${currency} ${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;

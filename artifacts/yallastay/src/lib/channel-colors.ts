@@ -3,24 +3,26 @@
  * calendar, legends, badges, dots and the channel chart. Change a colour here and it changes everywhere.
  *
  * - bg / text:          solid bars, dots and legend swatches (text drawn on top of bg).
- * - softBg / softText:  tinted badges (reservation list, booking page, inbox, reviews).
+ * - softBg / softText:  badges (reservation list, booking page, inbox, reviews); tinted, except Airbnb which is solid red.
+ * - ink:                the channel colour as text on a white/light background (titles, labels).
  * Every text/background pair is at least 4.5:1 (WCAG AA for small text); scripts/test-channel-colors.mjs checks it.
- * Airbnb's coral and Vrbo's teal are light, so their bars use dark text; white text on #FF5A5F is only 3.0:1.
+ * Airbnb is a clear red (Tailwind red-600) with white text (4.8:1), solid on bars and badges alike so it reads as red,
+ * not pink. Vrbo's teal is light, so its bars use dark text.
  */
 export type ChannelKey = "airbnb" | "booking_com" | "vrbo" | "direct" | "owner" | "blocked" | "other";
-export type ChannelColor = { key: ChannelKey; label: string; bg: string; text: string; softBg: string; softText: string; border: string };
+export type ChannelColor = { key: ChannelKey; label: string; bg: string; text: string; softBg: string; softText: string; border: string; ink: string };
 
 const DARK = "#111827";
 const WHITE = "#FFFFFF";
 
 export const CHANNEL_COLORS: Record<ChannelKey, ChannelColor> = {
-  airbnb:      { key: "airbnb",      label: "Airbnb",      bg: "#FF5A5F", text: DARK,  softBg: "#FFE8E9", softText: "#B4232A", border: "#FFC2C4" },
-  booking_com: { key: "booking_com", label: "Booking.com", bg: "#003580", text: WHITE, softBg: "#E6EEF8", softText: "#003580", border: "#B3C7E3" },
-  vrbo:        { key: "vrbo",        label: "Vrbo",        bg: "#14B8A6", text: DARK,  softBg: "#DDF6F2", softText: "#0F5F58", border: "#A3E4DB" },
-  direct:      { key: "direct",      label: "Direct",      bg: "#15803D", text: WHITE, softBg: "#E7F6EC", softText: "#166534", border: "#B7E2C4" },
-  owner:       { key: "owner",       label: "Owner stay",  bg: "#6D28D9", text: WHITE, softBg: "#EFE7FD", softText: "#5B21B6", border: "#D5C3F7" },
-  blocked:     { key: "blocked",     label: "Blocked",     bg: "#6B7280", text: WHITE, softBg: "#F1F2F4", softText: "#374151", border: "#D1D5DB" },
-  other:       { key: "other",       label: "Other",       bg: "#1E293B", text: WHITE, softBg: "#E2E8F0", softText: "#1E293B", border: "#CBD5E1" },
+  airbnb:      { key: "airbnb",      label: "Airbnb",      bg: "#DC2626", text: WHITE, softBg: "#DC2626", softText: WHITE,     border: "#B91C1C", ink: "#DC2626" },
+  booking_com: { key: "booking_com", label: "Booking.com", bg: "#003580", text: WHITE, softBg: "#E6EEF8", softText: "#003580", border: "#B3C7E3", ink: "#003580" },
+  vrbo:        { key: "vrbo",        label: "Vrbo",        bg: "#14B8A6", text: DARK,  softBg: "#DDF6F2", softText: "#0F5F58", border: "#A3E4DB", ink: "#0F5F58" },
+  direct:      { key: "direct",      label: "Direct",      bg: "#15803D", text: WHITE, softBg: "#E7F6EC", softText: "#166534", border: "#B7E2C4", ink: "#166534" },
+  owner:       { key: "owner",       label: "Owner stay",  bg: "#6D28D9", text: WHITE, softBg: "#EFE7FD", softText: "#5B21B6", border: "#D5C3F7", ink: "#5B21B6" },
+  blocked:     { key: "blocked",     label: "Blocked",     bg: "#6B7280", text: WHITE, softBg: "#F1F2F4", softText: "#374151", border: "#D1D5DB", ink: "#374151" },
+  other:       { key: "other",       label: "Other",       bg: "#1E293B", text: WHITE, softBg: "#E2E8F0", softText: "#1E293B", border: "#CBD5E1", ink: "#1E293B" },
 };
 
 /** Legend order on every calendar. */

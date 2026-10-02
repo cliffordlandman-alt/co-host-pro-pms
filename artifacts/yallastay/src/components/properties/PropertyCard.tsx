@@ -88,7 +88,7 @@ export function PropertyCard({ property, onEdit, onAddBooking }: PropertyCardPro
       <td className="px-4 py-3">
         <div className="flex items-center gap-1">
           {property.airbnbListingId && (
-            <div className="w-6 h-6 rounded-full bg-[#FF385C] flex items-center justify-center flex-shrink-0" title="Airbnb">
+            <div className="w-6 h-6 rounded-full bg-[#DC2626] flex items-center justify-center flex-shrink-0" title="Airbnb">
               <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 2.4c5.302 0 9.6 4.298 9.6 9.6s-4.298 9.6-9.6 9.6S2.4 17.302 2.4 12 6.698 2.4 12 2.4zm0 3.6c-1.325 0-2.4 1.075-2.4 2.4S10.675 10.8 12 10.8s2.4-1.075 2.4-2.4S13.325 6 12 6zm-4.2 6.6c-.497 0-.9.403-.9.9v.3c0 2.487 2.238 4.5 4.8 4.5s4.8-2.013 4.8-4.5v-.3c0-.497-.403-.9-.9-.9H7.8z" />
               </svg>

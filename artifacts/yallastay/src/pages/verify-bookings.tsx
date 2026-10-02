@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useGetOwners, useGetProperties } from "@workspace/api-client-react";
 import { apiFetch } from "@/lib/api-fetch";
+import { badgeStyle, platformLabel } from "@/lib/channel-colors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
@@ -132,7 +133,7 @@ function VerifyRow({ row: r, form, st, update, onSave }: { row: Row; form: Form;
         <div className="min-w-0 text-sm">
           <Link href={`/reservations/${r.id}`} className="font-medium hover:underline">{r.guestName || "Guest"}</Link>
           <p className="text-muted-foreground">{r.propertyName}{r.ownerName ? ` · ${r.ownerName}` : " · no owner"}</p>
-          <p className="text-muted-foreground">{r.checkIn} → {r.checkOut} · {r.platform}</p>
+          <p className="flex flex-wrap items-center gap-1.5 text-muted-foreground">{r.checkIn} → {r.checkOut}<span data-testid="channel-badge" className="rounded border px-1.5 py-0.5 text-[11px] font-medium" style={badgeStyle(r.platform)}>{platformLabel(r.platform)}</span></p>
           {r.channelEarnings.length > 0 && <p className="mt-1 text-xs">Airbnb expected earnings: <b>{r.channelEarnings.map(e => money(e.amount, e.currency)).join(" + ")}</b> <span className="text-muted-foreground">(reference only, not the guest total)</span></p>}
           {r.locked && <p className="mt-1 text-xs text-amber-700">This month's statement for this property was already sent or paid, so the booking can't be changed here.</p>}
         </div>

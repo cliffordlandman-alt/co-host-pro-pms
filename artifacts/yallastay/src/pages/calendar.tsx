@@ -37,7 +37,7 @@ import {
   differenceInCalendarDays,
 } from "date-fns";
 
-// Channel colours (Airbnb coral, Booking.com blue, Vrbo teal, direct green, owner stays purple, blocks grey) come from
+// Channel colours (Airbnb red, Booking.com blue, Vrbo teal, direct green, owner stays purple, blocks grey) come from
 // the shared map in lib/channel-colors.ts. Blocks never count as stays.
 
 type Reservation = import("@workspace/api-client-react").Reservation;

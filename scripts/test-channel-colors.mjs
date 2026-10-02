@@ -4,15 +4,18 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { CHANNEL_COLORS, LEGEND, channelKey, platformKey, isOwnerStay, contrastRatio } from '../artifacts/yallastay/src/lib/channel-colors.ts';
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-assert.equal(CHANNEL_COLORS.airbnb.bg, '#FF5A5F', "Airbnb coral");
+assert.equal(CHANNEL_COLORS.airbnb.bg, '#DC2626', 'Airbnb clear red (Tailwind red-600)');
+assert.equal(CHANNEL_COLORS.airbnb.text, '#FFFFFF', 'white text on Airbnb bars');
+assert.deepEqual([CHANNEL_COLORS.airbnb.softBg, CHANNEL_COLORS.airbnb.softText], ['#DC2626', '#FFFFFF'], 'Airbnb badges are solid red with white text, not a pink tint');
+assert.deepEqual(['booking_com', 'direct', 'blocked'].map(k => CHANNEL_COLORS[k].bg), ['#003580', '#15803D', '#6B7280'], 'Booking.com blue, direct green, blocks grey unchanged');
 assert.equal(CHANNEL_COLORS.booking_com.bg, '#003580', 'Booking.com blue');
 const hues = LEGEND.map(k => CHANNEL_COLORS[k].bg);
 assert.equal(new Set(hues).size, hues.length, 'every legend entry has its own colour');
 for (const c of Object.values(CHANNEL_COLORS)) {
   assert.ok(contrastRatio(c.bg, c.text) >= 4.5, `${c.label} bar text contrast ${contrastRatio(c.bg, c.text).toFixed(2)}`);
   assert.ok(contrastRatio(c.softBg, c.softText) >= 4.5, `${c.label} badge text contrast ${contrastRatio(c.softBg, c.softText).toFixed(2)}`);
+  assert.ok(contrastRatio(c.ink, '#FFFFFF') >= 4.5, `${c.label} ink on white ${contrastRatio(c.ink, '#FFFFFF').toFixed(2)}`);
 }
-assert.ok(contrastRatio('#FF5A5F', '#FFFFFF') < 4.5, 'reminder: white on Airbnb coral is not readable, so dark text is used');
 // Calendar entries.
 assert.equal(channelKey({ platform: 'airbnb', status: 'confirmed' }), 'airbnb');
 assert.equal(channelKey({ platform: 'booking_com', status: 'checked_in' }), 'booking_com');
@@ -32,4 +35,8 @@ for (const f of readdirSync(pages)) {
   assert.doesNotMatch(src, /(airbnb|booking_com|vrbo)\s*:\s*\{?\s*(bg|cls)?\s*:?\s*"(bg-|#)/, `${f} defines its own channel colours`);
   assert.doesNotMatch(src, /^const PLATFORM_(STYLES|COLORS)\b/m, `${f} still has a local PLATFORM_ colour map`);
 }
-console.log('PASS: channel colours — Airbnb coral, Booking.com blue, Vrbo teal, direct green, owner stay purple, blocks grey; all text ≥ 4.5:1; one shared map');
+// No leftover Airbnb coral/pink anywhere in the web app.
+const walk = d => readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : /\.(tsx?|css)$/.test(e.name) ? [path.join(d, e.name)] : []);
+for (const f of walk(path.join(root, 'artifacts/yallastay/src'))) assert.doesNotMatch(readFileSync(f, 'utf8'), /#FF5A5F|#FF385C|255,\s*56,\s*92/i, `${path.relative(root, f)} still uses Airbnb coral`);
+assert.match(readFileSync(path.join(root, 'artifacts/yallastay/src/pages/verify-bookings.tsx'), 'utf8'), /badgeStyle\(r\.platform\)/, 'Verify bookings shows the channel badge');
+console.log('PASS: channel colours — Airbnb red-600 with white text, Booking.com blue, Vrbo teal, direct green, owner stay purple, blocks grey; all text ≥ 4.5:1; one shared map');
