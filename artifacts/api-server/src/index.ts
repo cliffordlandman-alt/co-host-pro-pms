@@ -47,6 +47,8 @@ initializeDatabase().then(runMigrations).then(() => {
     }
 
     logger.info({ port }, "Server listening");
-    startSyncScheduler();
+    // SYNC_SCHEDULER=off: no scheduled channel (iCal) sync, for restore tests and throwaway copies of real data.
+    if (process.env.SYNC_SCHEDULER === "off") logger.info("Scheduled channel sync is off (SYNC_SCHEDULER=off)");
+    else startSyncScheduler();
   });
 });
