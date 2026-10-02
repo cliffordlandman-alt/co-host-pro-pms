@@ -231,7 +231,10 @@ export function PropertyEditDrawer({ propertyId, onClose, onSaved, onDeleted }: 
         const json = await res.json().catch(() => ({}));
         throw new Error((json as { error?: string }).error || `Save failed (${res.status})`);
       }
-      setProperty(p => p ? { ...p, airbnbIcalUrl: form.airbnbIcalUrl || null } : p);
+      // Show what was actually saved (owner, fees, ...), not the values from before the edit.
+      const fresh = await apiFetch(`${API_BASE}/api/properties/${propertyId}`);
+      if (fresh.ok) setProperty(await fresh.json());
+      else setProperty(p => p ? { ...p, airbnbIcalUrl: form.airbnbIcalUrl || null } : p);
       setSaveSuccess(true);
       onSaved();
       setMode("view");

@@ -1,7 +1,8 @@
 import { ContactEditor } from "@/components/ContactEditor";
 import { apiFetch } from "@/lib/api-fetch";
 import { useState, useEffect } from "react";
-import { useGetOwners } from "@workspace/api-client-react";
+import { useGetOwners, useGetProperties } from "@workspace/api-client-react";
+import { Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -143,6 +144,8 @@ function ResetAccessDialog({ owner, open, onClose }: { owner: any; open: boolean
 
 export default function Owners() {
   const { data: owners, isLoading } = useGetOwners();
+  const { data: properties } = useGetProperties();
+  const ownedBy = (id: number) => (properties ?? []).filter((p: any) => p.ownerId === id);
   const [editorOpen,setEditorOpen]=useState(false);
   const [editingOwner,setEditingOwner]=useState<any>(null);
   const [resetTarget, setResetTarget] = useState<any>(null);
@@ -163,9 +166,10 @@ export default function Owners() {
           <TableHeader>
             <TableRow className="bg-muted/30">
               <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Portal Access</TableHead>
+              <TableHead>Properties (management fee)</TableHead>
+              <TableHead className="hidden md:table-cell">Email</TableHead>
+              <TableHead className="hidden md:table-cell">Phone</TableHead>
+              <TableHead className="hidden lg:table-cell">Portal Access</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -173,14 +177,14 @@ export default function Owners() {
             {isLoading ? (
               Array(5).fill(0).map((_, i) => (
                 <TableRow key={i}>
-                  {Array(5).fill(0).map((__, j) => (
+                  {Array(6).fill(0).map((__, j) => (
                     <TableCell key={j}><Skeleton className="h-4 w-24" /></TableCell>
                   ))}
                 </TableRow>
               ))
             ) : owners?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-16">
+                <TableCell colSpan={6} className="text-center py-16">
                   <div className="flex flex-col items-center gap-3">
                     <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
                       <Users className="h-7 w-7 text-muted-foreground/40" />
@@ -198,8 +202,20 @@ export default function Owners() {
             ) : (
               owners?.map((owner) => (
                 <TableRow key={owner.id}>
-                  <TableCell className="font-medium">{owner.name}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
+                  <TableCell className="font-medium align-top">
+                    {owner.name}
+                    <div className="md:hidden text-xs font-normal text-muted-foreground break-all">{owner.email ?? "No email"}{owner.phone ? ` · ${owner.phone}` : ""}</div>
+                  </TableCell>
+                  <TableCell className="text-xs align-top">
+                    {ownedBy(owner.id).length ? (
+                      <ul className="space-y-0.5">
+                        {ownedBy(owner.id).map((p: any) => <li key={p.id}><Link href="/properties" className="hover:underline">{p.name}</Link> <span className="text-muted-foreground">({p.managementFee ?? "20"}%)</span></li>)}
+                      </ul>
+                    ) : (
+                      <span className="text-muted-foreground">None linked yet. Properties → open a property → Edit → Owner.</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground hidden md:table-cell">
                     {owner.email ? (
                       <span className="flex items-center gap-1.5">
                         <Mail className="h-3 w-3" /> {owner.email}
@@ -210,8 +226,8 @@ export default function Owners() {
                       </span>
                     )}
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{owner.phone ?? "—"}</TableCell>
-                  <TableCell>
+                  <TableCell className="text-sm text-muted-foreground hidden md:table-cell">{owner.phone ?? "—"}</TableCell>
+                  <TableCell className="hidden lg:table-cell">
                     {owner.email ? (
                       <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 text-xs">
                         Email on file
@@ -223,7 +239,7 @@ export default function Owners() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                       <Button variant="outline" size="sm" onClick={()=>{setEditingOwner(owner);setEditorOpen(true);}}>Edit</Button>
                       <Button
                         variant="outline"
