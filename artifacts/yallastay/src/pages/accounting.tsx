@@ -1,4 +1,5 @@
 import { CompanyFinance } from "@/components/CompanyFinance";
+import { EntryDialog } from "@/components/EntryDialog";
 import { CleaningCostSettings } from "@/components/CleaningCostSettings";
 import { apiFetch } from "@/lib/api-fetch";
 import { Pager, usePagedList } from "@/components/Pager";
@@ -44,10 +45,6 @@ const MONTHS = Array.from({ length: 12 }, (_, i) => {
   return { value: format(d, "yyyy-MM"), label: format(d, "MMMM yyyy") };
 });
 
-const TX_CATEGORIES = [
-  "Management Fee", "Cleaning", "Maintenance", "Utility", "Insurance",
-  "Municipality Fee", "Owner Payout", "Booking Revenue", "Other",
-];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   draft:  { label: "Draft",  color: "bg-slate-100 text-slate-700 border-slate-200" },
@@ -345,20 +342,16 @@ function TransactionsTab() {
   const [addOpen, setAddOpen] = useState(false);
   const [filterMonth, setFilterMonth] = useState(MONTHS[0].value);
   const [filterProp, setFilterProp] = useState("all");
-  const [form, setForm] = useState({ date: format(new Date(), "yyyy-MM-dd"), propertyId: "", type: "expense", category: "Other", description: "", amount: "", reference: "", notes: "" });
 
   const queryKey = ["transactions", filterMonth, filterProp];
   const url = `/api/accounting/transactions?month=${filterMonth}${filterProp !== "all" ? `&propertyId=${filterProp}` : ""}`;
   const { data: transactions, isLoading } = useQuery({ queryKey, queryFn: () => f(url) });
 
-  const addMutation = useMutation({
-    mutationFn: (data: any) => f("/api/accounting/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["transactions"] }); setAddOpen(false); toast({ title: "Transaction added" }); },
-  });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => f(`/api/accounting/transactions/${id}`, { method: "DELETE" }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["transactions"] }); toast({ title: "Deleted" }); },
+    onSuccess: () => { queryClient.invalidateQueries(); toast({ title: "Deleted" }); },
+    onError: (e: any) => toast({ title: "Not deleted", description: e.message, variant: "destructive" }),
   });
 
   const totalIn = transactions?.filter((t: any) => t.type === "income").reduce((s: number, t: any) => s + t.amount, 0) ?? 0;
@@ -380,7 +373,7 @@ function TransactionsTab() {
             </SelectContent>
           </Select>
         </div>
-        <Button onClick={() => setAddOpen(true)}><Plus className="h-4 w-4 mr-1" />Add Transaction</Button>
+        <Button onClick={() => setAddOpen(true)}><Plus className="h-4 w-4 mr-1" />Add income / expense</Button>
       </div>
 
       {/* Summary */}
@@ -406,10 +399,11 @@ function TransactionsTab() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/30 text-xs text-muted-foreground uppercase tracking-wide">
-              <th className="text-left px-4 py-2.5 font-medium">Date</th>
+              <th className="text-left px-4 py-2.5 font-medium hidden sm:table-cell">Date</th>
               <th className="text-left px-4 py-2.5 font-medium">Description</th>
               <th className="text-left px-4 py-2.5 font-medium hidden sm:table-cell">Property</th>
               <th className="text-left px-4 py-2.5 font-medium hidden md:table-cell">Category</th>
+              <th className="text-left px-4 py-2.5 font-medium hidden sm:table-cell">Charged to</th>
               <th className="text-right px-4 py-2.5 font-medium">Amount</th>
               <th className="px-4 py-2.5" />
             </tr>
@@ -418,28 +412,31 @@ function TransactionsTab() {
             {isLoading ? (
               Array(5).fill(0).map((_, i) => (
                 <tr key={i} className="border-b">
-                  {[1,2,3,4,5,6].map(j => <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-full" /></td>)}
+                  {[1,2,3,4,5,6,7].map(j => <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-full" /></td>)}
                 </tr>
               ))
             ) : transactions?.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-12 text-muted-foreground">No transactions for this period</td></tr>
+              <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">No transactions for this period</td></tr>
             ) : (
               transactions.map((tx: any) => (
                 <tr key={tx.id} className="border-b last:border-0 hover:bg-muted/20">
-                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{tx.date}</td>
+                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap hidden sm:table-cell">{tx.date}</td>
                   <td className="px-4 py-3">
                     <div className="font-medium">{tx.description}</div>
                     {tx.reference && <div className="text-xs text-muted-foreground">Ref: {tx.reference}</div>}
+                    <div className="text-xs text-muted-foreground sm:hidden">{[tx.date, tx.propertyName, tx.category, tx.allocation === "owner" ? "Charged to owner" : "Company"].filter(Boolean).join(" · ")}</div>
+                    {tx.revenueStream != null && <div className="text-xs text-muted-foreground">Revenue stream: {tx.revenueStream ? "Yes" : "No"}</div>}
                   </td>
                   <td className="px-4 py-3 hidden sm:table-cell text-muted-foreground">{tx.propertyName ?? "—"}</td>
                   <td className="px-4 py-3 hidden md:table-cell">
                     <Badge variant="outline" className="text-xs">{tx.category}</Badge>
                   </td>
+                  <td className="px-4 py-3 text-xs whitespace-nowrap hidden sm:table-cell">{tx.allocation === "owner" ? "Owner" : "Company"}</td>
                   <td className={`px-4 py-3 text-right font-semibold whitespace-nowrap ${tx.type === "income" ? "text-emerald-600" : "text-red-500"}`}>
                     {tx.type === "income" ? "+" : "−"} {aed(tx.amount,tx.currency || "AED")}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button onClick={() => deleteMutation.mutate(tx.id)} className="text-muted-foreground hover:text-red-500 transition-colors">
+                    <button aria-label={`Delete ${tx.description}`} onClick={() => { if (window.confirm(`Delete "${tx.description}" (${aed(tx.amount, tx.currency || "AED")})? This cannot be undone.`)) deleteMutation.mutate(tx.id); }} className="text-muted-foreground hover:text-red-500 transition-colors p-1">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </td>
@@ -450,75 +447,7 @@ function TransactionsTab() {
         </table>
       </div>
 
-      {/* Add Transaction Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Add Transaction</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs mb-1 block">Date</Label>
-                <Input type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block">Type</Label>
-                <Select value={form.type} onValueChange={v => setForm(p => ({ ...p, type: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="income">Income</SelectItem>
-                    <SelectItem value="expense">Expense</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div>
-              <Label className="text-xs mb-1 block">Property</Label>
-              <Select value={form.propertyId} onValueChange={v => setForm(p => ({ ...p, propertyId: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select property (optional)" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No property</SelectItem>
-                  {properties?.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs mb-1 block">Category</Label>
-              <Select value={form.category} onValueChange={v => setForm(p => ({ ...p, category: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{TX_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs mb-1 block">Description</Label>
-              <Input placeholder="Description" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs mb-1 block">Amount (AED)</Label>
-                <Input type="number" placeholder="0.00" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block">Reference (optional)</Label>
-                <Input placeholder="Ref #" value={form.reference} onChange={e => setForm(p => ({ ...p, reference: e.target.value }))} />
-              </div>
-            </div>
-            <div>
-              <Label className="text-xs mb-1 block">Notes (optional)</Label>
-              <Textarea rows={2} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <p className="text-xs text-muted-foreground">Property expenses charge the owner. General expenses and income belong to the company. Use Company statement for explicit allocation.</p>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button
-              onClick={() => addMutation.mutate({ ...form, propertyId: form.propertyId && form.propertyId !== "none" ? parseInt(form.propertyId) : null, amount: parseFloat(form.amount),allocation:form.type==="income"?"company":form.propertyId&&form.propertyId!=="none"?"owner":"company" })}
-              disabled={addMutation.isPending || !form.description || !form.amount}
-            >
-              {addMutation.isPending ? "Saving…" : "Add"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <EntryDialog open={addOpen} onOpenChange={setAddOpen} defaultDate={filterMonth !== format(new Date(), "yyyy-MM") ? `${filterMonth}-01` : undefined} />
     </div>
   );
 }

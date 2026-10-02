@@ -106,6 +106,14 @@ try {
  const unvSkip=sepRun.skipped.find(s=>s.propertyId===unvProp.id);
  assert.deepEqual(unvSkip.unverified.map(b=>[b.id,b.guestName,b.checkOut]),[[unv.id,'Unverified Guest','2026-09-04']]);assert.match(unvSkip.reason,/1 booking checked out this month need/);
  assert.equal(sepRun.skipped.find(s=>s.propertyId===noOwnerProp.id).noOwner,true);
+ // Expense "revenue stream" tag: yes / no / not tagged on expenses; never on income.
+ const rsYes=await request('/accounting/transactions','POST',{type:'expense',date:'2026-09-21',category:'Supplies',description:'Tagged supplies',amount:10,currency:'AED',allocation:'company',revenueStream:true},201);
+ assert.equal(rsYes.revenueStream,true);
+ const rsInc=await request('/accounting/transactions','POST',{type:'income',date:'2026-09-21',category:'Additional income',description:'Late checkout',amount:20,currency:'AED',allocation:'company',revenueStream:true},201);
+ assert.equal(rsInc.revenueStream,null,'income is never tagged');
+ await request('/accounting/transactions','POST',{type:'expense',date:'2026-09-21',category:'Other',description:'Bad tag',amount:5,currency:'AED',allocation:'company',revenueStream:'maybe'},400);
+ assert.equal((await request('/accounting/transactions?month=2026-09')).find(t=>t.id===rsYes.id).revenueStream,true);
+ assert.equal((await request('/accounting/company-statement?start=2026-09-01&end=2026-09-30')).lines.find(l=>l.id===`manual-${rsYes.id}`).revenueStream,true);
  const importedProp=await request('/properties','POST',{name:'Imported source property',unitNumber:'IMPORT-1'},201);
  await request('/airbnb-data/import','POST',{csv:'Date,Type,Confirmation code,Guest,Listing,Start date,End date,Currency,Amount\n2026-09-20,Co-host payout,ABC12345,Imported Guest,Imported source property,2026-10-10,2026-10-12,ZAR,125.50',status:'paid'});
  const importedBooking=(await request('/reservations')).find(r=>r.externalId==='airbnb:ABC12345');

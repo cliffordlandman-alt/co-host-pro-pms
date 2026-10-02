@@ -174,6 +174,7 @@ router.get("/accounting/transactions", asyncHandler(async (req, res) => {
       amount: accountingTransactionsTable.amount,
       currency: accountingTransactionsTable.currency,
       allocation: accountingTransactionsTable.allocation,
+      revenueStream: accountingTransactionsTable.revenueStream,
       reference: accountingTransactionsTable.reference,
       vendorId: accountingTransactionsTable.vendorId,
       vendorName: vendorsTable.name,
@@ -194,6 +195,8 @@ router.post("/accounting/transactions", asyncHandler(async (req, res) => {
   const input = {...req.body, amount:String(req.body.amount)};
   if(input.reservationId){const [b]=await db.select().from(reservationsTable).where(eq(reservationsTable.id,Number(input.reservationId)));if(!b)return res.status(400).json({error:'Booking not found'});if(input.propertyId&&Number(input.propertyId)!==b.propertyId)return res.status(400).json({error:'Booking and property must match'});input.propertyId=b.propertyId;}
   input.allocation ??= input.propertyId ? 'owner' : 'company';
+  if (input.revenueStream !== undefined && input.revenueStream !== null && typeof input.revenueStream !== 'boolean') return res.status(400).json({error:'Revenue stream must be yes, no or not tagged'});
+  if (input.type !== 'expense') input.revenueStream = null;
   if (!['income','expense'].includes(input.type) || !['company','owner'].includes(input.allocation)) return res.status(400).json({error:'Choose income or expense and company or owner allocation'});
   if(input.propertyId){const [p]=await db.select().from(propertiesTable).where(eq(propertiesTable.id,Number(input.propertyId)));if(!p)return res.status(400).json({error:'Property not found'});input.currency ??= p.currency || 'AED';if(input.allocation==='owner'&&input.currency!==(p.currency||'AED'))return res.status(400).json({error:'Owner expenses must use the property currency'});}
   input.currency ??= 'AED';

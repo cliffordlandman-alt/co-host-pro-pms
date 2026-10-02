@@ -45,6 +45,8 @@ export const accountingTransactionsTable = pgTable("accounting_transactions", {
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull().default("0"),
   currency: text("currency").notNull().default("AED"),
   allocation: text("allocation").notNull().default("owner"),
+  /** Expense tag "revenue stream" yes/no (null = not tagged). Only on expenses. */
+  revenueStream: boolean("revenue_stream"),
   reference: text("reference"),
   notes: text("notes"),
   vendorId: integer("vendor_id").references(() => vendorsTable.id),
