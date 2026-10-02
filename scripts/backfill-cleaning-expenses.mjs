@@ -22,7 +22,7 @@ async function main() {
   const pad = (v, n) => String(v ?? '').padEnd(n).slice(0, n);
   console.log(`${res.dryRun ? 'DRY RUN (nothing recorded)' : 'RECORDED'} · checkouts ${res.from} to ${res.to} (Dubai) · payee: ${res.vendor ?? 'none'}`);
   console.log(`${pad('Property', 34)} ${pad('Checkout', 10)} ${pad('Unit', 7)} ${pad('Amount', 13)} Status`);
-  for (const i of res.items) console.log(`${pad(i.property, 34)} ${pad(i.checkout, 10)} ${pad(i.unitSize, 7)} ${pad(i.amount == null ? '-' : `${i.currency} ${i.amount.toFixed(2)}`, 13)} ${i.action === 'record' ? (res.dryRun ? 'will record' : 'recorded') : i.action === 'already recorded' ? 'already recorded' : `${i.noRate ? 'SKIPPED, NO RATE SET' : 'skipped'}: ${i.reason}`}`);
-  console.log(`To record: ${res.toRecord} · already recorded: ${res.alreadyRecorded} · skipped: ${res.skipped} (no rate set: ${res.noRateSet ?? 0}) · total: ${res.totals.map(t => `${t.currency} ${t.amount.toFixed(2)}`).join(', ') || '0'}${res.dryRun ? '' : ` · recorded now: ${res.recorded}`}`);
+  for (const i of res.items) console.log(`${pad(i.property, 34)} ${pad(i.checkout, 10)} ${pad(i.unitSize, 7)} ${pad(i.amount == null || i.action === 'no cost' ? '-' : `${i.currency} ${i.amount.toFixed(2)}`, 13)} ${i.action === 'no cost' ? 'no cost (nothing recorded)' : i.action === 'record' ? (res.dryRun ? 'will record' : 'recorded') : i.action === 'already recorded' ? 'already recorded' : `${i.noRate ? 'SKIPPED, NO RATE SET' : 'skipped'}: ${i.reason}`}`);
+  console.log(`To record: ${res.toRecord} · already recorded: ${res.alreadyRecorded} · no cost: ${res.noCost ?? 0} · skipped: ${res.skipped} (no rate set: ${res.noRateSet ?? 0}) · total: ${res.totals.map(t => `${t.currency} ${t.amount.toFixed(2)}`).join(', ') || '0'}${res.dryRun ? '' : ` · recorded now: ${res.recorded}`}`);
 }
 main().catch(e => { console.error(`Error: ${e.message}`); process.exitCode = 1; });

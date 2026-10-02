@@ -127,8 +127,25 @@ try {
   await api(`/accounting/settings/${one.id}`, 'PUT', { cleaningRateCard: false });
   const off = await api('/accounting/cleaning-expenses/backfill', 'POST', { days: 30, dryRun: true });
   assert.equal(off.items.find(i => i.property === 'One Bed').action, 'already recorded', 'recorded costs are never changed');
+  // An override of 0 = "no cost" (e.g. South African houses cleaned without a cleaning company): nothing is
+  // recorded (no zero-value rows), nothing is flagged, and no notification is raised when the clean completes.
+  const zero = await api('/properties', 'POST', { name: 'Green Lawn', unitNumber: 'GL', ownerId: owner.id, city: 'Gqeberha', country: 'South Africa', currency: 'ZAR', bedrooms: 4 }, 201);
+  await api(`/accounting/settings/${zero.id}`, 'PUT', { cleaningCostOverride: 0 });
+  assert.equal((await api('/accounting/settings')).find(r => r.propertyId === zero.id).cleaningCostOverride, 0, 'an override of 0 is kept, not cleared');
+  const zeroStay = await book(zero, shift(-4), shift(-2));
+  const notesBefore = (await api('/notifications')).filter(n => n.type === 'cleaning_cost').length;
+  const zp = await api('/accounting/cleaning-expenses/backfill', 'POST', { days: 30, dryRun: true });
+  const zi = zp.items.find(i => i.reservationId === zeroStay.id);
+  assert.equal(zi.action, 'no cost'); assert.ok(!zi.noRate, 'no cost is not "no rate set"'); assert.equal(zp.noCost, 1);
+  assert.ok(!zp.totals.some(t => t.currency === 'ZAR' && t.amount === 0) && zp.toRecord === 0, 'no cost adds nothing to record');
+  await api('/accounting/cleaning-expenses/backfill', 'POST', { days: 30, dryRun: false });
+  const zeroTask = (await api('/cleaning')).find(t => t.reservationId === zeroStay.id);
+  if (zeroTask) await api(`/cleaning/${zeroTask.id}`, 'PATCH', { status: 'completed' });
+  assert.equal((await api('/accounting/transactions')).filter(t => t.propertyId === zero.id).length, 0, 'no zero-value cleaning expense rows');
+  assert.equal((await api('/notifications')).filter(n => n.type === 'cleaning_cost').length, notesBefore, 'no cost raises no notification');
+  assert.ok(zeroTask, 'the stay has a checkout cleaning task');
 
-  console.log('PASS: rate card scope, no-rate flag, per-property currency, reservations-export import, month backfill;');
+  console.log('PASS: rate card scope, no-rate flag, zero override = no cost (nothing recorded or flagged), per-property currency, reservations-export import, month backfill;');
   console.log('PASS: rate card seeded; override; unit size from bedrooms/unit type; admin-only idempotent backfill; one cost per clean on completion; notification when unpriced; cleaning income vs cost');
 } catch (e) { console.error(e); console.error(logs.slice(-3000)); process.exitCode = 1; }
 finally { child.kill('SIGTERM'); }

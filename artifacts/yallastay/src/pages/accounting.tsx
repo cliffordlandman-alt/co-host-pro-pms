@@ -503,7 +503,7 @@ function SettingsTab() {
                   <h3 className="font-semibold text-sm">{s.propertyName}</h3>
                   {editing !== s.propertyId && (
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Mgmt {s.managementFeePercent}% · Cleaning fee {s.cleaningFee != null ? s.cleaningFee : "none"} · Cleaning cost {s.cleaningCostOverride != null ? `${s.cleaningCostCurrency || s.propertyCurrency || "AED"} ${s.cleaningCostOverride} (override)` : s.cleaningRateCard ? "rate card" : <span className="text-amber-700 dark:text-amber-300">no rate set</span>} · Airbnb {s.platformFeeAirbnb}% · Booking {s.platformFeeBookingCom}% · Direct {s.platformFeeDirect}% · Vrbo {s.platformFeeVrbo ?? 0}% · VAT {s.vatEnabled ? `${s.vatPercent}%` : "off"} · Tourism {s.tourismEnabled ? s.tourismRate : "off"}
+                      Mgmt {s.managementFeePercent}% · Cleaning fee {s.cleaningFee != null ? s.cleaningFee : "none"} · Cleaning cost {s.cleaningCostOverride === 0 ? "no cost" : s.cleaningCostOverride != null ? `${s.cleaningCostCurrency || s.propertyCurrency || "AED"} ${s.cleaningCostOverride} (override)` : s.cleaningRateCard ? "rate card" : <span className="text-amber-700 dark:text-amber-300">no rate set</span>} · Airbnb {s.platformFeeAirbnb}% · Booking {s.platformFeeBookingCom}% · Direct {s.platformFeeDirect}% · Vrbo {s.platformFeeVrbo ?? 0}% · VAT {s.vatEnabled ? `${s.vatPercent}%` : "off"} · Tourism {s.tourismEnabled ? s.tourismRate : "off"}
                     </p>
                   )}
                 </div>
@@ -529,7 +529,7 @@ function SettingsTab() {
                     { key: "platformFeeVrbo", label: "Vrbo Fee %" },
                     { key: "vatPercent", label: "VAT %" },
                     { key: "tourismRate", label: "Tourism / bedroom / night" },
-                    { key: "cleaningCostOverride", label: "Cleaning cost override (blank = rate card)" },
+                    { key: "cleaningCostOverride", label: "Cleaning cost override (blank = rate card, 0 = no cost)" },
                   ].map(({ key, label }) => (
                     <div key={key}>
                       <Label className="text-xs mb-1 block">{label}</Label>
@@ -549,7 +549,7 @@ function SettingsTab() {
                     <label className="text-xs">Cleaning cost currency (blank = {s.propertyCurrency || "AED"})
                       <Input className="mt-1 h-8 w-24 uppercase" maxLength={3} value={draft.cleaningCostCurrency ?? ""} onChange={e => setDraft((p: any) => ({ ...p, cleaningCostCurrency: e.target.value.trim() === "" ? null : e.target.value.toUpperCase() }))} />
                     </label>
-                    <p className="text-[11px] text-muted-foreground">No override and not on the rate card = no rate set: cleans are skipped and flagged.</p>
+                    <p className="text-[11px] text-muted-foreground">No override and not on the rate card = no rate set: cleans are skipped and flagged. An override of 0 = no cleaning cost: nothing is recorded or flagged.</p>
                     <div className="flex items-center gap-2">
                       <Switch id={`maint-${s.propertyId}`} checked={draft.includeMaintenance} onCheckedChange={v => setDraft((p: any) => ({ ...p, includeMaintenance: v }))} />
                       <Label htmlFor={`maint-${s.propertyId}`} className="text-xs">Include maintenance costs</Label>
