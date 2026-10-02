@@ -256,7 +256,7 @@ function StatementsTab() {
             </div>
             {toVerify.length > 0 && (
               <div className="space-y-2">
-                <p className="text-xs">Verify these bookings' guest totals (open the booking, then "Verify / edit booking finances"), then generate again:</p>
+                <p className="text-xs">Verify these bookings' guest totals, then generate again. <Link href={`/verify-bookings?month=${lastRun.month}`} className="font-medium underline">Verify all for {lastRun.month} on one screen</Link>, or open a single booking:</p>
                 {toVerify.map((s: any) => (
                   <div key={s.propertyId}>
                     <p className="font-medium text-xs">{s.property}</p>

@@ -1,5 +1,6 @@
 import TaskCentre from "@/pages/task-centre";
 import Guests from "@/pages/guests";
+import VerifyBookings from "@/pages/verify-bookings";
 import AirbnbImport from "@/components/AirbnbIncome";
 import { useEffect } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
@@ -150,6 +151,7 @@ function Router() {
               <Route path="/inbox" component={Inbox} />
               <Route path="/airbnb-import" component={AirbnbImport} />
               <Route path="/accounting" component={Accounting} />
+              <Route path="/verify-bookings" component={VerifyBookings} />
               <Route path="/platforms" component={Platforms} />
               <Route path="/automations" component={Automations} />
               <Route path="/documents" component={Documents} />

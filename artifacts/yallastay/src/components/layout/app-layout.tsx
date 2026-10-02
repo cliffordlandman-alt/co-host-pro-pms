@@ -59,6 +59,7 @@ const navGroups = [
     items: [
       { href: "/reports",    icon: PieChart,      label: "Analytics & Reporting", mobile: false },
       { href: "/accounting", icon: FileBarChart,  label: "Owner Statements",      mobile: false },
+      { href: "/verify-bookings", icon: CheckCircle2, label: "Verify bookings",     mobile: false },
       { href: "/accounting", icon: Receipt,       label: "Expenses & Extras",     mobile: false },
       { href: "/payments",   icon: DollarSign,    label: "Payments",              mobile: false },
       { href: "/accounting", icon: Settings2,     label: "Financial Settings",    mobile: false },

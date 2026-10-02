@@ -5,8 +5,8 @@ import { airbnbEarningsTable } from "@workspace/db";
 import { bedroomCount, bookingFinance } from "../../../../lib/booking-finance.mjs";
 import { loadPropertyFeeSettings, ratesFromSettings } from "../lib/fee-config";
 import { Router } from "express";
-import { db, reservationsTable, propertiesTable, insertReservationSchema, cleaningTasksTable, propertySettingsTable, ownerStatementsTable, paymentsTable } from "@workspace/db";
-import { eq, and, ne, lt, gt, inArray, or, ilike, sql, desc } from "drizzle-orm";
+import { db, reservationsTable, propertiesTable, insertReservationSchema, cleaningTasksTable, propertySettingsTable, ownerStatementsTable, paymentsTable, ownersTable } from "@workspace/db";
+import { eq, and, ne, lt, gt, gte, lte, inArray, notInArray, or, ilike, sql, desc } from "drizzle-orm";
 import { insertAuditLog } from "../lib/audit";
 import { asyncHandler } from "../lib/asyncHandler";
 import { parseId } from "../lib/parseId";
@@ -84,8 +84,12 @@ const SERVER_FINANCE_FIELDS = ["managementPercent", "managementAmount", "channel
 async function prepareFinance(body: any, existing?: any) {
   const refreshRates = body.refreshRates === true;
   const tourismRoomsHint = body.tourismRooms;
+  // The channel commission this booking actually carried (e.g. from the Airbnb or Booking.com statement),
+  // as a percentage. Optional; otherwise the property's fee settings decide. Same calculation either way.
+  const commission = body.channelCommissionPercent;
+  if (commission !== undefined && commission !== null && commission !== "" && !/^\d+(\.\d{1,2})?$/.test(String(commission))) throw new Error("Enter the channel commission as a percentage with up to two decimals");
   const clean: any = { ...body };
-  for (const f of [...SERVER_FINANCE_FIELDS, "refreshRates", "tourismRooms"]) delete clean[f];
+  for (const f of [...SERVER_FINANCE_FIELDS, "refreshRates", "tourismRooms", "channelCommissionPercent"]) delete clean[f];
   const input: any = { ...(existing ?? {}), ...clean };
   if (input.financeMode !== "inclusive-v1") return input;
   const loaded = await loadPropertyFeeSettings(db, Number(input.propertyId));
@@ -104,6 +108,7 @@ async function prepareFinance(body: any, existing?: any) {
     tourismEnabled: Number(existing.tourismRooms) > 0,
     tourismRate: Number(existing.tourismRate ?? current.tourismRate),
   } : current;
+  if (commission !== undefined && commission !== null && commission !== "") rates.channelPercent = Number(commission);
   // Cleaning fee: the amount entered for this booking, else the booking's saved snapshot, else the
   // property's cleaning fee from its fee settings (the single source), snapshotted onto the booking.
   if (clean.cleaningFee === undefined || clean.cleaningFee === null || clean.cleaningFee === "") {
@@ -178,6 +183,55 @@ router.get("/reservations/rates", asyncHandler(async (req, res) => {
   if (!loaded) return res.status(404).json({ error: "Property not found" });
   const platform = String(req.query.platform || "direct");
   return res.json({ propertyId, platform, currency: loaded.settings.currency || loaded.property.currency || "AED", ...ratesFromSettings(loaded.settings, platform), includeCleaning: loaded.settings.includeCleaning !== false });
+}));
+
+// Bookings still waiting for a verified guest total, for one checkout month (the month their owner
+// statement belongs to). Read-only; the Verify bookings screen saves through PATCH /reservations/:id.
+router.get("/reservations/unverified", asyncHandler(async (req, res) => {
+  const month = String(req.query.month ?? "");
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return res.status(400).json({ error: "Choose a month (YYYY-MM)" });
+  const propertyId = req.query.propertyId ? parseId(String(req.query.propertyId)) : null;
+  const ownerId = req.query.ownerId ? parseId(String(req.query.ownerId)) : null;
+  const conds = [gte(reservationsTable.checkOut, `${month}-01`), lte(reservationsTable.checkOut, `${month}-31`), notInArray(reservationsTable.status, ["cancelled", "blocked"]),
+    or(sql`${reservationsTable.financeMode} is null`, ne(reservationsTable.financeMode, "inclusive-v1"))];
+  if (propertyId) conds.push(eq(reservationsTable.propertyId, propertyId));
+  if (ownerId) conds.push(eq(propertiesTable.ownerId, ownerId));
+  const rows = await db.select({ r: reservationsTable, propertyName: propertiesTable.name, ownerId: propertiesTable.ownerId, ownerName: ownersTable.name })
+    .from(reservationsTable).innerJoin(propertiesTable, eq(reservationsTable.propertyId, propertiesTable.id)).leftJoin(ownersTable, eq(propertiesTable.ownerId, ownersTable.id))
+    .where(and(...conds)).orderBy(propertiesTable.name, reservationsTable.checkOut, reservationsTable.id);
+  const codes = [...new Set(rows.map(x => x.r.externalId).filter((x): x is string => !!x && x.startsWith("airbnb:")).map(x => x.slice(7)))];
+  const earnings = codes.length ? await db.select().from(airbnbEarningsTable).where(inArray(airbnbEarningsTable.confirmationCode, codes)) : [];
+  const locks = rows.length ? await db.select({ propertyId: ownerStatementsTable.propertyId }).from(ownerStatementsTable).where(and(eq(ownerStatementsTable.month, month), ne(ownerStatementsTable.status, "draft"), inArray(ownerStatementsTable.propertyId, [...new Set(rows.map(x => x.r.propertyId))]))) : [];
+  const defaults = new Map<number, any>();
+  for (const pid of new Set(rows.map(x => x.r.propertyId))) {
+    const loaded = await loadPropertyFeeSettings(db, pid);
+    if (loaded) defaults.set(pid, { settings: loaded.settings, property: loaded.property });
+  }
+  res.json(rows.map(({ r, propertyName, ownerId, ownerName }) => {
+    const d = defaults.get(r.propertyId); const rates = d ? ratesFromSettings(d.settings, r.platform) : null;
+    const f = reservationFinancials(r, earnings, { currency: d?.settings.currency || d?.property.currency });
+    return { id: r.id, propertyId: r.propertyId, propertyName, ownerId, ownerName, guestName: r.guestName, checkIn: r.checkIn, checkOut: r.checkOut, platform: r.platform, status: r.status,
+      currency: f.currency, channelEarnings: f.channelEarnings, recordedAmount: f.recordedAmount,
+      defaults: { cleaningFee: d?.settings.cleaningFee != null ? Number(d.settings.cleaningFee) : 0, channelPercent: rates?.channelPercent ?? 0, managementPercent: rates?.managementPercent ?? null, vatRate: rates?.vatRate ?? 0, tourismEnabled: !!rates?.tourismEnabled },
+      needsRooms: !!rates?.tourismEnabled && d != null && bedroomCount(d.property) == null,
+      locked: locks.some(l => l.propertyId === r.propertyId) };
+  }));
+}));
+
+// Dry run of the booking calculation (the same prepareFinance + validation the save uses); saves nothing.
+router.post("/reservations/:id/finance-preview", asyncHandler(async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: "Invalid id" });
+  const [existing] = await db.select().from(reservationsTable).where(eq(reservationsTable.id, id));
+  if (!existing) return res.status(404).json({ error: "Not found" });
+  try {
+    const r = validateBooking(await prepareFinance({ ...req.body, financeMode: "inclusive-v1" }, existing));
+    const n = (k: string) => r[k] == null ? null : Number(r[k]);
+    const loaded = await loadPropertyFeeSettings(db, Number(r.propertyId));
+    // Same rule prepareFinance applied: the property's "Include cleaning costs" setting.
+    return res.json({ ok: true, cleaningDeducted: loaded?.settings.includeCleaning !== false, grossAmount: n("grossAmount"), revenue: n("revenue"), vatAmount: n("vatAmount"), tourismFee: n("tourismFee"), channelPercent: n("channelPercent"), channelAmount: n("channelAmount"),
+      managementPercent: n("managementPercent"), managementAmount: n("managementAmount"), cleaningFee: n("cleaningFee"), ownerAmount: n("ownerAmount") });
+  } catch (e) { return res.json({ ok: false, error: (e as Error).message }); }
 }));
 
 router.get("/reservations/:id", asyncHandler(async (req, res) => {
