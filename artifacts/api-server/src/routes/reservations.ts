@@ -4,6 +4,7 @@ import { dubaiToday } from "../lib/dubai-date";
 import { airbnbEarningsTable } from "@workspace/db";
 import { bedroomCount, bookingFinance } from "../../../../lib/booking-finance.mjs";
 import { loadPropertyFeeSettings, ratesFromSettings } from "../lib/fee-config";
+import { parseBreakdowns } from "../lib/airbnb-breakdowns.mjs";
 import { Router } from "express";
 import { db, reservationsTable, propertiesTable, insertReservationSchema, cleaningTasksTable, propertySettingsTable, ownerStatementsTable, paymentsTable, ownersTable } from "@workspace/db";
 import { eq, and, ne, lt, gt, gte, lte, inArray, notInArray, or, ilike, sql, desc } from "drizzle-orm";
@@ -45,6 +46,7 @@ const reservationSelect = {
   financeMode: reservationsTable.financeMode,
 
   cleaningFee: reservationsTable.cleaningFee,
+  cohostPayout: reservationsTable.cohostPayout,
   balanceDue: reservationsTable.balanceDue,
   paymentStatus: reservationsTable.paymentStatus,
   notes: reservationsTable.notes,
@@ -65,6 +67,7 @@ function formatReservation(r: {
     ...Object.fromEntries(["channelPercent", "channelAmount", "tourismRate", "grossAmount", "managementPercent", "managementAmount", "tourismFee", "vatAmount", "vatRate", "ownerAmount"].map(key => [key, r[key] == null ? null : Number(r[key])])),
     revenue: parseFloat(r.revenue || "0"),
     cleaningFee: r.cleaningFee != null ? parseFloat(r.cleaningFee) : null,
+    cohostPayout: r.cohostPayout != null ? parseFloat(String(r.cohostPayout)) : null,
     balanceDue: r.balanceDue != null ? parseFloat(r.balanceDue) : null,
     createdAt: r.createdAt.toISOString(),
   };
@@ -211,11 +214,71 @@ router.get("/reservations/unverified", asyncHandler(async (req, res) => {
     const d = defaults.get(r.propertyId); const rates = d ? ratesFromSettings(d.settings, r.platform) : null;
     const f = reservationFinancials(r, earnings, { currency: d?.settings.currency || d?.property.currency });
     return { id: r.id, propertyId: r.propertyId, propertyName, ownerId, ownerName, guestName: r.guestName, checkIn: r.checkIn, checkOut: r.checkOut, platform: r.platform, status: r.status,
+      cohostPayout: r.cohostPayout != null ? Number(r.cohostPayout) : null,
       currency: f.currency, channelEarnings: f.channelEarnings, recordedAmount: f.recordedAmount,
       defaults: { cleaningFee: d?.settings.cleaningFee != null ? Number(d.settings.cleaningFee) : 0, channelPercent: rates?.channelPercent ?? 0, managementPercent: rates?.managementPercent ?? null, vatRate: rates?.vatRate ?? 0, tourismEnabled: !!rates?.tourismEnabled },
       needsRooms: !!rates?.tourismEnabled && d != null && bedroomCount(d.property) == null,
       locked: locks.some(l => l.propertyId === r.propertyId) };
   }));
+}));
+
+// Airbnb reservation breakdowns (guest-paid figures from each reservation's details page): match rows to
+// bookings by confirmation code and show what applying them would change. Read-only; the screen applies the
+// rows the user ticks through PATCH /reservations/:id (audit log and month lock apply). Blanks stay blank.
+router.post("/reservations/airbnb-breakdowns/preview", asyncHandler(async (req, res) => {
+  let rows;
+  try { rows = parseBreakdowns(req.body?.csv); } catch (e) { return res.status(400).json({ error: (e as Error).message }); }
+  const codes: string[] = [...new Set(rows.map(r => r.code).filter(Boolean))];
+  const bookings = codes.length ? await db.select({ r: reservationsTable, propertyName: propertiesTable.name }).from(reservationsTable).innerJoin(propertiesTable, eq(reservationsTable.propertyId, propertiesTable.id))
+    .where(inArray(reservationsTable.externalId, codes.map(c => `airbnb:${c}`))) : [];
+  const earnings = codes.length ? await db.select().from(airbnbEarningsTable).where(inArray(airbnbEarningsTable.confirmationCode, codes)) : [];
+  const months = [...new Set(bookings.map(b => b.r.checkOut.slice(0, 7)))];
+  const locks = bookings.length ? await db.select({ propertyId: ownerStatementsTable.propertyId, month: ownerStatementsTable.month }).from(ownerStatementsTable)
+    .where(and(inArray(ownerStatementsTable.propertyId, [...new Set(bookings.map(b => b.r.propertyId))]), inArray(ownerStatementsTable.month, months), ne(ownerStatementsTable.status, "draft"))) : [];
+  const seen = new Map<string, number>(); for (const r of rows) seen.set(r.code, (seen.get(r.code) ?? 0) + 1);
+  const out = [];
+  for (const row of rows) {
+    const matches = bookings.filter(b => b.r.externalId === `airbnb:${row.code}`);
+    const blocking: string[] = [...row.errors], review: string[] = [], notes: string[] = [];
+    if (seen.get(row.code)! > 1) blocking.push("This confirmation code appears more than once in the file");
+    if (!matches.length) { out.push({ ...row, matched: false, blocking: blocking.length ? blocking : ["No booking with this confirmation code"], review, notes, bulkOk: false }); continue; }
+    if (matches.length > 1) blocking.push("More than one booking has this confirmation code");
+    const { r, propertyName } = matches[0];
+    const loaded = await loadPropertyFeeSettings(db, r.propertyId);
+    const currency = loaded?.settings.currency || loaded?.property.currency || "AED";
+    const stored = earnings.filter(e => e.confirmationCode === row.code && Number(e.propertyId) === r.propertyId);
+    const storedPayout = stored.length === 1 ? Number(stored[0].amount).toFixed(2) : null;
+    if (row.guestTotal == null) blocking.push("No guest paid total in the file (a blank is not 0)");
+    if (row.currency && row.currency !== currency) blocking.push(`File currency ${row.currency} differs from the property's ${currency}`);
+    if (!row.currency) blocking.push("No currency in the file");
+    if (["cancelled", "blocked"].includes(r.status)) blocking.push(`Booking is ${r.status}`);
+    if (locks.some(l => l.propertyId === r.propertyId && l.month === r.checkOut.slice(0, 7))) blocking.push(`The ${r.checkOut.slice(0, 7)} statement for this property was already sent or paid`);
+    if ((row.checkIn && row.checkIn !== r.checkIn) || (row.checkOut && row.checkOut !== r.checkOut)) review.push(`Dates differ: file ${row.checkIn} → ${row.checkOut}, booking ${r.checkIn} → ${r.checkOut}`);
+    if (stored.length > 1) review.push("More than one stored Airbnb payout for this code");
+    if (storedPayout != null && row.hostPayout != null && stored[0].currency === row.currency && storedPayout !== row.hostPayout) review.push(`Payout differs: file ${row.currency} ${row.hostPayout}, stored ${stored[0].currency} ${storedPayout}`);
+    if (storedPayout != null && stored[0].currency !== row.currency) review.push(`Stored payout is in ${stored[0].currency}, the file in ${row.currency}`);
+    if (storedPayout == null && stored.length === 0) notes.push("No stored Airbnb payout to compare with");
+    if (row.cohost.mentioned && row.cohost.amount == null) review.push("Co-host payout mentioned without an amount: enter it from Airbnb");
+    if (r.financeMode === "inclusive-v1") review.push("Booking is already verified; applying replaces its guest total");
+    if (r.cohostPayout != null && row.cohost.amount != null && Number(r.cohostPayout).toFixed(2) !== row.cohost.amount) review.push(`Co-host payout differs from the one saved (${Number(r.cohostPayout).toFixed(2)})`);
+    if (row.cleaningFee == null) notes.push(r.cleaningFee != null ? `No cleaning fee in the file; the booking keeps ${Number(r.cleaningFee).toFixed(2)}` : "No cleaning fee in the file; the property's cleaning fee setting applies");
+    let preview: any = null;
+    if (!blocking.length) {
+      try {
+        const body: any = { grossAmount: row.guestTotal, financeMode: "inclusive-v1", ...(row.cleaningFee != null ? { cleaningFee: row.cleaningFee } : {}) };
+        const f = validateBooking(await prepareFinance(body, r));
+        const n = (k: string) => f[k] == null ? null : Number(f[k]);
+        preview = { ok: true, grossAmount: n("grossAmount"), revenue: n("revenue"), vatAmount: n("vatAmount"), tourismFee: n("tourismFee"), channelPercent: n("channelPercent"), channelAmount: n("channelAmount"),
+          managementPercent: n("managementPercent"), managementAmount: n("managementAmount"), cleaningFee: n("cleaningFee"), cleaningDeducted: loaded?.settings.includeCleaning !== false, ownerAmount: n("ownerAmount") };
+      } catch (e) { blocking.push((e as Error).message); }
+    }
+    out.push({ ...row, matched: true, reservationId: r.id, propertyId: r.propertyId, propertyName, bookingGuest: r.guestName, bookingCheckIn: r.checkIn, bookingCheckOut: r.checkOut, currencyExpected: currency,
+      current: { verified: r.financeMode === "inclusive-v1", grossAmount: r.grossAmount != null ? Number(r.grossAmount) : null, cleaningFee: r.cleaningFee != null ? Number(r.cleaningFee) : null, cohostPayout: r.cohostPayout != null ? Number(r.cohostPayout) : null },
+      storedPayout: storedPayout != null ? Number(storedPayout) : null, storedPayoutCurrency: stored[0]?.currency ?? null,
+      preview, blocking, review, notes, bulkOk: !blocking.length && !review.length });
+  }
+  res.json({ rows: out, summary: { rows: out.length, matched: out.filter(r => r.matched).length, unmatched: out.filter(r => !r.matched).length, clean: out.filter(r => r.bulkOk).length,
+    review: out.filter(r => r.matched && !r.blocking.length && r.review.length).length, blocked: out.filter(r => r.matched && r.blocking.length).length } });
 }));
 
 // Dry run of the booking calculation (the same prepareFinance + validation the save uses); saves nothing.
@@ -260,7 +323,8 @@ function validateBooking(input: any) {
   if (input.nights <= 0) throw new Error("Checkout must be after check-in");
   if (!["confirmed","checked_in","checked_out","cancelled","blocked"].includes(input.status ?? "confirmed")) throw new Error("Invalid reservation status");
   if (!["pending","partial","paid","unknown"].includes(input.paymentStatus ?? "pending")) throw new Error("Invalid payment status");
-  for (const key of ["revenue","cleaningFee","balanceDue"]) {
+  if (input.cohostPayout === "") input.cohostPayout = null;
+  for (const key of ["revenue","cleaningFee","balanceDue","cohostPayout"]) {
     if (input[key] != null) {
       if (!/^\d+(\.\d{1,2})?$/.test(String(input[key]))) throw new Error("Enter valid non-negative amounts");
       input[key] = String(input[key]);
@@ -280,7 +344,7 @@ async function saveBooking(input: any, id?: number) {
    if (conflicts.length) throw new Error("These dates overlap an existing reservation or blocked dates");
   }
   const locked = await tx.select({id:ownerStatementsTable.id}).from(ownerStatementsTable).where(and(inArray(ownerStatementsTable.propertyId,[input.propertyId,...(existing?[existing.propertyId]:[])]),inArray(ownerStatementsTable.month,[input.checkOut.slice(0,7),...(existing?[existing.checkOut.slice(0,7)]:[])]),ne(ownerStatementsTable.status,"draft")));
-  if (locked.length && (!existing || ["propertyId","financeMode","grossAmount","revenue","managementPercent","managementAmount","cleaningFee","channelPercent","channelAmount","vatRate","vatAmount","tourismRate","tourismFee","ownerAmount","checkIn","checkOut","status"].some(k=>String((existing as any)[k])!==String(input[k])))) throw new Error("This booking belongs to a published statement. Finance changes require an adjustment.");
+  if (locked.length && (!existing || ["propertyId","financeMode","grossAmount","revenue","managementPercent","managementAmount","cleaningFee","channelPercent","channelAmount","vatRate","vatAmount","tourismRate","tourismFee","ownerAmount","cohostPayout","checkIn","checkOut","status"].some(k=>String((existing as any)[k])!==String(input[k])))) throw new Error("This booking belongs to a published statement. Finance changes require an adjustment.");
   const [row] = id ? await tx.update(reservationsTable).set(input).where(eq(reservationsTable.id,id)).returning() : await tx.insert(reservationsTable).values(input).returning();
   // Keep the payments ledger and the booking balance in step: a balance change made on the booking itself
   // (e.g. choosing "Paid") is posted as a payment or reversal, so the two can never disagree.

@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { useGetOwners, useGetProperties } from "@workspace/api-client-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { badgeStyle, platformLabel } from "@/lib/channel-colors";
+import { AirbnbBreakdownImport } from "@/components/AirbnbBreakdownImport";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
@@ -15,7 +16,7 @@ import { CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 
 type Row = { id: number; propertyId: number; propertyName: string; ownerId: number | null; ownerName: string | null; guestName: string; checkIn: string; checkOut: string; platform: string;
   currency: string; channelEarnings: { currency: string; amount: number }[]; recordedAmount: number | null;
-  defaults: { cleaningFee: number; channelPercent: number; managementPercent: number | null; vatRate: number; tourismEnabled: boolean }; needsRooms: boolean; locked: boolean };
+  defaults: { cleaningFee: number; channelPercent: number; managementPercent: number | null; vatRate: number; tourismEnabled: boolean }; needsRooms: boolean; locked: boolean; cohostPayout: number | null };
 type Form = { grossAmount: string; cleaningFee: string; channelCommissionPercent: string; tourismRooms: string };
 type Preview = { ok: true; grossAmount: number; revenue: number; vatAmount: number; tourismFee: number; channelPercent: number; channelAmount: number; managementPercent: number; managementAmount: number; cleaningFee: number; cleaningDeducted: boolean; ownerAmount: number } | { ok: false; error: string };
 type State = { form: Form; preview?: Preview; previewKey?: string; checking?: boolean; saving?: boolean; saved?: boolean; error?: string };
@@ -85,6 +86,7 @@ export default function VerifyBookings() {
         <h1 className="text-2xl font-bold">Verify bookings</h1>
         <p className="text-sm text-muted-foreground max-w-3xl">Bookings that checked out in the month and still have no verified guest total. Owner statements for a property are generated only once all of its bookings for the month are verified. Enter the full amount the guest paid (including VAT and tourism fees), not the Airbnb payout; the Airbnb figure is shown for reference only.</p>
       </div>
+      <AirbnbBreakdownImport />
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm">Checkout month<Input type="month" value={month} onChange={e => e.target.value && setMonth(e.target.value)} className="w-44" /></label>
         <label className="text-sm">Owner<select aria-label="Owner" className="block h-9 rounded-md border bg-background px-2 text-sm w-48" value={ownerId} onChange={e => { setOwnerId(e.target.value); setPropertyId(""); }}>
@@ -135,6 +137,7 @@ function VerifyRow({ row: r, form, st, update, onSave }: { row: Row; form: Form;
           <p className="text-muted-foreground">{r.propertyName}{r.ownerName ? ` · ${r.ownerName}` : " · no owner"}</p>
           <p className="flex flex-wrap items-center gap-1.5 text-muted-foreground">{r.checkIn} → {r.checkOut}<span data-testid="channel-badge" className="rounded border px-1.5 py-0.5 text-[11px] font-medium" style={badgeStyle(r.platform)}>{platformLabel(r.platform)}</span></p>
           {r.channelEarnings.length > 0 && <p className="mt-1 text-xs">Airbnb expected earnings: <b>{r.channelEarnings.map(e => money(e.amount, e.currency)).join(" + ")}</b> <span className="text-muted-foreground">(reference only, not the guest total)</span></p>}
+          {r.cohostPayout != null && <p className="mt-1 text-xs text-amber-800">Co-host payout (needs decision): <b>{money(r.cohostPayout, r.currency)}</b> <span className="text-muted-foreground">(not deducted anywhere yet)</span></p>}
           {r.locked && <p className="mt-1 text-xs text-amber-700">This month's statement for this property was already sent or paid, so the booking can't be changed here.</p>}
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
