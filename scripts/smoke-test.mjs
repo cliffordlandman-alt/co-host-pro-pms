@@ -62,6 +62,8 @@ try {
  const ticket=await request('/maintenance','POST',{propertyId:prop2.id,issue:'Sample repair',cost:'50',quoteAmount:'50',chargeType:'owner'},201);
  await request('/maintenance/'+ticket.id,'PATCH',{status:'completed'},400);
  await request('/maintenance/'+ticket.id,'PATCH',{ownerApproval:'approved',status:'completed'});
+ // The owner-charged repair is completed today, so it belongs to the statement of today's Dubai month: in October 2026 it reduces the October payout by 50, before that it does not.
+ const repairOct=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai'}).format(new Date()).startsWith('2026-10')?50:0;
  await request('/accounting/transactions','POST',{propertyId:prop2.id,date:'2026-10-02',type:'expense',description:'Sample supplies',amount:25},201);
  await request('/accounting/transactions','POST',{propertyId:prop2.id,allocation:'company',currency:'AED',date:'2026-10-02',type:'expense',category:'Agent commission',description:'Company agent cost',amount:40},201);
  await request('/accounting/transactions','POST',{allocation:'company',currency:'ZAR',date:'2026-10-02',type:'income',description:'Additional income',amount:100},201);
@@ -79,14 +81,14 @@ try {
  assert.equal(sept.statements.find(s=>s.propertyId===prop2.id).bookingsCount,0);
  const october=await request('/accounting/statements/generate','POST',{month:'2026-10'});
  const statement=october.statements.find(s=>s.propertyId===prop2.id);
- assert.equal(Number(statement.vatAmount),50);assert.equal(Number(statement.tourismFee),60);assert.equal(Number(statement.ownerPayout),645); // Repair recognized in its actual completion month.
+ assert.equal(Number(statement.vatAmount),50);assert.equal(Number(statement.tourismFee),60);assert.equal(Number(statement.ownerPayout),645-repairOct);assert.equal(Number(statement.maintenanceCosts),repairOct); // Repair recognized in its actual completion month.
  await request('/accounting/settings/'+prop2.id,'PUT',{managementFeePercent:25});
  await request('/reservations/'+b.id,'PATCH',{refreshRates:true});
- assert.equal((await request('/accounting/statements?month=2026-10')).find(s=>s.id===statement.id).ownerPayout,595);
+ assert.equal((await request('/accounting/statements?month=2026-10')).find(s=>s.id===statement.id).ownerPayout,595-repairOct);
  assert.equal((await request('/reservations/'+b.id)).financials.managementAmount,250);
  await request('/accounting/settings/'+prop2.id,'PUT',{managementFeePercent:20});
  await request('/reservations/'+b.id,'PATCH',{refreshRates:true});
- assert.equal((await request('/accounting/statements?month=2026-10')).find(s=>s.id===statement.id).ownerPayout,645);
+ assert.equal((await request('/accounting/statements?month=2026-10')).find(s=>s.id===statement.id).ownerPayout,645-repairOct);
  await request('/accounting/statements/'+statement.id,'PATCH',{status:'sent'});
  await request('/accounting/statements/'+statement.id,'PATCH',{status:'paid'});
  await request('/accounting/statements/'+statement.id,'PATCH',{status:'paid'});
