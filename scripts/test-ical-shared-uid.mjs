@@ -48,6 +48,14 @@ try {
   assert.equal(lifted.airbnb.released, 1);
   assert.equal((await api(`/reservations?propertyId=${a.id}`)).find(r => r.status === 'blocked')?.checkOut, '2036-10-10', "A's block is untouched");
   assert.equal((await api(`/reservations?propertyId=${b.id}`)).filter(r => r.status === 'blocked').length, 0);
-  console.log('PASS: shared channel UIDs across listings — each property keeps its own block and stay, re-sync idempotent, releases stay per property');
+  // Airbnb reissues A's "Not available" UID with overlapping dates: the new block replaces the old one in one sync.
+  await writeFile(path.join(feeds, 'airbnb-111.ics'), ics(
+    { s: '20361002', e: '20361010', uid: 'reissued-na@airbnb.com', sum: 'Airbnb (Not available)' },
+    { s: '20361101', e: '20361104', uid: 'shared-stay@airbnb.com', sum: 'Reserved' }));
+  const reissue = await api(`/properties/${a.id}/sync-ical`, 'POST');
+  assert.equal(reissue.airbnb.created, 1); assert.equal(reissue.airbnb.released, 1); assert.equal(reissue.airbnb.flagged, 0);
+  assert.deepEqual((await api(`/reservations?propertyId=${a.id}`)).filter(r => r.status === 'blocked').map(r => [r.checkIn, r.checkOut]), [['2036-10-02', '2036-10-10']], 'reissued block present right after one sync');
+  const again = await api(`/properties/${a.id}/sync-ical`, 'POST'); assert.equal(again.airbnb.created + again.airbnb.updated + again.airbnb.released, 0);
+  console.log('PASS: shared channel UIDs across listings — each property keeps its own block and stay, re-sync idempotent, releases stay per property, reissued block UID replaced in one sync');
 } catch (e) { console.error(e); console.error(logs.slice(-4000)); process.exitCode = 1; }
 finally { child.kill('SIGTERM'); }

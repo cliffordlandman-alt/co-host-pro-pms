@@ -26,6 +26,19 @@ assert.equal(plan.inserts.length, 0); assert.deepEqual(plan.updates[0].patch, { 
 plan = planIcalSync({ platform: 'airbnb', events: [], existing: saved, today });
 assert.equal(plan.flags.length, 1); assert.equal(plan.flags[0].type, 'ical_missing'); assert.equal(plan.flags[0].reservationId, 1);
 assert.equal(plan.updates.length, 1); assert.equal(plan.updates[0].id, 2); assert.equal(plan.updates[0].patch.status, 'cancelled');
+// Airbnb reissues a "Not available" UID: the new block replaces the stale one in the same sync (no open gap), unflagged.
+const stale = [{ id: 20, platform: 'airbnb', externalId: 'ical:airbnb:old-na@airbnb.com', notes: 'ical-uid:old-na@airbnb.com', checkIn: '2026-09-29', checkOut: '2027-02-01', status: 'blocked' }];
+const reissued = parseIcalEvents(ics({ s: '20260930', e: '20270201', uid: 'new-na@airbnb.com', sum: 'Airbnb (Not available)' }));
+plan = planIcalSync({ platform: 'airbnb', events: reissued, existing: stale, today });
+assert.equal(plan.inserts.length, 1, 'reissued block imported'); assert.equal(plan.inserts[0].externalId, 'ical:airbnb:new-na@airbnb.com');
+assert.equal(plan.inserts[0].checkIn, '2026-09-30'); assert.equal(plan.inserts[0].status, 'blocked'); assert.equal(plan.inserts[0].flag, undefined);
+assert.equal(plan.updates.length, 1); assert.equal(plan.updates[0].id, 20); assert.equal(plan.updates[0].released, true);
+// A block still in the feed is not stale: a second, overlapping new block is still treated as a mirror.
+plan = planIcalSync({ platform: 'airbnb', events: [...reissued, ...parseIcalEvents(ics({ s: '20261001', e: '20261005', uid: 'other-na@airbnb.com', sum: 'Airbnb (Not available)' }))], existing: [{ ...stale[0], externalId: 'ical:airbnb:new-na@airbnb.com', notes: null, checkIn: '2026-09-30' }], today });
+assert.equal(plan.inserts.length, 0); assert.equal(plan.updates.length, 0);
+// A stale block never hides a guest stay's real clash with another source: a manual booking still blocks the mirror.
+plan = planIcalSync({ platform: 'airbnb', events: reissued, existing: [...stale, { id: 21, platform: 'direct', externalId: null, notes: null, checkIn: '2026-10-10', checkOut: '2026-10-20', status: 'confirmed' }], today });
+assert.equal(plan.inserts.length, 0, 'block overlapping a direct stay is a mirror, not imported'); assert.equal(plan.updates[0].released, true);
 // Legacy rows (UID kept in notes) are recognised; old "same check-in date" skipping no longer hides a genuinely new booking.
 const legacy = [{ id: 7, platform: 'airbnb', externalId: null, notes: 'ical-uid:a1@airbnb.com', checkIn: '2026-10-10', checkOut: '2026-10-13', status: 'confirmed' }];
 plan = planIcalSync({ platform: 'airbnb', events: [events[0]], existing: legacy, today });
