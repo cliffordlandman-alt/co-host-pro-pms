@@ -1,5 +1,5 @@
 import { CompanyFinance } from "@/components/CompanyFinance";
-import { EntryDialog } from "@/components/EntryDialog";
+import { EntryDialog, isAutomaticEntry } from "@/components/EntryDialog";
 import { printStatement } from "@/lib/print-statement";
 import { CleaningCostSettings } from "@/components/CleaningCostSettings";
 import { apiFetch } from "@/lib/api-fetch";
@@ -341,6 +341,7 @@ function TransactionsTab() {
   const queryClient = useQueryClient();
   const { data: properties } = useGetProperties();
   const [addOpen, setAddOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
   const [filterMonth, setFilterMonth] = useState(MONTHS[0].value);
   const [filterProp, setFilterProp] = useState("all");
 
@@ -436,8 +437,12 @@ function TransactionsTab() {
                   <td className={`px-4 py-3 text-right font-semibold whitespace-nowrap ${tx.type === "income" ? "text-emerald-600" : "text-red-500"}`}>
                     {tx.type === "income" ? "+" : "−"} {aed(tx.amount,tx.currency || "AED")}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <button aria-label={`Delete ${tx.description}`} onClick={() => { if (window.confirm(`Delete "${tx.description}" (${aed(tx.amount, tx.currency || "AED")})? This cannot be undone.`)) deleteMutation.mutate(tx.id); }} className="text-muted-foreground hover:text-red-500 transition-colors p-1">
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {isAutomaticEntry(tx) ? <span className="mr-1 text-[11px] text-muted-foreground" title="Recorded automatically from cleaning or maintenance; change it there">Automatic</span> : (
+                    <button aria-label={`Edit ${tx.description}`} onClick={() => setEditing(tx)} className="text-muted-foreground hover:text-foreground transition-colors p-2 sm:p-1">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>)}
+                    <button aria-label={`Delete ${tx.description}`} onClick={() => { if (window.confirm(`Delete "${tx.description}" (${aed(tx.amount, tx.currency || "AED")})? This cannot be undone.`)) deleteMutation.mutate(tx.id); }} className="text-muted-foreground hover:text-red-500 transition-colors p-2 sm:p-1">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </td>
@@ -449,6 +454,7 @@ function TransactionsTab() {
       </div>
 
       <EntryDialog open={addOpen} onOpenChange={setAddOpen} defaultDate={filterMonth !== format(new Date(), "yyyy-MM") ? `${filterMonth}-01` : undefined} />
+      <EntryDialog open={!!editing} onOpenChange={v => { if (!v) setEditing(null); }} entry={editing ?? undefined} />
     </div>
   );
 }

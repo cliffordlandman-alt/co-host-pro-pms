@@ -191,32 +191,87 @@ router.get("/accounting/transactions", asyncHandler(async (req, res) => {
   res.json(rows.map(r => ({ ...r, amount: parseFloat(r.amount || "0"), createdAt: r.createdAt.toISOString() })));
 }));
 
-router.post("/accounting/transactions", asyncHandler(async (req, res) => {
-  const input = {...req.body, amount:String(req.body.amount)};
-  if(input.reservationId){const [b]=await db.select().from(reservationsTable).where(eq(reservationsTable.id,Number(input.reservationId)));if(!b)return res.status(400).json({error:'Booking not found'});if(input.propertyId&&Number(input.propertyId)!==b.propertyId)return res.status(400).json({error:'Booking and property must match'});input.propertyId=b.propertyId;}
+// Sent or paid owner statement covering this property and month (owner entries there can't change).
+async function publishedStatement(propertyId: number | null | undefined, date: string | null | undefined) {
+  if (!propertyId || !date) return null;
+  const [st] = await db.select({ id: ownerStatementsTable.id, status: ownerStatementsTable.status, month: ownerStatementsTable.month, propertyName: propertiesTable.name })
+    .from(ownerStatementsTable).leftJoin(propertiesTable, eq(ownerStatementsTable.propertyId, propertiesTable.id))
+    .where(and(eq(ownerStatementsTable.propertyId, Number(propertyId)), eq(ownerStatementsTable.month, String(date).slice(0, 7)), ne(ownerStatementsTable.status, "draft")));
+  return st ?? null;
+}
+const lockedMessage = (st: { status: string; month: string; propertyName: string | null }) =>
+  `This entry is on the ${st.month} owner statement for ${st.propertyName ?? "this property"}, which has been ${st.status === "paid" ? "paid" : "sent"}, so it can't be changed. Record a correction in an open month instead.`;
+// Entries written by the system (cleaning costs, maintenance charges) are changed at their source, not here.
+const automaticEntry = (e: { cleaningTaskId?: number | null; reference?: string | null }) => e.cleaningTaskId != null || /^(cleaning|maintenance):/.test(e.reference ?? "");
+const EDITABLE_ENTRY_FIELDS = ["type", "amount", "date", "category", "propertyId", "allocation", "revenueStream", "notes", "description", "reference", "currency", "reservationId"] as const;
+const money = (r: any) => ({ ...r, amount: parseFloat(r.amount || "0"), createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt });
+
+/** The one set of rules for a manual income or expense entry (used by add and edit). */
+async function validateEntry(body: any): Promise<{ input: any } | { status: number; error: string }> {
+  const input = { ...body, amount: String(body.amount) };
+  if (input.propertyId === "" || input.propertyId === undefined) input.propertyId = null;
+  if (input.reservationId === "" || input.reservationId === undefined) input.reservationId = null;
+  if(input.reservationId){const [b]=await db.select().from(reservationsTable).where(eq(reservationsTable.id,Number(input.reservationId)));if(!b)return {status:400,error:'Booking not found'};if(input.propertyId&&Number(input.propertyId)!==b.propertyId)return {status:400,error:'Booking and property must match'};input.propertyId=b.propertyId;}
   input.allocation ??= input.propertyId ? 'owner' : 'company';
-  if (input.revenueStream !== undefined && input.revenueStream !== null && typeof input.revenueStream !== 'boolean') return res.status(400).json({error:'Revenue stream must be yes, no or not tagged'});
+  if (input.revenueStream !== undefined && input.revenueStream !== null && typeof input.revenueStream !== 'boolean') return {status:400,error:'Revenue stream must be yes, no or not tagged'};
   if (input.type !== 'expense') input.revenueStream = null;
-  if (!['income','expense'].includes(input.type) || !['company','owner'].includes(input.allocation)) return res.status(400).json({error:'Choose income or expense and company or owner allocation'});
-  if(input.propertyId){const [p]=await db.select().from(propertiesTable).where(eq(propertiesTable.id,Number(input.propertyId)));if(!p)return res.status(400).json({error:'Property not found'});input.currency ??= p.currency || 'AED';if(input.allocation==='owner'&&input.currency!==(p.currency||'AED'))return res.status(400).json({error:'Owner expenses must use the property currency'});}
+  if (!['income','expense'].includes(input.type) || !['company','owner'].includes(input.allocation)) return {status:400,error:'Choose income or expense and company or owner allocation'};
+  if(input.propertyId){const [p]=await db.select().from(propertiesTable).where(eq(propertiesTable.id,Number(input.propertyId)));if(!p)return {status:400,error:'Property not found'};input.currency ??= p.currency || 'AED';if(input.allocation==='owner'&&input.currency!==(p.currency||'AED'))return {status:400,error:'Owner expenses must use the property currency'};}
   input.currency ??= 'AED';
-  if(!/^[A-Z]{3}$/.test(input.currency)||!Number.isFinite(Number(input.amount))||Number(input.amount)<=0||!/^\d{4}-\d{2}-\d{2}$/.test(input.date||'')||!Number.isFinite(Date.parse(input.date))||new Date(input.date).toISOString().slice(0,10)!==input.date)return res.status(400).json({error:'Enter a valid date, currency and positive amount'});
-  if(input.allocation==='owner'&&!input.propertyId)return res.status(400).json({error:'Choose a property for owner expenses'});
-  if(input.allocation==='owner'&&input.type==='income')return res.status(400).json({error:'Use company allocation for additional income; owner income adjustments are not supported yet'});
-  if(input.allocation==='owner'){const locked=await db.select({id:ownerStatementsTable.id}).from(ownerStatementsTable).where(and(eq(ownerStatementsTable.propertyId,input.propertyId),eq(ownerStatementsTable.month,input.date.slice(0,7)),ne(ownerStatementsTable.status,'draft')));if(locked.length)return res.status(409).json({error:'This owner month is published; use an adjustment in an open month'});}
-  if (!/^\d+(\.\d{1,2})?$/.test(input.amount) || !/^\d{4}-\d{2}-\d{2}$/.test(input.date || "") || !input.description?.trim()) return res.status(400).json({error:"Valid date, description and non-negative amount required"});
+  if(!/^[A-Z]{3}$/.test(input.currency)||!Number.isFinite(Number(input.amount))||Number(input.amount)<=0||!/^\d{4}-\d{2}-\d{2}$/.test(input.date||'')||!Number.isFinite(Date.parse(input.date))||new Date(input.date).toISOString().slice(0,10)!==input.date)return {status:400,error:'Enter a valid date, currency and positive amount'};
+  if(input.allocation==='owner'&&!input.propertyId)return {status:400,error:'Choose a property for owner expenses'};
+  if(input.allocation==='owner'&&input.type==='income')return {status:400,error:'Use company allocation for additional income; owner income adjustments are not supported yet'};
+  if (!/^\d+(\.\d{1,2})?$/.test(input.amount) || !/^\d{4}-\d{2}-\d{2}$/.test(input.date || "") || !input.description?.trim()) return {status:400,error:"Valid date, description and non-negative amount required"};
+  return { input };
+}
+
+router.post("/accounting/transactions", asyncHandler(async (req, res) => {
+  const v = await validateEntry(req.body);
+  if ("error" in v) return res.status(v.status).json({ error: v.error });
+  const { input } = v;
+  if(input.allocation==='owner'&&await publishedStatement(input.propertyId,input.date))return res.status(409).json({error:'This owner month is published; use an adjustment in an open month'});
   const parsed = insertAccountingTransactionSchema.safeParse(input);
   if(!parsed.success) return res.status(400).json({error:parsed.error.message});
   const [row] = await db.insert(accountingTransactionsTable).values(parsed.data).returning();
-  res.status(201).json({ ...row, amount: parseFloat(row.amount || "0"), createdAt: row.createdAt.toISOString() });
+  await insertAuditLog({ action: "create", entity: "accounting_transaction", entityId: row.id, details: { after: money(row) }, performedBy: req.headers["x-user-id"] as string });
+  res.status(201).json(money(row));
+}));
+
+// Edit a manual entry in place. Same rules as adding one; the Activity Log keeps the before and after.
+router.patch("/accounting/transactions/:id", asyncHandler(async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) return res.status(400).json({ error: "Invalid id" });
+  const [existing] = await db.select().from(accountingTransactionsTable).where(eq(accountingTransactionsTable.id, id));
+  if (!existing) return res.status(404).json({ error: "Entry not found" });
+  if (automaticEntry(existing)) return res.status(400).json({ error: "This entry was recorded automatically (cleaning or maintenance). Change it at its source, not here." });
+  const before = await publishedStatement(existing.allocation === "owner" ? existing.propertyId : null, existing.date);
+  if (before) return res.status(409).json({ error: lockedMessage(before) });
+  const merged: any = {};
+  for (const f of EDITABLE_ENTRY_FIELDS) merged[f] = req.body[f] !== undefined ? req.body[f] : (existing as any)[f];
+  if (/^(cleaning|maintenance):/.test(merged.reference ?? "")) return res.status(400).json({ error: "That reference is reserved for automatic entries" });
+  const v = await validateEntry(merged);
+  if ("error" in v) return res.status(v.status).json({ error: v.error });
+  const { input } = v;
+  const after = await publishedStatement(input.allocation === "owner" ? input.propertyId : null, input.date);
+  if (after) return res.status(409).json({ error: lockedMessage(after) });
+  const parsed = insertAccountingTransactionSchema.partial().safeParse(input);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+  const changes: any = {};
+  for (const f of EDITABLE_ENTRY_FIELDS) changes[f] = (parsed.data as any)[f] ?? null;
+  const [row] = await db.update(accountingTransactionsTable).set(changes).where(eq(accountingTransactionsTable.id, id)).returning();
+  const diff: Record<string, { from: unknown; to: unknown }> = {};
+  for (const f of EDITABLE_ENTRY_FIELDS) { const a = (existing as any)[f] ?? null, b = (row as any)[f] ?? null; if (String(a) !== String(b)) diff[f] = { from: a, to: b }; }
+  await insertAuditLog({ action: "update", entity: "accounting_transaction", entityId: id, details: { changed: diff, before: money(existing), after: money(row) }, performedBy: req.headers["x-user-id"] as string });
+  res.json(money(row));
 }));
 
 router.delete("/accounting/transactions/:id", asyncHandler(async (req, res) => {
   const id = parseId(req.params.id);
   if (id === null) return res.status(400).json({ error: "Invalid id" });
   const [entry]=await db.select().from(accountingTransactionsTable).where(eq(accountingTransactionsTable.id,id));
-  if(entry?.allocation==='owner'&&entry.propertyId){const locks=await db.select({id:ownerStatementsTable.id}).from(ownerStatementsTable).where(and(eq(ownerStatementsTable.propertyId,entry.propertyId),eq(ownerStatementsTable.month,entry.date.slice(0,7)),ne(ownerStatementsTable.status,'draft')));if(locks.length)return res.status(409).json({error:'Published owner expenses cannot be deleted'});}
+  if(entry?.allocation==='owner'&&await publishedStatement(entry.propertyId,entry.date))return res.status(409).json({error:'Published owner expenses cannot be deleted'});
   await db.delete(accountingTransactionsTable).where(eq(accountingTransactionsTable.id, id));
+  if (entry) await insertAuditLog({ action: "delete", entity: "accounting_transaction", entityId: id, details: { before: money(entry) }, performedBy: req.headers["x-user-id"] as string });
   return res.status(204).send();
 }));
 
