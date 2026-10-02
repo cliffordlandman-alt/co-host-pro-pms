@@ -1,10 +1,16 @@
 import { db, staffTable } from "@workspace/db";
+import { outboundDeliveryEnabled } from "./outbound";
 import { eq, or, and, isNotNull } from "drizzle-orm";
 
 const GRAPH_URL = "https://graph.facebook.com/v19.0";
 
 export function isWhatsAppConfigured(): boolean {
   return !!(process.env["WHATSAPP_API_TOKEN"] && process.env["WHATSAPP_PHONE_NUMBER_ID"]);
+}
+
+/** Keys present AND outgoing messages switched on (OUTBOUND_DELIVERY=on). */
+export function isWhatsAppDeliveryOn(): boolean {
+  return outboundDeliveryEnabled() && isWhatsAppConfigured();
 }
 
 function normalisePhone(raw: string): string {
@@ -15,6 +21,10 @@ function normalisePhone(raw: string): string {
 }
 
 export async function sendWhatsApp(to: string, body: string): Promise<boolean> {
+  if (!outboundDeliveryEnabled()) {
+    console.warn("[WhatsApp] Outgoing messages are switched off (OUTBOUND_DELIVERY is not 'on'); nothing sent");
+    return false;
+  }
   const token = process.env["WHATSAPP_API_TOKEN"];
   const phoneId = process.env["WHATSAPP_PHONE_NUMBER_ID"];
 
@@ -59,7 +69,7 @@ export async function sendWhatsApp(to: string, body: string): Promise<boolean> {
 }
 
 export async function notifyManagers(message: string): Promise<void> {
-  if (!isWhatsAppConfigured()) return;
+  if (!isWhatsAppDeliveryOn()) return;
   const managers = await db
     .select({ id: staffTable.id, name: staffTable.name, phone: staffTable.phone })
     .from(staffTable)
@@ -77,7 +87,7 @@ export async function notifyManagers(message: string): Promise<void> {
 }
 
 export async function notifyStaffMember(staffId: number, message: string): Promise<boolean> {
-  if (!isWhatsAppConfigured()) return false;
+  if (!isWhatsAppDeliveryOn()) return false;
   const [member] = await db
     .select({ phone: staffTable.phone, name: staffTable.name })
     .from(staffTable)

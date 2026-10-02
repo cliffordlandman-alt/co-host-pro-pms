@@ -31,6 +31,7 @@ function ResetAccessDialog({ owner, open, onClose }: { owner: any; open: boolean
   const { toast } = useToast();
   const [sent, setSent] = useState(false);
   const [devCode, setDevCode] = useState<string | null>(null);
+  const [emailed, setEmailed] = useState(false);
 
   const resetMutation = useMutation({
     mutationFn: () => fj("/api/owner-auth/admin-reset", {
@@ -40,8 +41,9 @@ function ResetAccessDialog({ owner, open, onClose }: { owner: any; open: boolean
     }),
     onSuccess: (data) => {
       setSent(true);
+      setEmailed(!!data.emailSent);
       if (data.devCode) setDevCode(data.devCode);
-      toast({ title: `Access code sent to ${owner.name}` });
+      toast({ title: data.emailSent ? `Access code emailed to ${owner.name}` : `Access code created for ${owner.name}. Nothing was sent.` });
     },
     onError: (err: any) => {
       toast({ title: "Failed to send code", description: err.message, variant: "destructive" });
@@ -51,6 +53,7 @@ function ResetAccessDialog({ owner, open, onClose }: { owner: any; open: boolean
   function handleClose() {
     setSent(false);
     setDevCode(null);
+    setEmailed(false);
     onClose();
   }
 
@@ -65,7 +68,7 @@ function ResetAccessDialog({ owner, open, onClose }: { owner: any; open: boolean
             Reset Portal Access
           </DialogTitle>
           <DialogDescription>
-            Send a fresh access code to this owner's registered email.
+            Create a fresh portal access code for this owner. It is emailed only if outgoing messages are switched on; otherwise it is shown here for you to share yourself.
           </DialogDescription>
         </DialogHeader>
 
@@ -102,9 +105,9 @@ function ResetAccessDialog({ owner, open, onClose }: { owner: any; open: boolean
                 onClick={() => resetMutation.mutate()}
               >
                 {resetMutation.isPending ? (
-                  <><RefreshCw className="h-3.5 w-3.5 mr-2 animate-spin" />Sending…</>
+                  <><RefreshCw className="h-3.5 w-3.5 mr-2 animate-spin" />Creating…</>
                 ) : (
-                  <><Mail className="h-3.5 w-3.5 mr-2" />Send Code</>
+                  <><KeyRound className="h-3.5 w-3.5 mr-2" />Create code</>
                 )}
               </Button>
             </div>
@@ -115,17 +118,17 @@ function ResetAccessDialog({ owner, open, onClose }: { owner: any; open: boolean
               <CheckCircle2 className="h-7 w-7 text-emerald-500" />
             </div>
             <div>
-              <p className="font-semibold">Code sent!</p>
+              <p className="font-semibold">{emailed ? "Code emailed" : "Code created"}</p>
               <p className="text-sm text-muted-foreground mt-1">
-                A 6-digit access code was sent to <span className="font-medium">{owner.name}</span>.<br />
+                {emailed ? <>A 6-digit access code was emailed to <span className="font-medium">{owner.name}</span>.</> : <>A 6-digit access code was created for <span className="font-medium">{owner.name}</span>. Nothing was sent.</>}<br />
                 It expires in 15 minutes.
               </p>
             </div>
 
             {devCode && (
               <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-lg p-3">
-                <p className="text-xs text-amber-700 dark:text-amber-400 font-medium mb-1">Dev Mode — No email sent</p>
-                <p className="text-xs text-muted-foreground mb-2">RESEND_API_KEY not configured. Share this code manually:</p>
+                <p className="text-xs text-amber-700 dark:text-amber-400 font-medium mb-1">No email sent</p>
+                <p className="text-xs text-muted-foreground mb-2">Outgoing messages are off on this system. Share this code with the owner yourself only if you choose to:</p>
                 <div className="font-mono text-2xl font-bold tracking-widest text-amber-700 dark:text-amber-300">{devCode}</div>
               </div>
             )}
@@ -227,7 +230,7 @@ export default function Owners() {
                         size="sm"
                         className="text-teal-600 border-teal-200 hover:bg-teal-50 dark:hover:bg-teal-950/20"
                         onClick={() => setResetTarget(owner)}
-                        title="Send portal access code to this owner"
+                        title="Create a portal access code for this owner"
                       >
                         <KeyRound className="h-3.5 w-3.5 mr-1.5" />
                         Reset Access

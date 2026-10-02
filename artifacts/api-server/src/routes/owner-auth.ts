@@ -1,6 +1,7 @@
 import { randomInt } from "node:crypto";
 import { issueToken } from "../lib/session-token";
 import { Router } from "express";
+import { outboundDeliveryEnabled, OUTBOUND_OFF } from "../lib/outbound";
 import { db, ownersTable, ownerOtpTable } from "@workspace/db";
 import { eq, and, gt, desc } from "drizzle-orm";
 
@@ -18,6 +19,7 @@ function maskEmail(email: string) {
 }
 
 async function sendEmail(to: string, ownerName: string, code: string): Promise<void> {
+  if (!outboundDeliveryEnabled()) throw new Error(OUTBOUND_OFF);
   const apiKey = process.env.RESEND_API_KEY;
 
   const html = `
@@ -73,6 +75,7 @@ router.post("/owner-auth/send-code", async (req, res) => {
     return res.status(422).json({ error: "no_email", message: "This owner has no email address on file. Please contact your administrator." });
   }
 
+  if (!outboundDeliveryEnabled()) return res.status(503).json({error:"Login codes are not sent by email on this system. Please ask your property manager for a code."});
   if (!process.env.RESEND_API_KEY) return res.status(503).json({error:"Owner email delivery is not configured. Please contact your operator."});
   await db.update(ownerOtpTable).set({used:true}).where(eq(ownerOtpTable.ownerId,owner.id));
   // Invalidate all existing unused OTPs for this owner
@@ -163,6 +166,9 @@ router.post("/owner-auth/admin-reset", async (req, res) => {
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
   await db.insert(ownerOtpTable).values({ ownerId: owner.id, email: owner.email, code, expiresAt });
+
+  // Outgoing messages off: nothing is emailed; the administrator sees the code and decides whether to share it.
+  if (!outboundDeliveryEnabled()) return res.json({ ok: true, devCode: code, emailSent: false, deliveryOff: true });
 
   try {
     await sendEmail(owner.email, owner.name, code);
