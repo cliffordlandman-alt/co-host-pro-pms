@@ -4,7 +4,7 @@ import { dubaiToday } from "../lib/dubai-date";
 import { airbnbEarningsTable } from "@workspace/db";
 import { bedroomCount, bookingFinance } from "../../../../lib/booking-finance.mjs";
 import { loadPropertyFeeSettings, ratesFromSettings } from "../lib/fee-config";
-import { parseBreakdowns } from "../lib/airbnb-breakdowns.mjs";
+import { parseBreakdowns, payoutComparison } from "../lib/airbnb-breakdowns.mjs";
 import { Router } from "express";
 import { db, reservationsTable, propertiesTable, insertReservationSchema, cleaningTasksTable, propertySettingsTable, ownerStatementsTable, paymentsTable, ownersTable } from "@workspace/db";
 import { eq, and, ne, lt, gt, gte, lte, inArray, notInArray, or, ilike, sql, desc } from "drizzle-orm";
@@ -255,10 +255,15 @@ router.post("/reservations/airbnb-breakdowns/preview", asyncHandler(async (req, 
     if (locks.some(l => l.propertyId === r.propertyId && l.month === r.checkOut.slice(0, 7))) blocking.push(`The ${r.checkOut.slice(0, 7)} statement for this property was already sent or paid`);
     if ((row.checkIn && row.checkIn !== r.checkIn) || (row.checkOut && row.checkOut !== r.checkOut)) review.push(`Dates differ: file ${row.checkIn} → ${row.checkOut}, booking ${r.checkIn} → ${r.checkOut}`);
     if (stored.length > 1) review.push("More than one stored Airbnb payout for this code");
-    if (storedPayout != null && row.hostPayout != null && stored[0].currency === row.currency && storedPayout !== row.hostPayout) review.push(`Payout differs: file ${row.currency} ${row.hostPayout}, stored ${stored[0].currency} ${storedPayout}`);
+    // The stored payout (Airbnb's export) is kept as Airbnb's latest figure; the file never changes it.
+    const payoutCheck = storedPayout != null && stored[0].currency === row.currency ? payoutComparison(row.hostPayout, storedPayout) : "none";
+    if (payoutCheck === "differs") review.push(`Payout differs: file ${row.currency} ${row.hostPayout}, stored ${stored[0].currency} ${storedPayout}`);
+    if (payoutCheck === "rounding") notes.push(`Rounding difference: file ${row.currency} ${row.hostPayout}, stored ${storedPayout} (the stored figure is kept)`);
     if (storedPayout != null && stored[0].currency !== row.currency) review.push(`Stored payout is in ${stored[0].currency}, the file in ${row.currency}`);
     if (storedPayout == null && stored.length === 0) notes.push("No stored Airbnb payout to compare with");
-    if (row.cohost.mentioned && row.cohost.amount == null) review.push("Co-host payout mentioned without an amount: enter it from Airbnb");
+    if (row.cohost.mentioned && row.cohost.amount == null) review.push(row.cohost.suggested != null
+      ? `Co-host payout amount filled in from other fees (${row.cohost.suggested}): check it against Airbnb before ticking`
+      : "Co-host payout mentioned without an amount: enter it from Airbnb");
     if (r.financeMode === "inclusive-v1") review.push("Booking is already verified; applying replaces its guest total");
     if (r.cohostPayout != null && row.cohost.amount != null && Number(r.cohostPayout).toFixed(2) !== row.cohost.amount) review.push(`Co-host payout differs from the one saved (${Number(r.cohostPayout).toFixed(2)})`);
     if (row.cleaningFee == null) notes.push(r.cleaningFee != null ? `No cleaning fee in the file; the booking keeps ${Number(r.cleaningFee).toFixed(2)}` : "No cleaning fee in the file; the property's cleaning fee setting applies");
@@ -274,7 +279,7 @@ router.post("/reservations/airbnb-breakdowns/preview", asyncHandler(async (req, 
     }
     out.push({ ...row, matched: true, reservationId: r.id, propertyId: r.propertyId, propertyName, bookingGuest: r.guestName, bookingCheckIn: r.checkIn, bookingCheckOut: r.checkOut, currencyExpected: currency,
       current: { verified: r.financeMode === "inclusive-v1", grossAmount: r.grossAmount != null ? Number(r.grossAmount) : null, cleaningFee: r.cleaningFee != null ? Number(r.cleaningFee) : null, cohostPayout: r.cohostPayout != null ? Number(r.cohostPayout) : null },
-      storedPayout: storedPayout != null ? Number(storedPayout) : null, storedPayoutCurrency: stored[0]?.currency ?? null,
+      storedPayout: storedPayout != null ? Number(storedPayout) : null, storedPayoutCurrency: stored[0]?.currency ?? null, payoutCheck,
       preview, blocking, review, notes, bulkOk: !blocking.length && !review.length });
   }
   res.json({ rows: out, summary: { rows: out.length, matched: out.filter(r => r.matched).length, unmatched: out.filter(r => !r.matched).length, clean: out.filter(r => r.bulkOk).length,

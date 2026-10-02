@@ -38,8 +38,9 @@ export function AirbnbBreakdownImport() {
   async function onFile(f?: File) { if (!f) return; setFile(f.name); const t = await f.text(); setCsvText(t); await preview(t); }
 
   const needsAmount = (r: Row) => r.cohost?.mentioned && r.cohost.amount == null;
-  const cohostValue = (r: Row) => r.cohost?.amount ?? (cohost[r.code] ?? "").trim();
-  const canTick = (r: Row) => r.matched && !r.blocking.length && !result[r.code]?.ok && (!needsAmount(r) || amountOk(cohost[r.code] ?? ""));
+  const cohostInput = (r: Row) => cohost[r.code] ?? r.cohost?.suggested ?? "";   // pre-filled from other fees when there is exactly one amount
+  const cohostValue = (r: Row) => r.cohost?.amount ?? cohostInput(r).trim();
+  const canTick = (r: Row) => r.matched && !r.blocking.length && !result[r.code]?.ok && (!needsAmount(r) || amountOk(cohostInput(r)));
   const rows: Row[] = data?.rows ?? [];
   const matched = rows.filter(r => r.matched), unmatched = rows.filter(r => !r.matched);
   const clean = matched.filter(r => r.bulkOk && canTick(r));
@@ -88,7 +89,7 @@ export function AirbnbBreakdownImport() {
         </div>
         <div className="space-y-2">
           {matched.map(r => <BreakdownRow key={r.code} r={r} ticked={!!ticked[r.code]} canTick={canTick(r)} onTick={v => setTicked(t => ({ ...t, [r.code]: v }))}
-            cohostInput={cohost[r.code] ?? ""} setCohostInput={v => setCohost(s => ({ ...s, [r.code]: v }))} needsAmount={needsAmount(r)} result={result[r.code]} />)}
+            cohostInput={cohostInput(r)} setCohostInput={v => setCohost(s => ({ ...s, [r.code]: v }))} needsAmount={needsAmount(r)} result={result[r.code]} />)}
         </div>
         {unmatched.length > 0 && <div className="rounded border border-dashed p-2 text-xs">
           <p className="font-medium">Not matched to any booking ({unmatched.length})</p>
@@ -102,7 +103,7 @@ export function AirbnbBreakdownImport() {
 function BreakdownRow({ r, ticked, canTick, onTick, cohostInput, setCohostInput, needsAmount, result }: { r: Row; ticked: boolean; canTick: boolean; onTick: (v: boolean) => void; cohostInput: string; setCohostInput: (v: string) => void; needsAmount: boolean; result?: { ok: boolean; message: string } }) {
   const c = r.currencyExpected || r.currency;
   const fees = r.guestServiceFee != null && r.hostServiceFee != null ? Number(r.guestServiceFee) + Number(r.hostServiceFee) : null;
-  const payoutDiffers = r.storedPayout != null && r.hostPayout != null && Number(r.storedPayout).toFixed(2) !== Number(r.hostPayout).toFixed(2);
+  const payoutDiffers = r.payoutCheck === "differs", rounding = r.payoutCheck === "rounding";
   return (
     <div data-testid={`breakdown-${r.code}`} className={`rounded border p-2 text-xs ${result?.ok ? "opacity-60" : ""} ${r.blocking.length ? "bg-muted/40" : ""}`}>
       <div className="flex flex-wrap items-start gap-2">
@@ -112,10 +113,11 @@ function BreakdownRow({ r, ticked, canTick, onTick, cohostInput, setCohostInput,
           <div className="grid gap-x-4 gap-y-0.5 sm:grid-cols-2 lg:grid-cols-4">
             <p>Guest total: <b>{fmt(r.guestTotal, c)}</b> <span className="text-muted-foreground">now {r.current?.verified ? fmt(r.current.grossAmount, c) : "not verified"}</span></p>
             <p>Cleaning fee: <b>{r.cleaningFee != null ? fmt(r.cleaningFee, c) : "blank in file"}</b> <span className="text-muted-foreground">now {r.current?.cleaningFee != null ? fmt(r.current.cleaningFee, c) : "not set"}</span></p>
-            <p className={payoutDiffers ? "font-medium text-red-700" : ""}>Airbnb payout: {fmt(r.hostPayout, r.currency || c)} <span className={payoutDiffers ? "" : "text-muted-foreground"}>stored {r.storedPayout != null ? fmt(r.storedPayout, r.storedPayoutCurrency || c) : "none"}</span></p>
+            <p className={payoutDiffers ? "font-medium text-red-700" : ""}>Airbnb payout: {fmt(r.hostPayout, r.currency || c)} <span className={payoutDiffers ? "" : "text-muted-foreground"}>stored {r.storedPayout != null ? fmt(r.storedPayout, r.storedPayoutCurrency || c) : "none"}</span>{rounding && <span data-testid="rounding" className="ml-1 rounded bg-muted px-1">rounding difference</span>}</p>
             {r.cohost?.mentioned && <p className="text-amber-800">Co-host payout (needs decision): {r.cohost.amount != null ? <b>{fmt(r.cohost.amount, c)}</b> : <span>amount not in notes</span>}</p>}
           </div>
           {needsAmount && !result?.ok && <label className="flex flex-wrap items-center gap-2">Co-host payout amount from Airbnb ({c})<Input aria-label={`Co-host payout ${r.code}`} className="h-8 w-32" inputMode="decimal" value={cohostInput} onChange={e => setCohostInput(e.target.value)} placeholder="e.g. 1776.81" />
+            {r.cohost?.suggested != null && cohostInput === r.cohost.suggested && <span data-testid="cohost-suggested" className="rounded bg-amber-100 px-1 text-amber-900">from other fees, check</span>}
             {r.otherFees && <span className="text-muted-foreground">Other fees on Airbnb: {r.otherFees}</span>}</label>}
           {r.preview && <p className="text-muted-foreground">Calculated: owner {fmt(r.preview.ownerAmount, c)} · management {r.preview.managementPercent}% {fmt(r.preview.managementAmount, c)} · channel {r.preview.channelPercent}% {fmt(r.preview.channelAmount, c)}{r.preview.vatAmount ? ` · VAT ${fmt(r.preview.vatAmount, c)}` : ""}{r.preview.tourismFee ? ` · Tourism Dirham ${fmt(r.preview.tourismFee, c)}` : ""}
             {fees != null && Number(r.guestTotal) > 0 && <> · Airbnb's own fees in the file: {fmt(fees, c)} ({(fees / Number(r.guestTotal) * 100).toFixed(1)}% of the guest total)</>}</p>}

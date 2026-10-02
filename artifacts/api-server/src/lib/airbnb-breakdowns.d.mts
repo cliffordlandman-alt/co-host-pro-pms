@@ -1,7 +1,10 @@
 export type BreakdownRow = { line: number; code: string; listing: string | null; guestName: string | null; checkIn: string | null; checkOut: string | null; currency: string | null;
   guestTotal: string | null; cleaningFee: string | null; hostPayout: string | null; guestServiceFee: string | null; hostServiceFee: string | null;
-  otherFees: string | null; notes: string | null; cohost: { mentioned: boolean; amount: string | null }; errors: string[] };
+  otherFees: string | null; notes: string | null; cohost: { mentioned: boolean; amount: string | null; suggested: string | null }; errors: string[] };
 export const BREAKDOWN_COLUMNS: string[];
 export function money(value: unknown, label: string, errors: string[]): string | null;
 export function cohostFromNotes(notes: unknown): { mentioned: boolean; amount: string | null };
 export function parseBreakdowns(text: unknown): BreakdownRow[];
+export function cohostSuggestion(cohost: { mentioned: boolean; amount: string | null }, otherFees: unknown): string | null;
+export const PAYOUT_ROUNDING: number;
+export function payoutComparison(filePayout: string | number | null, storedPayout: string | number | null): 'none' | 'match' | 'rounding' | 'differs';
