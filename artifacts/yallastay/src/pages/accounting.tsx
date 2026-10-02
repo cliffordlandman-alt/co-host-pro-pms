@@ -4,6 +4,7 @@ import { apiFetch } from "@/lib/api-fetch";
 import { Pager, usePagedList } from "@/components/Pager";
 import { AirbnbIncome } from "@/components/AirbnbIncome";
 import { useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useGetProperties } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +60,13 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id: number, status: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const s = STATUS_CONFIG[stmt.status] ?? STATUS_CONFIG.draft;
+  // The owner-charged expenses behind "Expenses charged to owner", itemised (same rows the statement adds up).
+  const { data: ownerLines } = useQuery({
+    queryKey: ["transactions", stmt.month, String(stmt.propertyId), "owner-lines"],
+    queryFn: () => f(`/api/accounting/transactions?month=${stmt.month}&propertyId=${stmt.propertyId}`),
+    enabled: expanded && stmt.otherExpenses > 0,
+    select: (rows: any[]) => rows.filter(r => r.type === "expense" && r.allocation === "owner"),
+  });
   const totalDeductions = stmt.platformFees + stmt.managementFee + stmt.cleaningCosts + stmt.maintenanceCosts + stmt.otherExpenses + stmt.vatAmount + (stmt.tourismFee || 0);
 
   return (
@@ -71,6 +79,7 @@ function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id
           <Building className="h-4 w-4 text-muted-foreground flex-shrink-0" />
           <div className="min-w-0">
             <div className="font-medium text-sm">{stmt.propertyName}</div>
+            {stmt.ownerName && <div className="text-xs text-muted-foreground">Owner: {stmt.ownerName}</div>}
             <div className="text-xs text-muted-foreground">{stmt.bookingsCount} booking{stmt.bookingsCount !== 1 ? "s" : ""} · {stmt.nightsOccupied} nights</div>
           </div>
         </div>
@@ -123,10 +132,18 @@ function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id
                 </div>
               )}
               {stmt.otherExpenses > 0 && (
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Other Expenses</span>
-                  <span className="text-red-500">− {aed(stmt.otherExpenses,stmt.currency || "AED")}</span>
-                </div>
+                <>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Expenses charged to owner</span>
+                    <span className="text-red-500">− {aed(stmt.otherExpenses,stmt.currency || "AED")}</span>
+                  </div>
+                  {ownerLines?.map((l: any) => (
+                    <div key={l.id} className="flex justify-between gap-3 pl-3 text-xs text-muted-foreground">
+                      <span className="min-w-0">{l.date} · {l.description} <span className="opacity-70">({l.category})</span></span>
+                      <span className="whitespace-nowrap">− {aed(l.amount, l.currency || stmt.currency || "AED")}</span>
+                    </div>
+                  ))}
+                </>
               )}
               {stmt.tourismFee > 0 && <div className="flex justify-between text-muted-foreground"><span>Tourism fee</span><span>− {aed(stmt.tourismFee,stmt.currency || "AED")}</span></div>}
               {stmt.vatAmount > 0 && (
@@ -174,6 +191,7 @@ function StatementsTab() {
   const [selectedMonth, setSelectedMonth] = useState(MONTHS[0].value);
 
   const [statusFilter, setStatusFilter] = useState("all");
+  const [lastRun, setLastRun] = useState<{ month: string; generated: number; skipped: any[] } | null>(null);
   // Paged on the server; the KPI totals are server sums over every statement for the month (per currency).
   const list = usePagedList<any, any>("statements", "accounting/statements", { month: selectedMonth, status: statusFilter }, 20);
   const statements = list.data?.items, isLoading = list.isLoading, summary = list.data?.summary;
@@ -186,7 +204,9 @@ function StatementsTab() {
     }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["statements"] });
-      toast({ title: `Generated ${data.generated} statement${data.generated !== 1 ? "s" : ""}`, description: data.skipped?.map((s:any)=>`${s.property}: ${s.reason}`).join("; ") });
+      setLastRun({ month: selectedMonth, generated: data.generated, skipped: data.skipped ?? [] });
+      const attention = (data.skipped ?? []).filter((s: any) => !s.locked).length;
+      toast({ title: `Generated ${data.generated} statement${data.generated !== 1 ? "s" : ""}`, description: attention ? `${attention} propert${attention === 1 ? "y needs" : "ies need"} attention: see the list below.` : undefined });
     },
     onError: (e: any) => toast({ title: "Generation failed", description: e.message, variant: "destructive" }),
   });
@@ -225,6 +245,42 @@ function StatementsTab() {
           {generateMutation.isPending ? "Generating…" : "Generate Statements"}
         </Button>
       </div>
+
+      {lastRun && lastRun.month === selectedMonth && lastRun.skipped.some((s: any) => !s.locked) && (() => {
+        const toVerify = lastRun.skipped.filter((s: any) => s.unverified?.length);
+        const noOwner = lastRun.skipped.filter((s: any) => s.noOwner);
+        const other = lastRun.skipped.filter((s: any) => !s.unverified?.length && !s.noOwner && !s.locked && !s.duplicate);
+        return (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100 space-y-3" role="status">
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-medium">Not generated for {format(new Date(selectedMonth + "-01"), "MMMM yyyy")}: what to do</p>
+              <button className="text-xs underline shrink-0" onClick={() => setLastRun(null)}>Hide</button>
+            </div>
+            {toVerify.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs">Verify these bookings' guest totals (open the booking, then "Verify / edit booking finances"), then generate again:</p>
+                {toVerify.map((s: any) => (
+                  <div key={s.propertyId}>
+                    <p className="font-medium text-xs">{s.property}</p>
+                    <ul className="mt-1 space-y-1">
+                      {s.unverified.map((b: any) => (
+                        <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <span>{b.guestName || "Guest"} · {b.checkIn} → {b.checkOut} · {b.platform}</span>
+                          <Link href={`/reservations/${b.id}`} className="rounded border border-amber-400 bg-white/70 px-2 py-0.5 font-medium text-amber-900 hover:bg-white dark:bg-transparent dark:text-amber-100">Verify</Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+            {noOwner.length > 0 && (
+              <p className="text-xs"><span className="font-medium">No owner linked ({noOwner.length}):</span> {noOwner.map((s: any) => s.property).join(" · ")}. Link one under Properties → open the property → Edit → Owner.</p>
+            )}
+            {other.map((s: any) => <p key={s.propertyId ?? s.property} className="text-xs">{s.property}: {s.reason}</p>)}
+          </div>
+        );
+      })()}
 
       {duplicates?.length > 0 && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">

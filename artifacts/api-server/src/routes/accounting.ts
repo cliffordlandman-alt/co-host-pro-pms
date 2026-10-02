@@ -14,6 +14,7 @@ import {
   reservationsTable,
   maintenanceTicketsTable,
   paymentsTable,
+  ownersTable,
 } from "@workspace/db";
 import { eq, and, gte, lte, ne, sql, inArray } from "drizzle-orm";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -310,6 +311,7 @@ router.get("/accounting/statements", asyncHandler(async (req, res) => {
       ownerId: ownerStatementsTable.ownerId,
       propertyId: ownerStatementsTable.propertyId,
       propertyName: propertiesTable.name,
+      ownerName: ownersTable.name,
       month: ownerStatementsTable.month,
       grossRevenue: ownerStatementsTable.grossRevenue,
       platformFees: ownerStatementsTable.platformFees,
@@ -329,6 +331,7 @@ router.get("/accounting/statements", asyncHandler(async (req, res) => {
     })
     .from(ownerStatementsTable)
     .leftJoin(propertiesTable, eq(ownerStatementsTable.propertyId, propertiesTable.id))
+    .leftJoin(ownersTable, eq(ownerStatementsTable.ownerId, ownersTable.id))
     .where(where)
     .orderBy(sql`${ownerStatementsTable.month} DESC, ${propertiesTable.name} ASC, ${ownerStatementsTable.id} ASC`);
   const rows = p ? await query.limit(p.pageSize).offset(p.offset) : await query;

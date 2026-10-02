@@ -96,6 +96,16 @@ try {
  await request('/accounting/statements/'+statement.id,'PATCH',{status:'draft'},400);
  await request('/reservations/'+b.id,'PATCH',{grossAmount:1200},400);
  const again=await request('/accounting/statements/generate','POST',{month:'2026-10'});assert.ok(again.skipped.some(s=>s.reason.includes('locked')));
+ // Statements: the owner's name is on each statement; a skipped property says exactly which bookings need verifying, and properties with no owner are marked.
+ assert.equal((await request('/accounting/statements?month=2026-10')).find(s=>s.id===statement.id).ownerName,'Test Owner');
+ const unvProp=await request('/properties','POST',{name:'Unverified Home',unitNumber:'UNV-1',ownerId:owner.id,city:'Dubai',currency:'AED'},201);
+ const unv=await request('/reservations','POST',{propertyId:unvProp.id,guestName:'Unverified Guest',platform:'airbnb',status:'confirmed',checkIn:'2026-09-02',checkOut:'2026-09-04'},201);
+ assert.notEqual(unv.financeMode,'inclusive-v1');
+ const noOwnerProp=await request('/properties','POST',{name:'Ownerless Home',unitNumber:'NOOWN-1'},201);
+ const sepRun=await request('/accounting/statements/generate','POST',{month:'2026-09'});
+ const unvSkip=sepRun.skipped.find(s=>s.propertyId===unvProp.id);
+ assert.deepEqual(unvSkip.unverified.map(b=>[b.id,b.guestName,b.checkOut]),[[unv.id,'Unverified Guest','2026-09-04']]);assert.match(unvSkip.reason,/1 booking checked out this month need/);
+ assert.equal(sepRun.skipped.find(s=>s.propertyId===noOwnerProp.id).noOwner,true);
  const importedProp=await request('/properties','POST',{name:'Imported source property',unitNumber:'IMPORT-1'},201);
  await request('/airbnb-data/import','POST',{csv:'Date,Type,Confirmation code,Guest,Listing,Start date,End date,Currency,Amount\n2026-09-20,Co-host payout,ABC12345,Imported Guest,Imported source property,2026-10-10,2026-10-12,ZAR,125.50',status:'paid'});
  const importedBooking=(await request('/reservations')).find(r=>r.externalId==='airbnb:ABC12345');

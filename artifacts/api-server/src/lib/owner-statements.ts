@@ -35,15 +35,16 @@ export async function refreshOwnerStatements(month:string) {
   const props = await tx.select().from(propertiesTable).where(eq(propertiesTable.status,"active")).for("update");
   const settings = await tx.select().from(propertySettingsTable);
   for(const prop of props) {
-   if(!prop.ownerId) {skipped.push({property:prop.name,reason:"Owner not assigned"});continue;}
+   if(!prop.ownerId) {skipped.push({property:prop.name,propertyId:prop.id,reason:"Owner not assigned",noOwner:true});continue;}
    const found = await tx.select().from(ownerStatementsTable).where(and(eq(ownerStatementsTable.propertyId,prop.id),eq(ownerStatementsTable.month,month)));
    // Older data may hold two statements for one property/month; never pick one silently or add a third.
    if(found.length>1) {skipped.push({property:prop.name,reason:`Duplicate statements for ${month} (#${found.map(s=>s.id).join(", #")}); resolve them before this statement can be recalculated, sent or paid`,duplicate:true});continue;}
    const [existing] = found;
-   if(existing && existing.status!=="draft") {skipped.push({property:prop.name,reason:"Published statement is locked"});continue;}
+   if(existing && existing.status!=="draft") {skipped.push({property:prop.name,propertyId:prop.id,reason:"Published statement is locked",locked:true});continue;}
    // Recognize each entire stay in its checkout month; never duplicate a stay across statements.
    const bookings = (await tx.select().from(reservationsTable).where(and(eq(reservationsTable.propertyId,prop.id),ne(reservationsTable.status,"cancelled"),gte(reservationsTable.checkOut,startDate),lte(reservationsTable.checkOut,endDate)))).filter(r=>r.status!=="blocked");
-   if(bookings.some(r=>r.financeMode!=="inclusive-v1")) {skipped.push({property:prop.name,reason:"Booking totals and fee breakdowns must be verified before a payout can be calculated"});continue;}
+   const unverified = bookings.filter(r=>r.financeMode!=="inclusive-v1");
+   if(unverified.length) {skipped.push({property:prop.name,propertyId:prop.id,reason:`${unverified.length} booking${unverified.length===1?"":"s"} checked out this month need the guest total verified before a payout can be calculated`,unverified:unverified.map(r=>({id:r.id,guestName:r.guestName,checkIn:r.checkIn,checkOut:r.checkOut,platform:r.platform}))});continue;}
    const rules = settings.find(s=>s.propertyId===prop.id);
    const cents = (n:any)=>Math.round(Number(n || 0)*100);
    const sum = (key:string)=>bookings.reduce((n,r)=>n+cents((r as any)[key]),0);
