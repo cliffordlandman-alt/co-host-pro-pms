@@ -112,7 +112,8 @@ export function DirectBookingDialog({
     breakdown = bookingFinance({ total: watched.revenue, managementPercent: rates.managementPercent,
       cleaningFee: watched.cleaningFee || 0, nights: differenceInCalendarDays(parseISO(watched.checkOut), parseISO(watched.checkIn)),
       rooms: knownRooms ?? Number(watched.tourismRooms), dubai: rates.tourismEnabled,
-      vatRate: rates.vatRate, tourismRate: rates.tourismRate, tourismEnabled: rates.tourismEnabled, channelPercent: rates.channelPercent, deductCleaning: rates.includeCleaning !== false });
+      vatRate: rates.vatRate, tourismRate: rates.tourismRate, tourismEnabled: rates.tourismEnabled, channelPercent: rates.channelPercent, deductCleaning: rates.includeCleaning !== false,
+      feeBasis: rates.feeBasis === "net-payout" ? "net-payout" : "gross", channelFees: 0 }); // direct: no channel fees
   } catch (error) { calculationError = (error as Error).message; }
   const money = (n: number) => `${property?.currency || "AED"} ${n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
 
@@ -262,7 +263,7 @@ export function DirectBookingDialog({
 
             {rates && <div className="text-sm space-y-2 rounded-lg border p-3">
               <p className="font-medium">Rates from this property’s fee settings</p>
-              <p className="text-muted-foreground">Management {rates.managementPercent}% · Direct channel {rates.channelPercent}% · VAT {rates.vatRate}% · Tourism Dirham {rates.tourismEnabled ? `${property?.currency || "AED"} ${rates.tourismRate} per room per night (max 30 nights)` : "off"}</p>
+              <p className="text-muted-foreground">{rates.feeBasis === "net-payout" ? `Management ${rates.managementPercent}% of net payout · Direct: no channel fees` : `Management ${rates.managementPercent}% · Direct channel ${rates.channelPercent}%`} · VAT {rates.vatRate}% · Tourism Dirham {rates.tourismEnabled ? `${property?.currency || "AED"} ${rates.tourismRate} per room per night (max 30 nights)` : "off"}</p>
               {rates.tourismEnabled && knownRooms == null && <FormField control={form.control} name="tourismRooms" render={({field}) => (
                 <FormItem><FormLabel>Bedrooms (studio = 1)</FormLabel><FormControl><Input type="number" min="1" step="1" {...field}/></FormControl><FormMessage/></FormItem>
               )}/>}

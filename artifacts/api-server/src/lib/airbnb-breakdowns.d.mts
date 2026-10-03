@@ -1,6 +1,11 @@
 export type BreakdownRow = { line: number; code: string; listing: string | null; guestName: string | null; checkIn: string | null; checkOut: string | null; currency: string | null;
-  guestTotal: string | null; cleaningFee: string | null; hostPayout: string | null; guestServiceFee: string | null; hostServiceFee: string | null;
-  otherFees: string | null; notes: string | null; cohost: { mentioned: boolean; amount: string | null; suggested: string | null }; errors: string[] };
+  guestTotal: string | null; cleaningFee: string | null; hostPayout: string | null; guestServiceFee: string | null; hostServiceFee: string | null; channelFees: string | null;
+  otherFees: string | null; notes: string | null; cohost: Cohost; net: NetCheck; errors: string[] };
+export type Cohost = { mentioned: boolean; amount: string | null; suggested: string | null; source: 'column' | 'notes' | null; to: string | null };
+export type NetCheck = { check: 'none' | 'match' | 'rounding' | 'differs'; netPayout: string | null; paidOut: string | null };
+export function cohostFor(r: Record<string, unknown>, errors: string[]): Cohost;
+export function channelFeesOf(guestServiceFee: string | null, hostServiceFee: string | null): string | null;
+export function netPayoutCheck(x: { guestTotal: string | null; channelFees: string | null; hostPayout: string | null; cohostAmount: string | null }): NetCheck;
 export const BREAKDOWN_COLUMNS: string[];
 export function money(value: unknown, label: string, errors: string[]): string | null;
 export function cohostFromNotes(notes: unknown): { mentioned: boolean; amount: string | null };

@@ -18,18 +18,26 @@ type Row = { id: number; propertyId: number; propertyName: string; ownerId: numb
   currency: string; channelEarnings: { currency: string; amount: number }[]; recordedAmount: number | null;
   defaults: { cleaningFee: number; channelPercent: number; managementPercent: number | null; vatRate: number; tourismEnabled: boolean }; needsRooms: boolean; locked: boolean; cohostPayout: number | null;
   /** Guest total already verified: only the co-host payout is missing. */ verified: boolean;
-  /** Airbnb pays this property's co-host payout to the owner directly, so the amount is required. */ cohostRequired: boolean };
-type Form = { grossAmount: string; cleaningFee: string; channelCommissionPercent: string; tourismRooms: string; cohostPayout: string };
-type Preview = { ok: true; grossAmount: number; revenue: number; vatAmount: number; tourismFee: number; channelPercent: number; channelAmount: number; managementPercent: number; managementAmount: number; cleaningFee: number; cleaningDeducted: boolean; ownerAmount: number } | { ok: false; error: string };
+  /** Airbnb pays this property's co-host payout to the owner directly, so the amount is required. */ cohostRequired: boolean;
+  /** The property's fee basis; "net-payout" needs the channel's actual fees. */ feeBasis: "gross" | "net-payout"; channelFees: number | null;
+  /** Verified, but on another fee basis than the property's current one: saving recalculates it. */ needsRecalc: boolean };
+type Form = { grossAmount: string; cleaningFee: string; channelCommissionPercent: string; tourismRooms: string; cohostPayout: string; channelFees: string };
+type Preview = { ok: true; feeBasis?: string; grossAmount: number; revenue: number; vatAmount: number; tourismFee: number; channelPercent: number; channelAmount: number; managementPercent: number; managementAmount: number; cleaningFee: number; cleaningDeducted: boolean; ownerAmount: number } | { ok: false; error: string };
 type State = { form: Form; preview?: Preview; previewKey?: string; checking?: boolean; saving?: boolean; saved?: boolean; error?: string };
 
 const money = (v: number | null | undefined, c: string) => v == null ? "–" : `${c} ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const keyOf = (f: Form) => JSON.stringify(bodyOf(f)); // what the finance preview depends on
+const keyOf = (f: Form, r: Row) => JSON.stringify(previewBody(f, r)); // what the finance preview depends on
 const cohostOk = (v: string) => /^\d+(\.\d{1,2})?$/.test(v.trim());
 const cents = (v: number) => Math.round(v * 100);
-function bodyOf(f: Form) {
-  return { grossAmount: f.grossAmount, cleaningFee: f.cleaningFee, channelCommissionPercent: f.channelCommissionPercent, financeMode: "inclusive-v1", ...(f.tourismRooms ? { tourismRooms: Number(f.tourismRooms) } : {}) };
+const isNet = (r: Row) => r.feeBasis === "net-payout";
+/** The calculation input for this row (the same booking calculation as saving); null = nothing to recalculate. */
+function previewBody(f: Form, r: Row): Record<string, unknown> | null {
+  const fees = isNet(r) ? { channelFees: f.channelFees.trim() } : {};
+  if (r.verified) return r.needsRecalc ? { financeMode: "inclusive-v1", ...fees } : null;
+  return { grossAmount: f.grossAmount, cleaningFee: f.cleaningFee, financeMode: "inclusive-v1", ...(isNet(r) ? fees : { channelCommissionPercent: f.channelCommissionPercent }), ...(f.tourismRooms ? { tourismRooms: Number(f.tourismRooms) } : {}) };
 }
+/** Ready to ask the server for a breakdown (no request while a required amount is still blank). */
+const previewReady = (f: Form, r: Row) => (r.verified || f.grossAmount !== "") && (!isNet(r) || f.channelFees.trim() !== "");
 /** The breakdown adds back to the guest total (all parts as computed by the server). */
 export function reconciles(p: Preview) {
   if (!p.ok) return false;
@@ -59,7 +67,7 @@ export default function VerifyBookings() {
   const { data: rows, isLoading, error, refetch } = useQuery<Row[]>({ queryKey: ["unverified-bookings", query], queryFn: async () => json(await apiFetch(`/api/reservations/unverified?${query}`)) });
   const [state, setState] = useState<Record<number, State>>({});
   const update = (id: number, patch: Partial<State>) => setState(s => ({ ...s, [id]: { ...s[id], ...patch } }));
-  const formFor = (r: Row): Form => state[r.id]?.form ?? { grossAmount: "", cleaningFee: String(r.defaults.cleaningFee), channelCommissionPercent: String(r.defaults.channelPercent), tourismRooms: "", cohostPayout: r.cohostPayout != null ? r.cohostPayout.toFixed(2) : "" };
+  const formFor = (r: Row): Form => state[r.id]?.form ?? { grossAmount: "", cleaningFee: String(r.defaults.cleaningFee), channelCommissionPercent: String(r.defaults.channelPercent), tourismRooms: "", cohostPayout: r.cohostPayout != null ? r.cohostPayout.toFixed(2) : "", channelFees: r.channelFees != null ? r.channelFees.toFixed(2) : "" };
   const propertyOptions = useMemo(() => ((properties as any[]) || []).filter(p => !ownerId || String(p.ownerId) === ownerId), [properties, ownerId]);
   const [bulk, setBulk] = useState<string>("");
 
@@ -68,7 +76,7 @@ export default function VerifyBookings() {
     update(r.id, { saving: true, error: undefined });
     try {
       const cohost = r.cohostRequired ? { cohostPayout: form.cohostPayout.trim() } : {};
-      const body = r.verified ? cohost : { ...bodyOf(form), ...cohost };
+      const body = { ...(previewBody(form, r) ?? {}), ...cohost };
       await json(await apiFetch(`/api/reservations/${r.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
       update(r.id, { saving: false, saved: true });
       return true;
@@ -77,7 +85,8 @@ export default function VerifyBookings() {
   const valid = (r: Row) => {
     const s = state[r.id]; const form = formFor(r);
     if (r.locked || s?.saved || (r.cohostRequired && !cohostOk(form.cohostPayout))) return false;
-    return r.verified || (!!s?.preview && s.preview.ok && reconciles(s.preview) && s.previewKey === keyOf(form));
+    if (!previewBody(form, r)) return true; // verified; only the co-host payout was missing
+    return !!s?.preview && s.preview.ok && reconciles(s.preview) && s.previewKey === keyOf(form, r);
   };
   const open = (rows || []).filter(r => !state[r.id]?.saved);
   const ready = open.filter(valid);
@@ -119,15 +128,16 @@ export default function VerifyBookings() {
 
 function VerifyRow({ row: r, form, st, canSave, update, onSave }: { row: Row; form: Form; st?: State; canSave: boolean; update: (p: Partial<State>) => void; onSave: () => void }) {
   const seq = useRef(0);
-  const key = keyOf(form);
+  const key = keyOf(form, r);
+  const net = isNet(r);
   useEffect(() => {
-    if (r.locked || st?.saved || r.verified) return;
-    if (form.grossAmount === "") { update({ preview: undefined, previewKey: undefined, checking: false }); return; }
+    if (r.locked || st?.saved || !previewBody(form, r)) return;
+    if (!previewReady(form, r)) { update({ preview: undefined, previewKey: undefined, checking: false }); return; }
     const mine = ++seq.current;
     update({ checking: true });
     const t = setTimeout(async () => {
       try {
-        const p = await json(await apiFetch(`/api/reservations/${r.id}/finance-preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(bodyOf(form)) }));
+        const p = await json(await apiFetch(`/api/reservations/${r.id}/finance-preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(previewBody(form, r)) }));
         if (mine === seq.current) update({ preview: p, previewKey: key, checking: false });
       } catch (e) { if (mine === seq.current) update({ preview: { ok: false, error: (e as Error).message }, previewKey: key, checking: false }); }
     }, 350);
@@ -146,29 +156,34 @@ function VerifyRow({ row: r, form, st, canSave, update, onSave }: { row: Row; fo
           <p className="text-muted-foreground">{r.propertyName}{r.ownerName ? ` · ${r.ownerName}` : " · no owner"}</p>
           <p className="flex flex-wrap items-center gap-1.5 text-muted-foreground">{r.checkIn} → {r.checkOut}<span data-testid="channel-badge" className="rounded border px-1.5 py-0.5 text-[11px] font-medium" style={badgeStyle(r.platform)}>{platformLabel(r.platform)}</span></p>
           {r.channelEarnings.length > 0 && <p className="mt-1 text-xs">Airbnb expected earnings: <b>{r.channelEarnings.map(e => money(e.amount, e.currency)).join(" + ")}</b> <span className="text-muted-foreground">(reference only, not the guest total)</span></p>}
-          {r.cohostPayout != null && !r.cohostRequired && <p className="mt-1 text-xs text-amber-800">Co-host payout (needs decision): <b>{money(r.cohostPayout, r.currency)}</b> <span className="text-muted-foreground">(not deducted anywhere yet)</span></p>}
+          {r.cohostPayout != null && !r.cohostRequired && <p className="mt-1 text-xs text-muted-foreground">Co-host payout: <b>{money(r.cohostPayout, r.currency)}</b> (recorded; not deducted for this property)</p>}
           {r.locked && <p className="mt-1 text-xs text-amber-700">This month's statement for this property was already sent or paid, so the booking can't be changed here.</p>}
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {r.verified && <p className="col-span-2 text-xs text-emerald-700 sm:col-span-3"><CheckCircle2 className="mr-1 inline h-3 w-3" />Guest total already verified. Only the co-host payout is missing.</p>}
+          {r.verified && !r.needsRecalc && <p className="col-span-2 text-xs text-emerald-700 sm:col-span-3"><CheckCircle2 className="mr-1 inline h-3 w-3" />Guest total already verified. Only the co-host payout is missing.</p>}
+          {r.verified && r.needsRecalc && <p className="col-span-2 text-xs text-amber-800 sm:col-span-3">Guest total already verified, but on {net ? "the standard fee basis" : "the net-payout fee basis"}. {net ? "Enter the channel's actual fees and save to recalculate on the property's fee basis (management % of the net payout)." : "Save to recalculate on the standard basis."}</p>}
+          {net && (!r.verified || r.needsRecalc) && <label className="col-span-2 text-xs sm:col-span-3">Channel fees, actual ({c}) <span className="text-red-600">required</span>
+            <Input aria-label="Channel fees (actual)" inputMode="decimal" type="number" min="0" step="0.01" value={form.channelFees} onChange={set("channelFees")} disabled={disabled} />
+            <span className="text-[11px] text-muted-foreground">Guest service fee + host service fee from the reservation's Airbnb details. This property's management fee is a % of the net payout.</span></label>}
           {r.cohostRequired && <label className="col-span-2 text-xs sm:col-span-3">Co-host payout, paid to the owner by Airbnb ({c}) <span className="text-red-600">required</span>
             <Input aria-label="Co-host payout" inputMode="decimal" type="number" min="0" step="0.01" value={form.cohostPayout} onChange={set("cohostPayout")} disabled={disabled} aria-invalid={form.cohostPayout !== "" && !cohostOk(form.cohostPayout)} />
             <span className="text-[11px] text-muted-foreground">From the reservation's Airbnb details (co-host payout). Not entered anywhere else.</span></label>}
           {!r.verified && <><label className="col-span-2 text-xs sm:col-span-1">Guest total ({c})<Input aria-label="Guest total" inputMode="decimal" type="number" min="0" step="0.01" value={form.grossAmount} onChange={set("grossAmount")} disabled={disabled} /></label>
           <label className="text-xs">Cleaning fee<Input aria-label="Cleaning fee" inputMode="decimal" type="number" min="0" step="0.01" value={form.cleaningFee} onChange={set("cleaningFee")} disabled={disabled} /></label>
-          <label className="text-xs">Commission %<Input aria-label="Channel commission %" inputMode="decimal" type="number" min="0" max="100" step="0.01" value={form.channelCommissionPercent} onChange={set("channelCommissionPercent")} disabled={disabled} /></label>
+          {!net && <label className="text-xs">Commission %<Input aria-label="Channel commission %" inputMode="decimal" type="number" min="0" max="100" step="0.01" value={form.channelCommissionPercent} onChange={set("channelCommissionPercent")} disabled={disabled} /></label>}
           {r.needsRooms && <label className="col-span-2 text-xs sm:col-span-3">Bedrooms for Tourism Dirham (studio = 1)<Input aria-label="Bedrooms" type="number" min="1" step="1" value={form.tourismRooms} onChange={set("tourismRooms")} disabled={disabled} /></label>}</>}
         </div>
         <div className="text-xs" aria-live="polite">
-          {!p && !st?.checking && !r.locked && !r.verified && <p className="text-muted-foreground">Enter the guest total to see the breakdown.</p>}
+          {!p && !st?.checking && !r.locked && !!previewBody(form, r) && <p className="text-muted-foreground">{net && form.channelFees.trim() === "" ? "Enter the channel fees" : "Enter the guest total"} to see the breakdown.</p>}
           {st?.checking && <p className="flex items-center gap-1 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />Checking…</p>}
           {p && !p.ok && <p className="flex items-start gap-1 text-red-600"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />{p.error}</p>}
           {p && p.ok && <>
             <dl className="grid grid-cols-2 gap-x-3">
               {p.tourismFee > 0 && <><dt className="text-muted-foreground">Tourism Dirham</dt><dd className="text-right">{money(p.tourismFee, c)}</dd></>}
               <dt className="text-muted-foreground">VAT</dt><dd className="text-right">{money(p.vatAmount, c)}</dd>
-              <dt className="text-muted-foreground">Channel {p.channelPercent}%</dt><dd className="text-right">{money(p.channelAmount, c)}</dd>
-              <dt className="text-muted-foreground">Management {p.managementPercent}%</dt><dd className="text-right">{money(p.managementAmount, c)}</dd>
+              <dt className="text-muted-foreground">{p.feeBasis === "net-payout" ? "Channel fees (actual)" : `Channel ${p.channelPercent}%`}</dt><dd className="text-right">{money(p.channelAmount, c)}</dd>
+              {p.feeBasis === "net-payout" && <><dt className="text-muted-foreground">Net payout</dt><dd className="text-right">{money(p.grossAmount - p.channelAmount, c)}</dd></>}
+              <dt className="text-muted-foreground">Management {p.managementPercent}%{p.feeBasis === "net-payout" ? " of net payout" : ""}</dt><dd className="text-right">{money(p.managementAmount, c)}</dd>
               <dt className="text-muted-foreground">Cleaning{p.cleaningDeducted ? "" : " (not deducted)"}</dt><dd className="text-right">{money(p.cleaningDeducted ? p.cleaningFee : 0, c)}</dd>
               <dt className="font-medium">Owner</dt><dd className="text-right font-medium">{money(p.ownerAmount, c)}</dd>
             </dl>

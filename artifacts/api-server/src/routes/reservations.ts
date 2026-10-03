@@ -47,6 +47,8 @@ const reservationSelect = {
 
   cleaningFee: reservationsTable.cleaningFee,
   cohostPayout: reservationsTable.cohostPayout,
+  channelFees: reservationsTable.channelFees,
+  feeBasis: reservationsTable.feeBasis,
   balanceDue: reservationsTable.balanceDue,
   paymentStatus: reservationsTable.paymentStatus,
   notes: reservationsTable.notes,
@@ -68,13 +70,14 @@ function formatReservation(r: {
     revenue: parseFloat(r.revenue || "0"),
     cleaningFee: r.cleaningFee != null ? parseFloat(r.cleaningFee) : null,
     cohostPayout: r.cohostPayout != null ? parseFloat(String(r.cohostPayout)) : null,
+    channelFees: r.channelFees != null ? parseFloat(String(r.channelFees)) : null,
     balanceDue: r.balanceDue != null ? parseFloat(r.balanceDue) : null,
     createdAt: r.createdAt.toISOString(),
   };
 }
 
 // Rates and derived amounts are decided by the server, never taken from the browser.
-const SERVER_FINANCE_FIELDS = ["managementPercent", "managementAmount", "channelPercent", "channelAmount", "vatRate", "vatAmount", "tourismRate", "tourismFee", "tourismNights", "ownerAmount", "dubaiCharges"];
+const SERVER_FINANCE_FIELDS = ["managementPercent", "managementAmount", "channelPercent", "channelAmount", "vatRate", "vatAmount", "tourismRate", "tourismFee", "tourismNights", "ownerAmount", "dubaiCharges", "feeBasis"];
 
 /**
  * Builds the booking's financial snapshot.
@@ -102,7 +105,10 @@ async function prepareFinance(body: any, existing?: any) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input[field]) || new Date(input[field]).toISOString().slice(0,10) !== input[field]) throw new Error("Enter valid booking dates");
   }
   const nights = (Date.parse(input.checkOut)-Date.parse(input.checkIn))/86400000;
-  const keepSnapshot = !refreshRates && existing?.financeMode === "inclusive-v1" && Number(existing.propertyId) === Number(input.propertyId) && existing.managementPercent != null;
+  // Fee basis: the property's current one. A verified booking calculated on another basis is recalculated with
+  // the property's current rates the next time it is saved (until then its month's statement is blocked).
+  const basis = settings.feeBasis === "net-payout" ? "net-payout" : null;
+  const keepSnapshot = !refreshRates && existing?.financeMode === "inclusive-v1" && Number(existing.propertyId) === Number(input.propertyId) && existing.managementPercent != null && (existing.feeBasis ?? null) === basis;
   const current = ratesFromSettings(settings, input.platform);
   const rates = keepSnapshot ? {
     managementPercent: Number(existing.managementPercent),
@@ -117,16 +123,20 @@ async function prepareFinance(body: any, existing?: any) {
   if (clean.cleaningFee === undefined || clean.cleaningFee === null || clean.cleaningFee === "") {
     input.cleaningFee = existing?.cleaningFee ?? settings.cleaningFee ?? 0;
   }
+  // A direct booking has no channel, so no channel fees (a fact, not a percentage fallback).
+  if (basis && (input.channelFees == null || input.channelFees === "") && (input.platform ?? "direct") === "direct") input.channelFees = "0";
   const rooms = bedroomCount(property) ?? Number(tourismRoomsHint ?? existing?.tourismRooms);
   const finance = bookingFinance({total: input.grossAmount, managementPercent: rates.managementPercent,
     cleaningFee: input.cleaningFee ?? 0, nights, rooms, dubai: rates.tourismEnabled,
     vatRate: rates.vatRate, tourismRate: rates.tourismRate, tourismEnabled: rates.tourismEnabled,
     channelPercent: rates.channelPercent,
+    feeBasis: basis ?? "gross", channelFees: input.channelFees ?? null,
     // Always the property's current "Include cleaning costs" setting, so the booking's owner amount and
     // the owner statement agree (the statement applies the same setting).
     deductCleaning: settings.includeCleaning !== false});
-  const result = {...input, ...finance, nights};
-  for (const field of ["channelPercent", "channelAmount", "tourismRate", "revenue", "grossAmount", "managementPercent", "managementAmount", "tourismFee", "vatAmount", "vatRate", "ownerAmount", "cleaningFee", "balanceDue"]) {
+  const { netPayout: _netPayout, ...stored } = finance as any;
+  const result = {...input, ...stored, nights};
+  for (const field of ["channelFees", "channelPercent", "channelAmount", "tourismRate", "revenue", "grossAmount", "managementPercent", "managementAmount", "tourismFee", "vatAmount", "vatRate", "ownerAmount", "cleaningFee", "balanceDue"]) {
     if (result[field] != null) result[field] = String(result[field]);
   }
   return result;
@@ -185,7 +195,7 @@ router.get("/reservations/rates", asyncHandler(async (req, res) => {
   const loaded = await loadPropertyFeeSettings(db, propertyId);
   if (!loaded) return res.status(404).json({ error: "Property not found" });
   const platform = String(req.query.platform || "direct");
-  return res.json({ propertyId, platform, currency: loaded.settings.currency || loaded.property.currency || "AED", ...ratesFromSettings(loaded.settings, platform), includeCleaning: loaded.settings.includeCleaning !== false });
+  return res.json({ propertyId, platform, currency: loaded.settings.currency || loaded.property.currency || "AED", ...ratesFromSettings(loaded.settings, platform), includeCleaning: loaded.settings.includeCleaning !== false, feeBasis: loaded.settings.feeBasis === "net-payout" ? "net-payout" : "gross" });
 }));
 
 // Bookings still waiting for a verified guest total, for one checkout month (the month their owner
@@ -198,10 +208,12 @@ router.get("/reservations/unverified", asyncHandler(async (req, res) => {
   const conds = [gte(reservationsTable.checkOut, `${month}-01`), lte(reservationsTable.checkOut, `${month}-31`), notInArray(reservationsTable.status, ["cancelled", "blocked"]),
     or(sql`${reservationsTable.financeMode} is null`, ne(reservationsTable.financeMode, "inclusive-v1"),
       // verified Airbnb bookings still missing the co-host payout on properties where Airbnb pays it to the owner
-      and(eq(reservationsTable.platform, "airbnb"), isNull(reservationsTable.cohostPayout), eq(propertySettingsTable.cohostPaidToOwner, true)))];
+      and(eq(reservationsTable.platform, "airbnb"), isNull(reservationsTable.cohostPayout), eq(propertySettingsTable.cohostPaidToOwner, true)),
+      // verified bookings not calculated on the property's current fee basis (e.g. actual channel fees missing)
+      sql`(coalesce(${reservationsTable.feeBasis}, 'gross') = 'net-payout') <> (coalesce(${propertySettingsTable.feeBasis}, 'gross') = 'net-payout')`)];
   if (propertyId) conds.push(eq(reservationsTable.propertyId, propertyId));
   if (ownerId) conds.push(eq(propertiesTable.ownerId, ownerId));
-  const rows = await db.select({ r: reservationsTable, propertyName: propertiesTable.name, ownerId: propertiesTable.ownerId, ownerName: ownersTable.name, cohostPaidToOwner: propertySettingsTable.cohostPaidToOwner })
+  const rows = await db.select({ r: reservationsTable, propertyName: propertiesTable.name, ownerId: propertiesTable.ownerId, ownerName: ownersTable.name, cohostPaidToOwner: propertySettingsTable.cohostPaidToOwner, feeBasis: propertySettingsTable.feeBasis })
     .from(reservationsTable).innerJoin(propertiesTable, eq(reservationsTable.propertyId, propertiesTable.id)).leftJoin(ownersTable, eq(propertiesTable.ownerId, ownersTable.id))
     .leftJoin(propertySettingsTable, eq(propertySettingsTable.propertyId, reservationsTable.propertyId))
     .where(and(...conds)).orderBy(propertiesTable.name, reservationsTable.checkOut, reservationsTable.id);
@@ -213,12 +225,14 @@ router.get("/reservations/unverified", asyncHandler(async (req, res) => {
     const loaded = await loadPropertyFeeSettings(db, pid);
     if (loaded) defaults.set(pid, { settings: loaded.settings, property: loaded.property });
   }
-  res.json(rows.map(({ r, propertyName, ownerId, ownerName, cohostPaidToOwner }) => {
+  res.json(rows.map(({ r, propertyName, ownerId, ownerName, cohostPaidToOwner, feeBasis }) => {
     const d = defaults.get(r.propertyId); const rates = d ? ratesFromSettings(d.settings, r.platform) : null;
     const f = reservationFinancials(r, earnings, { currency: d?.settings.currency || d?.property.currency });
     return { id: r.id, propertyId: r.propertyId, propertyName, ownerId, ownerName, guestName: r.guestName, checkIn: r.checkIn, checkOut: r.checkOut, platform: r.platform, status: r.status,
       cohostPayout: r.cohostPayout != null ? Number(r.cohostPayout) : null,
       verified: r.financeMode === "inclusive-v1", cohostRequired: cohostPaidToOwner === true && r.platform === "airbnb",
+      feeBasis: feeBasis === "net-payout" ? "net-payout" : "gross", channelFees: r.channelFees != null ? Number(r.channelFees) : null,
+      needsRecalc: r.financeMode === "inclusive-v1" && (r.feeBasis === "net-payout") !== (feeBasis === "net-payout"),
       currency: f.currency, channelEarnings: f.channelEarnings, recordedAmount: f.recordedAmount,
       defaults: { cleaningFee: d?.settings.cleaningFee != null ? Number(d.settings.cleaningFee) : 0, channelPercent: rates?.channelPercent ?? 0, managementPercent: rates?.managementPercent ?? null, vatRate: rates?.vatRate ?? 0, tourismEnabled: !!rates?.tourismEnabled },
       needsRooms: !!rates?.tourismEnabled && d != null && bedroomCount(d.property) == null,
@@ -265,6 +279,12 @@ router.post("/reservations/airbnb-breakdowns/preview", asyncHandler(async (req, 
     if (payoutCheck === "rounding") notes.push(`Rounding difference: file ${row.currency} ${row.hostPayout}, stored ${storedPayout} (the stored figure is kept)`);
     if (storedPayout != null && stored[0].currency !== row.currency) review.push(`Stored payout is in ${stored[0].currency}, the file in ${row.currency}`);
     if (storedPayout == null && stored.length === 0) notes.push("No stored Airbnb payout to compare with");
+    if (row.cohost.source === "column") notes.push(`Co-host payout ${row.cohost.amount} from the verified co-host column${row.cohost.to ? ` (to ${row.cohost.to})` : ""}`);
+    // The net-payout cross-check only matters where the fee is a % of the net payout; other properties import as before.
+    const netBasis = loaded?.settings.feeBasis === "net-payout";
+    if (netBasis && row.net.check === "differs") review.push(`Guest total minus Airbnb fees (${row.net.netPayout}) doesn't equal the co-host + host payout (${row.net.paidOut})`);
+    if (netBasis && row.net.check === "rounding") notes.push(`Net payout ${row.net.netPayout} vs paid out ${row.net.paidOut}: rounding`);
+    if (netBasis && row.channelFees == null) blocking.push("No Airbnb fees in the file (guest service fee and host service fee): this property's fee is a % of the net payout, so they're needed");
     if (row.cohost.mentioned && row.cohost.amount == null) review.push(row.cohost.suggested != null
       ? `Co-host payout amount filled in from other fees (${row.cohost.suggested}): check it against Airbnb before ticking`
       : "Co-host payout mentioned without an amount: enter it from Airbnb");
@@ -274,15 +294,16 @@ router.post("/reservations/airbnb-breakdowns/preview", asyncHandler(async (req, 
     let preview: any = null;
     if (!blocking.length) {
       try {
-        const body: any = { grossAmount: row.guestTotal, financeMode: "inclusive-v1", ...(row.cleaningFee != null ? { cleaningFee: row.cleaningFee } : {}) };
+        const body: any = { grossAmount: row.guestTotal, financeMode: "inclusive-v1", ...(row.cleaningFee != null ? { cleaningFee: row.cleaningFee } : {}), ...(row.channelFees != null ? { channelFees: row.channelFees } : {}) };
         const f = validateBooking(await prepareFinance(body, r));
         const n = (k: string) => f[k] == null ? null : Number(f[k]);
         preview = { ok: true, grossAmount: n("grossAmount"), revenue: n("revenue"), vatAmount: n("vatAmount"), tourismFee: n("tourismFee"), channelPercent: n("channelPercent"), channelAmount: n("channelAmount"),
-          managementPercent: n("managementPercent"), managementAmount: n("managementAmount"), cleaningFee: n("cleaningFee"), cleaningDeducted: loaded?.settings.includeCleaning !== false, ownerAmount: n("ownerAmount") };
+          managementPercent: n("managementPercent"), managementAmount: n("managementAmount"), cleaningFee: n("cleaningFee"), cleaningDeducted: loaded?.settings.includeCleaning !== false, ownerAmount: n("ownerAmount"),
+          feeBasis: f.feeBasis ?? "gross", channelFees: n("channelFees") };
       } catch (e) { blocking.push((e as Error).message); }
     }
     out.push({ ...row, matched: true, reservationId: r.id, propertyId: r.propertyId, propertyName, bookingGuest: r.guestName, bookingCheckIn: r.checkIn, bookingCheckOut: r.checkOut, currencyExpected: currency,
-      current: { verified: r.financeMode === "inclusive-v1", grossAmount: r.grossAmount != null ? Number(r.grossAmount) : null, cleaningFee: r.cleaningFee != null ? Number(r.cleaningFee) : null, cohostPayout: r.cohostPayout != null ? Number(r.cohostPayout) : null },
+      current: { verified: r.financeMode === "inclusive-v1", grossAmount: r.grossAmount != null ? Number(r.grossAmount) : null, cleaningFee: r.cleaningFee != null ? Number(r.cleaningFee) : null, cohostPayout: r.cohostPayout != null ? Number(r.cohostPayout) : null, channelFees: r.channelFees != null ? Number(r.channelFees) : null, feeBasis: r.feeBasis ?? null },
       storedPayout: storedPayout != null ? Number(storedPayout) : null, storedPayoutCurrency: stored[0]?.currency ?? null, payoutCheck,
       preview, blocking, review, notes, bulkOk: !blocking.length && !review.length });
   }
@@ -301,7 +322,7 @@ router.post("/reservations/:id/finance-preview", asyncHandler(async (req, res) =
     const n = (k: string) => r[k] == null ? null : Number(r[k]);
     const loaded = await loadPropertyFeeSettings(db, Number(r.propertyId));
     // Same rule prepareFinance applied: the property's "Include cleaning costs" setting.
-    return res.json({ ok: true, cleaningDeducted: loaded?.settings.includeCleaning !== false, grossAmount: n("grossAmount"), revenue: n("revenue"), vatAmount: n("vatAmount"), tourismFee: n("tourismFee"), channelPercent: n("channelPercent"), channelAmount: n("channelAmount"),
+    return res.json({ ok: true, feeBasis: r.feeBasis ?? "gross", channelFees: n("channelFees"), cleaningDeducted: loaded?.settings.includeCleaning !== false, grossAmount: n("grossAmount"), revenue: n("revenue"), vatAmount: n("vatAmount"), tourismFee: n("tourismFee"), channelPercent: n("channelPercent"), channelAmount: n("channelAmount"),
       managementPercent: n("managementPercent"), managementAmount: n("managementAmount"), cleaningFee: n("cleaningFee"), ownerAmount: n("ownerAmount") });
   } catch (e) { return res.json({ ok: false, error: (e as Error).message }); }
 }));
@@ -333,7 +354,8 @@ function validateBooking(input: any) {
   if (!["confirmed","checked_in","checked_out","cancelled","blocked"].includes(input.status ?? "confirmed")) throw new Error("Invalid reservation status");
   if (!["pending","partial","paid","unknown"].includes(input.paymentStatus ?? "pending")) throw new Error("Invalid payment status");
   if (input.cohostPayout === "") input.cohostPayout = null;
-  for (const key of ["revenue","cleaningFee","balanceDue","cohostPayout"]) {
+  if (input.channelFees === "") input.channelFees = null;
+  for (const key of ["revenue","cleaningFee","balanceDue","cohostPayout","channelFees"]) {
     if (input[key] != null) {
       if (!/^\d+(\.\d{1,2})?$/.test(String(input[key]))) throw new Error("Enter valid non-negative amounts");
       input[key] = String(input[key]);
@@ -353,7 +375,7 @@ async function saveBooking(input: any, id?: number) {
    if (conflicts.length) throw new Error("These dates overlap an existing reservation or blocked dates");
   }
   const locked = await tx.select({id:ownerStatementsTable.id}).from(ownerStatementsTable).where(and(inArray(ownerStatementsTable.propertyId,[input.propertyId,...(existing?[existing.propertyId]:[])]),inArray(ownerStatementsTable.month,[input.checkOut.slice(0,7),...(existing?[existing.checkOut.slice(0,7)]:[])]),ne(ownerStatementsTable.status,"draft")));
-  if (locked.length && (!existing || ["propertyId","financeMode","grossAmount","revenue","managementPercent","managementAmount","cleaningFee","channelPercent","channelAmount","vatRate","vatAmount","tourismRate","tourismFee","ownerAmount","cohostPayout","checkIn","checkOut","status"].some(k=>String((existing as any)[k])!==String(input[k])))) throw new Error("This booking belongs to a published statement. Finance changes require an adjustment.");
+  if (locked.length && (!existing || ["propertyId","financeMode","grossAmount","revenue","managementPercent","managementAmount","cleaningFee","channelPercent","channelAmount","vatRate","vatAmount","tourismRate","tourismFee","ownerAmount","cohostPayout","channelFees","feeBasis","checkIn","checkOut","status"].some(k=>String((existing as any)[k])!==String(input[k])))) throw new Error("This booking belongs to a published statement. Finance changes require an adjustment.");
   const [row] = id ? await tx.update(reservationsTable).set(input).where(eq(reservationsTable.id,id)).returning() : await tx.insert(reservationsTable).values(input).returning();
   // Keep the payments ledger and the booking balance in step: a balance change made on the booking itself
   // (e.g. choosing "Paid") is posted as a payment or reversal, so the two can never disagree.

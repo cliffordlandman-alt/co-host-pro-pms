@@ -134,6 +134,13 @@
       "when": 1790900018000,
       "tag": "0018_cohost_paid_to_owner",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790900019000,
+      "tag": "0019_net_payout_fee_basis",
+      "breakpoints": true
     }
   ]
 }

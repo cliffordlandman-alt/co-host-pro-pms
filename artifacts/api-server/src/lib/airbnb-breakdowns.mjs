@@ -38,6 +38,39 @@ export function cohostSuggestion(cohost, otherFees) {
   return n > 0 ? n.toFixed(2) : null;
 }
 
+/**
+ * Co-host payout for a row: the verified cohost_payout column first (source "column"), else the notes
+ * (source "notes"), else a suggestion from other_fees (to be checked; never applied in bulk).
+ */
+export function cohostFor(r, errors) {
+  const to = String(r.cohost_payout_to ?? '').trim() || null;
+  const col = money(r.cohost_payout, 'Co-host payout', errors);
+  if (col != null) {
+    if (Number(col) < 0) { errors.push('Co-host payout cannot be negative'); return { mentioned: true, amount: null, source: null, suggested: null, to }; }
+    return { mentioned: true, amount: col, source: 'column', suggested: null, to };
+  }
+  const n = cohostFromNotes(r.notes);
+  return { ...withSuggestion(n, r.other_fees), source: n.amount != null ? 'notes' : null, to };
+}
+
+/** The channel's actual fees (guest service fee + host service fee); null unless both are given. */
+export function channelFeesOf(guestServiceFee, hostServiceFee) {
+  if (guestServiceFee == null || hostServiceFee == null) return null;
+  return ((Math.round(Number(guestServiceFee) * 100) + Math.round(Number(hostServiceFee) * 100)) / 100).toFixed(2);
+}
+
+/**
+ * Net payout check: guest total minus the channel's fees should equal what Airbnb paid out (co-host payout +
+ * host payout). 'match', 'rounding' (0.05 or less), 'differs', or 'none' when a figure is missing.
+ */
+export function netPayoutCheck({ guestTotal, channelFees, hostPayout, cohostAmount }) {
+  if (guestTotal == null || channelFees == null || hostPayout == null) return { check: 'none', netPayout: null, paidOut: null };
+  const net = Math.round(Number(guestTotal) * 100) - Math.round(Number(channelFees) * 100);
+  const paid = Math.round(Number(hostPayout) * 100) + (cohostAmount != null ? Math.round(Number(cohostAmount) * 100) : 0);
+  const diff = Math.abs(net - paid);
+  return { check: diff === 0 ? 'match' : diff <= PAYOUT_ROUNDING * 100 ? 'rounding' : 'differs', netPayout: (net / 100).toFixed(2), paidOut: (paid / 100).toFixed(2) };
+}
+
 /** Payout differences of 0.05 or less (same currency) are rounding, e.g. 325.74 vs 325.75. */
 export const PAYOUT_ROUNDING = 0.05;
 export function payoutComparison(filePayout, storedPayout) {
@@ -64,8 +97,13 @@ export function parseBreakdowns(text) {
     const hostPayout = money(r.host_payout, 'Host payout', errors);
     if (guestTotal != null && Number(guestTotal) <= 0) errors.push('Guest paid total must be above 0');
     if (cleaningFee != null && Number(cleaningFee) < 0) errors.push('Cleaning fee cannot be negative');
+    const guestServiceFee = money(r.guest_service_fee, 'Guest service fee', errors), hostServiceFee = money(r.host_service_fee, 'Host service fee', errors);
+    const channelFees = channelFeesOf(guestServiceFee, hostServiceFee);
+    if (channelFees != null && Number(channelFees) < 0) errors.push('Channel fees cannot be negative');
+    const cohost = cohostFor(r, errors);
     return { line: i + 2, code, listing: r.listing_name ?? null, guestName: r.guest_name ?? null, checkIn: date('check_in'), checkOut: date('checkout'), currency,
-      guestTotal, cleaningFee, hostPayout, guestServiceFee: money(r.guest_service_fee, 'Guest service fee', []), hostServiceFee: money(r.host_service_fee, 'Host service fee', []),
-      otherFees: String(r.other_fees ?? '').trim() || null, notes: String(r.notes ?? '').trim() || null, cohost: withSuggestion(cohostFromNotes(r.notes), r.other_fees), errors };
+      guestTotal, cleaningFee, hostPayout, guestServiceFee, hostServiceFee, channelFees,
+      otherFees: String(r.other_fees ?? '').trim() || null, notes: String(r.notes ?? '').trim() || null, cohost,
+      net: netPayoutCheck({ guestTotal, channelFees, hostPayout, cohostAmount: cohost.amount }), errors };
   });
 }

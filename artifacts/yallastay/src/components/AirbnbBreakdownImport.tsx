@@ -8,7 +8,8 @@ import { CheckCircle2, AlertTriangle, Upload } from "lucide-react";
 // Import Airbnb reservation breakdowns (guest-paid figures from each reservation's details page).
 // The server matches rows by confirmation code and previews them (read-only). Only ticked rows are applied,
 // each through the normal booking edit (PATCH /reservations/:id), so the Activity Log and the month lock
-// apply. Blank values stay blank. A co-host payout is recorded as "needs decision" and deducted nowhere.
+// apply. Blank values stay blank. The co-host payout (verified cohost_payout column first, else the notes) and
+// Airbnb's actual fees (guest + host service fee) are recorded on the booking.
 
 type Row = any;
 const fmt = (v: number | string | null | undefined, c: string) => v == null || v === "" ? "blank" : `${c} ${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -52,6 +53,7 @@ export function AirbnbBreakdownImport() {
       const body: any = { grossAmount: r.guestTotal, financeMode: "inclusive-v1" };
       if (r.cleaningFee != null) body.cleaningFee = r.cleaningFee;           // blank in the file: keep what the booking has
       const c = cohostValue(r); if (c) body.cohostPayout = c;
+      if (r.channelFees != null) body.channelFees = r.channelFees;          // Airbnb's actual fees (guest + host service fee)
       try {
         const res = await apiFetch(`/api/reservations/${r.reservationId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         const d = await res.json().catch(() => ({}));
@@ -69,7 +71,7 @@ export function AirbnbBreakdownImport() {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="font-semibold">Import Airbnb breakdowns</h2>
-          <p className="max-w-3xl text-xs text-muted-foreground">A CSV with one row per reservation from Airbnb's reservation details (guest_paid_total, cleaning_fee, host_payout, notes…). Rows are matched by confirmation code. Nothing changes until you tick rows and apply them; each is saved like a normal booking edit. Blank values are left blank, never 0. Co-host payouts are recorded as "needs decision" and not deducted anywhere.</p>
+          <p className="max-w-3xl text-xs text-muted-foreground">A CSV with one row per reservation from Airbnb's reservation details (guest_paid_total, cleaning_fee, host_payout, notes…). Rows are matched by confirmation code. Nothing changes until you tick rows and apply them; each is saved like a normal booking edit. Blank values are left blank, never 0. Co-host payouts are read from the cohost_payout column (else the notes) and deducted only where the property's "co-host payout goes directly to the owner" setting is on.</p>
         </div>
         <button className="text-xs underline" onClick={() => { setOpen(false); setData(null); setFile(""); }}>Close</button>
       </div>
@@ -114,12 +116,13 @@ function BreakdownRow({ r, ticked, canTick, onTick, cohostInput, setCohostInput,
             <p>Guest total: <b>{fmt(r.guestTotal, c)}</b> <span className="text-muted-foreground">now {r.current?.verified ? fmt(r.current.grossAmount, c) : "not verified"}</span></p>
             <p>Cleaning fee: <b>{r.cleaningFee != null ? fmt(r.cleaningFee, c) : "blank in file"}</b> <span className="text-muted-foreground">now {r.current?.cleaningFee != null ? fmt(r.current.cleaningFee, c) : "not set"}</span></p>
             <p className={payoutDiffers ? "font-medium text-red-700" : ""}>Airbnb payout: {fmt(r.hostPayout, r.currency || c)} <span className={payoutDiffers ? "" : "text-muted-foreground"}>stored {r.storedPayout != null ? fmt(r.storedPayout, r.storedPayoutCurrency || c) : "none"}</span>{rounding && <span data-testid="rounding" className="ml-1 rounded bg-muted px-1">rounding difference</span>}</p>
-            {r.cohost?.mentioned && <p className="text-amber-800">Co-host payout (needs decision): {r.cohost.amount != null ? <b>{fmt(r.cohost.amount, c)}</b> : <span>amount not in notes</span>}</p>}
+            {r.cohost?.mentioned && <p className={r.cohost.source === "column" ? "" : "text-amber-800"}>Co-host payout: {r.cohost.amount != null ? <b>{fmt(r.cohost.amount, c)}</b> : <span>amount not in the file</span>} {r.cohost.source === "column" && <span data-testid="cohost-verified" className="rounded bg-emerald-100 px-1 text-emerald-900">verified column</span>}{r.cohost.source === "notes" && <span className="text-muted-foreground">(from notes)</span>}</p>}
           </div>
           {needsAmount && !result?.ok && <label className="flex flex-wrap items-center gap-2">Co-host payout amount from Airbnb ({c})<Input aria-label={`Co-host payout ${r.code}`} className="h-8 w-32" inputMode="decimal" value={cohostInput} onChange={e => setCohostInput(e.target.value)} placeholder="e.g. 1776.81" />
             {r.cohost?.suggested != null && cohostInput === r.cohost.suggested && <span data-testid="cohost-suggested" className="rounded bg-amber-100 px-1 text-amber-900">from other fees, check</span>}
             {r.otherFees && <span className="text-muted-foreground">Other fees on Airbnb: {r.otherFees}</span>}</label>}
-          {r.preview && <p className="text-muted-foreground">Calculated: owner {fmt(r.preview.ownerAmount, c)} · management {r.preview.managementPercent}% {fmt(r.preview.managementAmount, c)} · channel {r.preview.channelPercent}% {fmt(r.preview.channelAmount, c)}{r.preview.vatAmount ? ` · VAT ${fmt(r.preview.vatAmount, c)}` : ""}{r.preview.tourismFee ? ` · Tourism Dirham ${fmt(r.preview.tourismFee, c)}` : ""}
+          {r.preview && r.preview.feeBasis === "net-payout" && <p className="text-muted-foreground">Calculated: Airbnb fees (actual) {fmt(r.preview.channelAmount, c)} · net payout {fmt(Number(r.guestTotal) - Number(r.preview.channelAmount), c)} · management {r.preview.managementPercent}% of net payout {fmt(r.preview.managementAmount, c)} · owner {fmt(r.preview.ownerAmount, c)}</p>}
+          {r.preview && r.preview.feeBasis !== "net-payout" && <p className="text-muted-foreground">Calculated: owner {fmt(r.preview.ownerAmount, c)} · management {r.preview.managementPercent}% {fmt(r.preview.managementAmount, c)} · channel {r.preview.channelPercent}% {fmt(r.preview.channelAmount, c)}{r.preview.vatAmount ? ` · VAT ${fmt(r.preview.vatAmount, c)}` : ""}{r.preview.tourismFee ? ` · Tourism Dirham ${fmt(r.preview.tourismFee, c)}` : ""}
             {fees != null && Number(r.guestTotal) > 0 && <> · Airbnb's own fees in the file: {fmt(fees, c)} ({(fees / Number(r.guestTotal) * 100).toFixed(1)}% of the guest total)</>}</p>}
           {r.blocking.map((m: string) => <p key={m} className="flex items-start gap-1 text-red-700"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />{m}</p>)}
           {r.review.map((m: string) => <p key={m} className="text-amber-800">Review: {m}</p>)}

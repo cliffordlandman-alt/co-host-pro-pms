@@ -24,8 +24,13 @@ export const reservationsTable = pgTable("reservations", {
   cleaningFee: numeric("cleaning_fee", { precision: 10, scale: 2 }),
   balanceDue: numeric("balance_due", { precision: 10, scale: 2 }),
   grossAmount: numeric("gross_amount", { precision: 10, scale: 2 }),
-  // Airbnb co-host payout deducted from this booking (needs a decision; not used by any statement yet).
+  // Airbnb co-host payout for this booking (from the breakdown). Deducted on statements only where the
+  // property's "co-host payout goes directly to the owner" setting is on.
   cohostPayout: numeric("cohost_payout", { precision: 10, scale: 2 }),
+  /** The channel's actual fees for this booking (guest service fee + host service fee, from the booking breakdown). */
+  channelFees: numeric("channel_fees", { precision: 10, scale: 2 }),
+  /** Fee basis the booking was calculated on: "net-payout", or null for the standard calculation. Set by the server. */
+  feeBasis: text("fee_basis"),
   managementPercent: numeric("management_percent", { precision: 5, scale: 2 }),
   managementAmount: numeric("management_amount", { precision: 10, scale: 2 }),
   tourismFee: numeric("tourism_fee", { precision: 10, scale: 2 }),

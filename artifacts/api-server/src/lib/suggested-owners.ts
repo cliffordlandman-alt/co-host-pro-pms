@@ -7,14 +7,18 @@ export type OwnerSuggestion = {
   properties: { label: string; expectedCurrency: string }[];
   /** Offer "Airbnb co-host payout goes directly to the owner" for these properties, pre-ticked. */
   cohostOption: boolean;
+  /** Fee basis to offer for these properties, pre-ticked (Clifford's decision, 3 Oct 2026). */
+  feeOption?: { basis: "net-payout"; percent: number; label: string };
 };
 
 export const SUGGESTED_OWNERS: OwnerSuggestion[] = [
   { key: "dylan-matthysen", name: "Dylan Matthysen", phone: "+27 83 434 9734",
     note: "Gqeberha. Also the Airbnb co-host: the co-host payout Airbnb pays him directly is his owner payout.",
-    properties: [{ label: "Green Lawn", expectedCurrency: "ZAR" }, { label: "Grey House", expectedCurrency: "ZAR" }], cohostOption: true },
+    properties: [{ label: "Green Lawn", expectedCurrency: "ZAR" }, { label: "Grey House", expectedCurrency: "ZAR" }], cohostOption: true,
+    feeOption: { basis: "net-payout", percent: 15, label: "Fee: 15% of Airbnb net payout" } },
+  // Garden Retreat stays in AED (priced in AED on Airbnb, paid out to PayPal in USD; currency pending Clifford).
   { key: "bonnita", name: "Bonnita", phone: "+27 83 981 2633", note: "Clifford's mother.",
-    properties: [{ label: "Garden Retreat", expectedCurrency: "ZAR" }], cohostOption: false },
+    properties: [{ label: "Garden Retreat", expectedCurrency: "AED" }], cohostOption: false },
 ];
 
 /** Last 9 digits, so +27 83 981 2633 and 083 981 2633 compare equal. */

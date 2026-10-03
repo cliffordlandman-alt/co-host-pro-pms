@@ -23,6 +23,8 @@ export function defaultFeeSettings(p: PropertyLike) {
     platformFeeAirbnb: "3", platformFeeBookingCom: "15", platformFeeDirect: "0", platformFeeVrbo: "0",
     ownerSplitPercent: "80", vatPercent: "5",
     includeCleaning: true, includeMaintenance: true,
+    feeBasis: "gross",
+    cohostPaidToOwner: false,
     currency: p.currency || "AED",
     cleaningCostOverride: null as string | null,
     // The cleaning-company rate card is for Dubai units; elsewhere the property starts with "no rate set".

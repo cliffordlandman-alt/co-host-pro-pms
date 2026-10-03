@@ -2,7 +2,7 @@
  * Printable owner statement: opens a clean page with only the statement (no app menus) and the browser's
  * print dialog, where "Save as PDF" makes the file. Nothing is sent anywhere.
  */
-import { statementBalance } from "./statement-balance.ts";
+import { statementBalance, feeLabels } from "./statement-balance.ts";
 
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const money = (n: number, c: string) => `${c} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -13,11 +13,13 @@ export function statementHtml(stmt: any, ownerLines: any[], company = "YallaStay
   let bookings: any[] = [];
   try { bookings = typeof stmt.bookingDetails === "string" ? JSON.parse(stmt.bookingDetails) : stmt.bookingDetails || []; } catch { bookings = []; }
   const bal = statementBalance(stmt);
+  const fl = feeLabels(stmt);
   const row = (label: string, value: number, minus = true, cls = "") => `<tr class="${cls}"><td>${esc(label)}</td><td class="r">${minus ? "− " : ""}${esc(money(value, c))}</td></tr>`;
   const lines = [
     row("Gross revenue (guest totals)", stmt.grossRevenue, false),
-    stmt.platformFees > 0 ? row("Platform fees", stmt.platformFees) : "",
-    row("Management fee", stmt.managementFee),
+    stmt.platformFees > 0 ? row(fl.platform, stmt.platformFees) : "",
+    fl.netBasis ? `<tr class="share"><td>Net payout (guest total − channel fees)</td><td class="r">${esc(money(stmt.grossRevenue - stmt.platformFees, c))}</td></tr>` : "",
+    row(fl.management, stmt.managementFee),
     stmt.cleaningCosts > 0 ? row("Cleaning", stmt.cleaningCosts) : "",
     stmt.maintenanceCosts > 0 ? row("Maintenance", stmt.maintenanceCosts) : "",
     stmt.otherExpenses > 0 ? row("Expenses charged to owner", stmt.otherExpenses) : "",
@@ -26,7 +28,8 @@ export function statementHtml(stmt: any, ownerLines: any[], company = "YallaStay
     stmt.vatAmount > 0 ? row("VAT", stmt.vatAmount) : "",
     bal.hasCohost ? `<tr class="share"><td>Owner share</td><td class="r">${esc(money(bal.ownerShare, c))}</td></tr>` : "",
     bal.hasCohost ? row("Already paid to owner by Airbnb (co-host payout)", bal.paidByAirbnb) : "",
-    `<tr class="total"><td>${esc(bal.label)}</td><td class="r">${esc(money(bal.amount, c))}</td></tr>`,
+    bal.settled ? `<tr class="total"><td>${esc(bal.label)}</td><td class="r">Nothing owed</td></tr><tr class="sub"><td>Rounding difference, not paid either way</td><td class="r">${esc(money(bal.amount, c))}</td></tr>`
+      : `<tr class="total"><td>${esc(bal.label)}</td><td class="r">${esc(money(bal.amount, c))}</td></tr>`,
   ].join("");
   const bookingRows = bookings.map(b => `<tr><td>${esc(b.guestName)}</td><td>${esc(b.checkIn)} → ${esc(b.checkOut)}</td><td>${esc(b.platform)}</td><td class="r">${esc(money(Number(b.grossAmount), c))}</td><td class="r">${esc(money(Number(b.ownerAmount), c))}</td>${bal.hasCohost ? `<td class="r">${b.cohostPayout == null ? "–" : esc(money(Number(b.cohostPayout), c))}</td>` : ""}</tr>`).join("");
   return `<!doctype html><html><head><meta charset="utf-8"><title>Owner statement · ${esc(stmt.propertyName)} · ${esc(monthLabel)}</title>

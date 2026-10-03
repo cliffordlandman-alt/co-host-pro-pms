@@ -38,7 +38,7 @@ try {
   const dylan = sug[0], bon = sug[1];
   assert.equal(dylan.phone, '+27 83 434 9734'); assert.equal(bon.phone, '+27 83 981 2633'); assert.equal(dylan.cohostOption, true); assert.equal(bon.cohostOption, false);
   assert.deepEqual(dylan.properties.map(p => p.match?.id), [GL.id, GH.id]);
-  assert.equal(bon.properties[0].match.id, GR.id); assert.equal(bon.properties[0].match.currency, 'AED'); assert.equal(bon.properties[0].expectedCurrency, 'ZAR', 'currency conflict visible');
+  assert.equal(bon.properties[0].match.id, GR.id); assert.equal(bon.properties[0].match.currency, 'AED'); assert.equal(bon.properties[0].expectedCurrency, 'AED', 'Garden Retreat stays AED (pending Clifford)');
   assert.match(bon.properties[0].problem, /Already assigned to Someone Else/, 'never reassigned from here');
   const auditBefore = (await api('/audit-log')).length;
   // The card's "Create owner": the normal paths.

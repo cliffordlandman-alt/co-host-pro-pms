@@ -46,6 +46,7 @@ const accountingSettingsSchema = z.object({
   includeCleaning: z.boolean().optional(),
   includeMaintenance: z.boolean().optional(),
   cohostPaidToOwner: z.boolean().optional(),
+  feeBasis: z.enum(["gross", "net-payout"]).optional(),
   currency: z.string().max(3).optional(),
   cleaningFee: z.union([z.null(), z.coerce.number().finite().min(0).max(100000).transform(n => n.toFixed(2))]).optional(),
   cleaningCostOverride: z.union([z.null(), z.coerce.number().finite().min(0).max(100000).transform(n => n.toFixed(2))]).optional(),
@@ -73,6 +74,7 @@ router.get("/accounting/settings", asyncHandler(async (_req, res) => {
       includeCleaning: propertySettingsTable.includeCleaning,
       includeMaintenance: propertySettingsTable.includeMaintenance,
       cohostPaidToOwner: propertySettingsTable.cohostPaidToOwner,
+      feeBasis: propertySettingsTable.feeBasis,
       currency: propertySettingsTable.currency,
       cleaningCostOverride: propertySettingsTable.cleaningCostOverride,
       cleaningRateCard: propertySettingsTable.cleaningRateCard,
@@ -383,6 +385,7 @@ router.get("/accounting/statements", asyncHandler(async (req, res) => {
       vatAmount: ownerStatementsTable.vatAmount,
       ownerPayout: ownerStatementsTable.ownerPayout,
       paidByAirbnb: ownerStatementsTable.paidByAirbnb,
+      feeBasis: ownerStatementsTable.feeBasis,
       nightsOccupied: ownerStatementsTable.nightsOccupied,
       bookingsCount: ownerStatementsTable.bookingsCount,
       status: ownerStatementsTable.status,
@@ -442,13 +445,16 @@ router.patch("/accounting/statements/:id", asyncHandler(async (req, res) => {
   }
   const status = req.body.status ?? existing.status;
   if(!["draft","sent","paid"].includes(status) || (existing.status==="paid" && status!=="paid") || (existing.status==="sent" && status==="draft")) return res.status(400).json({error:"Invalid statement transition"});
-  if(status==="paid" && Number(existing.ownerPayout)<0) return res.status(400).json({error:"A negative balance cannot be marked as a payout"});
+  // Co-host payouts Airbnb paid the owner leave the balance at about 0: under 1.00 either way is rounding,
+  // the statement is settled and no payout is recorded.
+  const settled = Number(existing.paidByAirbnb) > 0 && Math.abs(Math.round(Number(existing.ownerPayout)*100)) < 100;
+  if(status==="paid" && Number(existing.ownerPayout)<0 && !settled) return res.status(400).json({error:"A negative balance cannot be marked as a payout"});
   const today=dubaiToday();
   const row = await db.transaction(async tx=>{
     const [locked]=await tx.select().from(ownerStatementsTable).where(eq(ownerStatementsTable.id,id)).for("update");
     if(locked.status==="paid") return locked;
     const [updated]=await tx.update(ownerStatementsTable).set({status,notes: req.body.notes ?? locked.notes,...(status==="sent"?{sentAt:today}:{}),...(status==="paid"?{paidAt:today}:{})}).where(eq(ownerStatementsTable.id,id)).returning();
-    if(status==="paid") await tx.insert(paymentsTable).values({type:"owner_payout",propertyId:locked.propertyId,ownerId:locked.ownerId,amount:locked.ownerPayout,status:"paid",paidAt:today,dueDate:today,description:`Owner statement #${id} · ${locked.month}`});
+    if(status==="paid" && !settled) await tx.insert(paymentsTable).values({type:"owner_payout",propertyId:locked.propertyId,ownerId:locked.ownerId,amount:locked.ownerPayout,status:"paid",paidAt:today,dueDate:today,description:`Owner statement #${id} · ${locked.month}`});
     return updated;
   });
   return res.json({...row,ownerPayout:Number(row.ownerPayout),grossRevenue:Number(row.grossRevenue)});

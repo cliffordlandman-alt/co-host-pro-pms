@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api-fetch";
-import { statementBalance } from "@/lib/statement-balance";
+import { statementBalance, feeLabels } from "@/lib/statement-balance";
 import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -301,12 +301,12 @@ function OwnerStatements({ ownerId }: { ownerId: number }) {
                     </div>
                     {stmt.platformFees > 0 && (
                       <div className="flex justify-between text-muted-foreground">
-                        <span>Platform Fees</span>
+                        <span>{feeLabels(stmt).platform}</span>
                         <span className="text-red-400">− {aed(stmt.platformFees,stmt.currency || "AED")}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-muted-foreground">
-                      <span>Management Fee</span>
+                      <span>{feeLabels(stmt).management}</span>
                       <span className="text-red-400">− {aed(stmt.managementFee,stmt.currency || "AED")}</span>
                     </div>
                     {stmt.cleaningCosts > 0 && (
@@ -335,8 +335,9 @@ function OwnerStatements({ ownerId }: { ownerId: number }) {
                       </>}
                       <div className="flex justify-between font-semibold border-t pt-2 text-base mt-1">
                         <span>{bal.label}</span>
-                        <span className={bal.owes ? "text-red-600" : "text-emerald-600"}>{aed(bal.amount,stmt.currency || "AED")}</span>
+                        <span className={bal.owes ? "text-red-600" : "text-emerald-600"}>{bal.settled ? "Nothing owed" : aed(bal.amount,stmt.currency || "AED")}</span>
                       </div>
+                      {bal.settled && <p className="text-xs text-muted-foreground">Airbnb already paid you your share; the {aed(bal.amount,stmt.currency || "AED")} difference is rounding.</p>}
                     </>; })()}
                   </div>
 
@@ -460,7 +461,7 @@ function OwnerOverview({ properties, ownerId }: { properties: any[]; ownerId: nu
                     <div className="text-xs text-muted-foreground">{format(new Date(stmt.month + "-01"), "MMMM yyyy")}</div>
                   </div>
                   <div className="flex items-center gap-3">
-                    {(() => { const bal = statementBalance(stmt, "owner"); return <span className={`font-semibold text-sm ${bal.owes ? "text-red-600" : "text-emerald-600"}`}>{bal.owes ? "You owe " : ""}{aed(bal.amount,stmt.currency || "AED")}</span>; })()}
+                    {(() => { const bal = statementBalance(stmt, "owner"); return <span className={`font-semibold text-sm ${bal.owes ? "text-red-600" : "text-emerald-600"}`}>{bal.settled ? "Settled" : <>{bal.owes ? "You owe " : ""}{aed(bal.amount,stmt.currency || "AED")}</>}</span>; })()}
                     <Badge className={`text-xs border ${s.color}`}>{s.label}</Badge>
                   </div>
                 </div>
