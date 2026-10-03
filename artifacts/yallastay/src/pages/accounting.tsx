@@ -8,7 +8,7 @@ import { apiFetch } from "@/lib/api-fetch";
 import { Pager, usePagedList } from "@/components/Pager";
 import { AirbnbIncome } from "@/components/AirbnbIncome";
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useGetProperties } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -648,6 +648,9 @@ function SettingsTab() {
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Accounting() {
+  // ?tab=company|transactions|settings opens that tab (menu links); keyed so a menu click switches tabs in place.
+  const tabParam = new URLSearchParams(useSearch()).get("tab") || "statements";
+  const tab = ["statements", "company", "transactions", "settings"].includes(tabParam) ? tabParam : "statements";
   return (
     <div className="space-y-6">
       <div>
@@ -656,7 +659,7 @@ export default function Accounting() {
       </div>
 
       <AirbnbIncome/>
-      <Tabs defaultValue="statements">
+      <Tabs key={tab} defaultValue={tab}>
         <TabsList className="mb-4 flex h-auto flex-wrap justify-start gap-1">
           <TabsTrigger value="statements" className="gap-1.5"><FileText className="h-4 w-4" />Owner Statements</TabsTrigger>
           <TabsTrigger value="company">Company statement</TabsTrigger>

@@ -1,14 +1,14 @@
 import { CommandSearch } from "@/components/today/CommandSearch";
 import { CheckCircle2 } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import logoPath from "../../assets/yallastay-logo.png";
 import {
   LayoutDashboard, Building, CalendarDays, CalendarRange, BedDouble,
   Sparkles, Wrench, Users, UserCircle, CreditCard, BarChart2, Star,
   MessageCircle, BookOpen, KeyRound, Layers, Menu, X, Zap, FileText,
   Settings2, Bot, Crown, MessageSquare, ChevronDown, LogOut, Shield,
-  PieChart, Receipt, FileBarChart, Link2, Tv2, MapPin, Smartphone, DollarSign,
+  PieChart, Receipt, FileBarChart, Link2, Tv2, MapPin, Smartphone, DollarSign, ListChecks,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
@@ -16,124 +16,147 @@ import { Button } from "@/components/ui/button";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { useAuth, ROLE_LABELS, ROLE_COLORS } from "@/contexts/auth-context";
 
-const navGroups = [
+// Menu: the main jobs first, grouped; rarely used pages live under "More" (collapsed). Nothing is removed:
+// every page keeps a menu entry. (The old "Listing mapping" and "Supported devices" entries opened the Devices
+// page on its first tab; those tabs are on the Devices page.)
+type NavItem = { href: string; icon: any; label: string; role?: string[]; ownerOnly?: boolean };
+const navGroups: { label: string; collapsible?: boolean; items: NavItem[] }[] = [
   {
-    label: "Operations",
+    label: "Daily",
     items: [
-      { href: "/dashboard",      icon: LayoutDashboard, label: "Today",      mobile: true },
-      { href: "/task-centre", icon: CheckCircle2, label: "Task Centre", mobile: false },
-      { href: "/guests", icon: Users, label: "Guests", mobile: false },
-      { href: "/reservations",   icon: BedDouble,       label: "Reservations",   mobile: true },
-      { href: "/calendar",       icon: CalendarDays,    label: "Calendar",       mobile: true },
-      { href: "/multi-calendar", icon: CalendarRange,   label: "Multi-Calendar", mobile: false },
-      { href: "/cleaning",       icon: Sparkles,        label: "Cleaning",       mobile: true },
-      { href: "/maintenance",    icon: Wrench,          label: "Maintenance",    mobile: true },
-      { href: "/cleaner-app",    icon: Sparkles,        label: "Cleaner App",    mobile: true, role: ["cleaner", "admin", "manager"] },
+      { href: "/dashboard",       icon: LayoutDashboard, label: "Today" },
+      { href: "/multi-calendar",  icon: CalendarRange,   label: "Calendar" },
+      { href: "/reservations",    icon: BedDouble,       label: "Bookings" },
+      { href: "/verify-bookings", icon: CheckCircle2,    label: "Verify bookings" },
+      { href: "/cleaning",        icon: Sparkles,        label: "Cleaning" },
+      { href: "/maintenance",     icon: Wrench,          label: "Maintenance" },
+      { href: "/task-centre",     icon: ListChecks,      label: "Task Centre" },
     ],
   },
   {
-    label: "Management",
+    label: "Money",
     items: [
-      { href: "/properties",    icon: Building,       label: "Properties",    mobile: false },
-      { href: "/platforms",     icon: Layers,         label: "Platforms",     mobile: false },
-      { href: "/owners",        icon: Users,          label: "Owners",        mobile: false },
-      { href: "/staff",         icon: UserCircle,     label: "Staff",         mobile: false },
-      { href: "/payments",      icon: CreditCard,     label: "Payments",      mobile: false },
-      { href: "/documents",     icon: FileText,       label: "Documents",     mobile: false },
-      { href: "/subscriptions", icon: Crown,          label: "Subscriptions", mobile: false, ownerOnly: true },
-      { href: "/audit-log",     icon: Shield,         label: "Activity Log",  mobile: false, ownerOnly: true },
-      { href: "/system-health", icon: Zap,            label: "System Health", mobile: false, ownerOnly: true },
+      { href: "/income",                    icon: PieChart,     label: "Income per property" },
+      { href: "/accounting",                icon: FileBarChart, label: "Owner statements" },
+      { href: "/accounting?tab=transactions", icon: Receipt,    label: "Income & expenses" },
+      { href: "/payments",                  icon: DollarSign,   label: "Payments" },
+      { href: "/reports",                   icon: BarChart2,    label: "Reports" },
     ],
   },
   {
-    label: "Revenue",
+    label: "Properties & people",
     items: [
-      // Dynamic Pricing (/pricing) is hidden from navigation: its property list is hard-coded empty and its
-      // rules are not applied to any rate, so it does nothing yet. The page, route and API are kept.
-      { href: "/reviews",    icon: Star,          label: "Reviews",         mobile: false },
-      { href: "/inbox",      icon: MessageCircle, label: "Inbox",           mobile: false },
+      { href: "/properties", icon: Building,   label: "Properties" },
+      { href: "/owners",     icon: Users,      label: "Owners" },
+      { href: "/guests",     icon: UserCircle, label: "Guests" },
+      { href: "/staff",      icon: UserCircle, label: "Staff" },
+      { href: "/platforms",  icon: Layers,     label: "Platforms" },
     ],
   },
   {
-    label: "Financial Reporting",
+    label: "More",
+    collapsible: true,
     items: [
-      { href: "/income",     icon: PieChart,      label: "Income per property",   mobile: false },
-      { href: "/reports",    icon: PieChart,      label: "Analytics & Reporting", mobile: false },
-      { href: "/accounting", icon: FileBarChart,  label: "Owner Statements",      mobile: false },
-      { href: "/verify-bookings", icon: CheckCircle2, label: "Verify bookings",     mobile: false },
-      { href: "/accounting", icon: Receipt,       label: "Expenses & Extras",     mobile: false },
-      { href: "/payments",   icon: DollarSign,    label: "Payments",              mobile: false },
-      { href: "/accounting", icon: Settings2,     label: "Financial Settings",    mobile: false },
-    ],
-  },
-  {
-    label: "Devices",
-    items: [
-      { href: "/devices",            icon: Tv2,        label: "Devices",           mobile: false },
-      { href: "/devices?tab=mapping",icon: MapPin,     label: "Listing mapping",   mobile: false },
-      { href: "/devices?tab=supported", icon: Smartphone, label: "Supported devices", mobile: false },
-    ],
-  },
-  {
-    label: "Automation & AI",
-    items: [
-      { href: "/automations",  icon: Zap,           label: "Automations",  mobile: false },
-      { href: "/templates",    icon: MessageSquare, label: "Templates",    mobile: false },
-      { href: "/ai-assistant", icon: Bot,           label: "AI Assistant", mobile: false },
+      { href: "/calendar",                 icon: CalendarDays,  label: "Property calendar" },
+      { href: "/inbox",                    icon: MessageCircle, label: "Inbox" },
+      { href: "/reviews",                  icon: Star,          label: "Reviews" },
+      { href: "/accounting?tab=settings",  icon: Settings2,     label: "Fee settings" },
+      { href: "/accounting?tab=company",   icon: FileText,      label: "Company statement" },
+      { href: "/airbnb-import",            icon: Link2,         label: "Import Airbnb data" },
+      { href: "/documents",                icon: FileText,      label: "Documents" },
+      { href: "/devices",                  icon: Tv2,           label: "Devices" },
+      { href: "/automations",              icon: Zap,           label: "Automations" },
+      { href: "/templates",                icon: MessageSquare, label: "Templates" },
+      { href: "/ai-assistant",             icon: Bot,           label: "AI Assistant" },
+      { href: "/cleaner-app",              icon: Smartphone,    label: "Cleaner App", role: ["cleaner", "admin", "manager"] },
+      // Dynamic Pricing (/pricing) stays hidden: its property list is hard-coded empty and its rules are not
+      // applied to any rate, so it does nothing yet. The page, route and API are kept.
+      { href: "/subscriptions",            icon: Crown,         label: "Subscriptions", ownerOnly: true },
+      { href: "/audit-log",                icon: Shield,        label: "Activity Log",  ownerOnly: true },
+      { href: "/system-health",            icon: Zap,           label: "System Health", ownerOnly: true },
     ],
   },
 ];
 
-const ALWAYS_SHOW = 2;
-const allNavItems = navGroups.flatMap(g => g.items);
-
 const OWNER_EMAIL_NAV = "clifford.landman@icloud.com";
+/** Bottom navigation on phones: the four main places, plus the full menu (Income for roles that see finances, else Jobs). */
+const BOTTOM_NAV: NavItem[] = [
+  { href: "/dashboard", icon: LayoutDashboard, label: "Today" },
+  { href: "/multi-calendar", icon: CalendarRange, label: "Calendar" },
+  { href: "/reservations", icon: BedDouble, label: "Bookings" },
+  { href: "/income", icon: PieChart, label: "Income" },
+];
 
-function NavGroup({ group, location }: { group: typeof navGroups[0]; location: string }) {
+function useVisibleItems(items: NavItem[]) {
   const { user } = useAuth();
-  const filteredItems = group.items.filter(item => {
-    if ((item as any).ownerOnly && user?.email !== OWNER_EMAIL_NAV) return false;
-    if (!(item as any).role) return true;
-    return (item as any).role.includes(user?.role);
+  return items.filter(item => {
+    if (item.ownerOnly && user?.email !== OWNER_EMAIL_NAV) return false;
+    return !item.role || item.role.includes(user?.role ?? "");
   });
-  
-  if (filteredItems.length === 0) return null;
+}
+/** Active when the path matches and, for /accounting?tab=…, the tab matches too. */
+function useIsActive() {
+  const [location] = useLocation();
+  const search = useSearch();
+  const tab = new URLSearchParams(search).get("tab");
+  return (href: string) => {
+    const [path, query] = href.split("?");
+    if (path === "/income") return location === "/income" || location.startsWith("/income/");
+    if (path !== location) return false;
+    return (new URLSearchParams(query ?? "").get("tab") ?? null) === (path === "/accounting" ? (tab && tab !== "statements" ? tab : null) : null);
+  };
+}
 
-  const hasActiveItem = filteredItems.some(i => i.href === location);
-  const [expanded, setExpanded] = useState(hasActiveItem);
-  const overflow = filteredItems.length > ALWAYS_SHOW;
-  const visible = expanded ? filteredItems : filteredItems.slice(0, ALWAYS_SHOW);
-  const hiddenCount = filteredItems.length - ALWAYS_SHOW;
-
+function NavGroup({ group }: { group: typeof navGroups[0] }) {
+  const items = useVisibleItems(group.items);
+  const isActive = useIsActive();
+  const hasActiveItem = items.some(i => isActive(i.href));
+  const [expanded, setExpanded] = useState(!group.collapsible || hasActiveItem);
+  if (items.length === 0) return null;
+  const open = expanded || hasActiveItem;
   return (
     <div>
       <button
-        onClick={() => overflow && setExpanded(e => !e)}
-        className={`w-full flex items-center justify-between px-3 mb-1 group ${overflow ? "cursor-pointer" : "cursor-default"}`}
+        onClick={() => group.collapsible && setExpanded(e => !e)}
+        aria-expanded={group.collapsible ? open : undefined}
+        className={`w-full flex items-center justify-between px-3 mb-1 group ${group.collapsible ? "cursor-pointer" : "cursor-default"}`}
       >
-        <p className="text-[10px] uppercase tracking-widest text-sidebar-foreground/40 font-semibold">{group.label}</p>
-        {overflow && (
-          <ChevronDown className={`h-3 w-3 text-sidebar-foreground/30 group-hover:text-sidebar-foreground/60 transition-all duration-200 ${expanded ? "rotate-180" : ""}`} />
-        )}
+        <p className="text-[10px] uppercase tracking-widest text-sidebar-foreground/50 font-semibold">{group.label}{group.collapsible && !open ? ` (${items.length})` : ""}</p>
+        {group.collapsible && <ChevronDown className={`h-3 w-3 text-sidebar-foreground/40 group-hover:text-sidebar-foreground/70 transition-all duration-200 ${open ? "rotate-180" : ""}`} />}
       </button>
-      <div className="space-y-0.5">
-        {visible.map(item => {
-          const isActive = location === item.href;
+      {open && <div className="space-y-0.5">
+        {items.map(item => {
+          const active = isActive(item.href);
           return (
             <Link key={item.label} href={item.href}>
-              <div className={`flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer transition-colors text-sm ${isActive ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium shadow-sm" : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}>
+              <div className={`flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer transition-colors text-sm ${active ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium shadow-sm" : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}>
                 <item.icon className="h-4 w-4 flex-shrink-0" />
                 <span>{item.label}</span>
               </div>
             </Link>
           );
         })}
-        {overflow && !expanded && (
-          <button onClick={() => setExpanded(true)} className="w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-xs text-sidebar-foreground/40 hover:text-sidebar-foreground/70 hover:bg-sidebar-accent/50 transition-colors">
-            <ChevronDown className="h-3.5 w-3.5" />
-            <span>{hiddenCount} more…</span>
-          </button>
-        )}
+      </div>}
+    </div>
+  );
+}
+
+function MobileNavGroup({ group, onClose }: { group: typeof navGroups[0]; onClose: () => void }) {
+  const items = useVisibleItems(group.items);
+  const isActive = useIsActive();
+  if (!items.length) return null;
+  return (
+    <div className="mb-3">
+      <p className="text-xs uppercase tracking-widest text-muted-foreground px-2 mb-2 font-semibold">{group.label}</p>
+      <div className="grid grid-cols-2 gap-1">
+        {items.map(item => (
+          <Link key={item.label} href={item.href}>
+            <div onClick={onClose} className={`flex items-center gap-2.5 p-3 rounded-lg transition-colors min-h-12 ${isActive(item.href) ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}>
+              <item.icon className="h-5 w-5 flex-shrink-0" />
+              <span className="font-medium text-sm leading-tight">{item.label}</span>
+            </div>
+          </Link>
+        ))}
       </div>
     </div>
   );
@@ -184,19 +207,7 @@ function MobileMoreMenu({ location, onClose }: { location: string; onClose: () =
         <Button variant="ghost" size="icon" onClick={onClose}><X className="h-5 w-5" /></Button>
       </div>
       <div className="p-4 flex flex-col gap-1 overflow-y-auto flex-1">
-        {navGroups.map(group => (
-          <div key={group.label} className="mb-3">
-            <p className="text-xs uppercase tracking-widest text-muted-foreground px-2 mb-2 font-semibold">{group.label}</p>
-            {group.items.map(item => (
-              <Link key={item.label} href={item.href}>
-                <div onClick={onClose} className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${location === item.href ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}>
-                  <item.icon className="h-5 w-5 flex-shrink-0" />
-                  <span className="font-medium text-sm">{item.label}</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        ))}
+        {navGroups.map(group => <MobileNavGroup key={group.label} group={group} onClose={onClose} />)}
         <div className="mt-2 pt-4 border-t space-y-1">
           <Link href="/settings"><div onClick={onClose} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted"><Settings2 className="h-5 w-5" /><span className="font-medium text-sm">Settings</span></div></Link>
           <Link href="/owner-login"><div onClick={onClose} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted"><KeyRound className="h-5 w-5" /><span className="font-medium text-sm">Owner Portal</span></div></Link>
@@ -269,7 +280,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-4">
-          {navGroups.map(group => <NavGroup key={group.label} group={group} location={location} />)}
+          {navGroups.map(group => <NavGroup key={group.label} group={group} />)}
         </nav>
 
         <div className="p-3 border-t border-sidebar-border/50 space-y-1">
@@ -313,23 +324,23 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* Mobile Bottom Nav */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t flex justify-around items-center p-2 z-20 pb-safe">
-        {allNavItems.filter(i => ["/dashboard","/calendar","/cleaning","/properties"].includes(i.href)).map(item => {
-          const isActive = location === item.href;
+      <nav aria-label="Main" data-testid="bottom-nav" className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t grid grid-cols-5 items-stretch z-20 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.04)]">
+        {(["admin", "super_admin", "manager", "accountant"].includes(user?.role ?? "") ? BOTTOM_NAV : [...BOTTOM_NAV.slice(0, 3), { href: "/cleaning", icon: Sparkles, label: "Jobs" }]).map(item => {
+          const active = item.href === "/income" ? location.startsWith("/income") : location === item.href;
           return (
             <Link key={item.label} href={item.href}>
-              <div className={`flex flex-col items-center justify-center p-2 gap-1 min-w-[56px] rounded-md ${isActive ? "text-primary font-medium" : "text-muted-foreground"}`}>
-                <item.icon className="h-5 w-5" />
-                <span className="text-[10px] leading-none">{item.href === "/cleaning" ? "Jobs" : item.label}</span>
+              <div className={`flex flex-col items-center justify-center gap-1 h-16 ${active ? "text-primary font-semibold" : "text-muted-foreground"}`}>
+                <item.icon className="h-6 w-6" />
+                <span className="text-[11px] leading-none">{item.label}</span>
               </div>
             </Link>
           );
         })}
-        <button onClick={() => setMobileMenuOpen(true)} className="flex flex-col items-center justify-center p-2 gap-1 min-w-[56px] text-muted-foreground rounded-md">
-          <Menu className="h-5 w-5" />
-          <span className="text-[10px] leading-none">More</span>
+        <button onClick={() => setMobileMenuOpen(true)} aria-label="Open full menu" className="flex flex-col items-center justify-center gap-1 h-16 text-muted-foreground">
+          <Menu className="h-6 w-6" />
+          <span className="text-[11px] leading-none">More</span>
         </button>
-      </div>
+      </nav>
 
       {/* Mobile More Menu */}
       {mobileMenuOpen && (
