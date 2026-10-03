@@ -138,6 +138,14 @@ try {
 
   // 14. Owner statement + dashboard reflect everything
   const st2 = (await api('/accounting/statements?month=2026-09')).body.find(s => s.propertyId === property.id);
+  // The fixture dates are fixed (Sept/Oct 2026); make sure one of this run's bookings checks out today (Dubai)
+  // so the dashboard check doesn't depend on the day the test runs.
+  const todayDubai = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dubai' }).format(new Date());
+  if (![b, turnover.body].some(x => x?.checkOut === todayDubai)) {
+    const dayBefore = new Date(Date.parse(todayDubai + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10);
+    const extra = await api('/reservations', 'POST', { ...payload, guestName: 'Checkout today', checkIn: dayBefore, checkOut: todayDubai, grossAmount: 500 });
+    if (extra.status !== 201) console.log('note: could not add a checkout-today booking', extra.status, JSON.stringify(extra.body).slice(0, 120));
+  }
   const dash2 = (await api('/dashboard/summary')).body;
   rec('14a Owner statement after cleaning', st2 && near(st2.ownerPayout, 1805.71) ? 'OK' : 'FAIL', st2 ? `payout ${st2.ownerPayout}; owner charged the booking cleaning fee ${st2.cleaningCosts} (company income); cleaning company cost is a company expense, not charged to the owner` : 'missing');
   rec('14b Dashboard reflects', dash2.todayCheckOuts >= 1 ? 'OK' : 'FAIL', `today checkouts ${dash2.todayCheckOuts}, cleaningPending ${dash2.cleaningPending}, monthRevenue ${dash2.monthRevenue}`);
