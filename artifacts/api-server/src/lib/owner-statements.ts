@@ -1,4 +1,5 @@
 import { companyStatement } from "../../../../lib/company-statement.mjs";
+import { bookingCurrency, confirmationCode, sortStatementBookings } from "../../../../lib/booking-currency.mjs";
 import { airbnbEarningsTable } from "@workspace/db";
 import { Router } from "express";
 import { z } from "zod";
@@ -72,12 +73,28 @@ export async function refreshOwnerStatements(month:string) {
    const expenses = await tx.select().from(accountingTransactionsTable).where(and(eq(accountingTransactionsTable.propertyId,prop.id),eq(accountingTransactionsTable.type,"expense"),eq(accountingTransactionsTable.allocation,"owner"),gte(accountingTransactionsTable.date,startDate),lte(accountingTransactionsTable.date,endDate)));
    const tickets = await tx.select().from(maintenanceTicketsTable).where(and(eq(maintenanceTicketsTable.propertyId,prop.id),eq(maintenanceTicketsTable.status,"completed"),gte(maintenanceTicketsTable.completedAt,startDate),lte(maintenanceTicketsTable.completedAt,`${endDate}T23:59:59.999Z`)));
    const maintenance = rules?.includeMaintenance===false ? 0 : tickets.filter(t=>t.chargeType==="owner" && !expenses.some(e=>e.reference===`maintenance:${t.id}`)).reduce((n,t)=>n+cents(t.cost),0);
+   // One currency per statement. Each booking is in its own currency (stamped when the property's currency
+   // changed, else the property's); entries carry theirs. Amounts in different currencies are never added
+   // together and there is no exchange rate in the app, so a month that mixes them is not generated.
+   const propertyCurrency = prop.currency || rules?.currency || "AED";
+   const byCurrency = new Map<string,{bookings:any[];entries:number}>();
+   for(const r of bookings){const c=bookingCurrency(r,{currency:propertyCurrency});const g=byCurrency.get(c)??{bookings:[],entries:0};g.bookings.push(brief(r));byCurrency.set(c,g);}
+   for(const e of expenses){const c=e.currency||propertyCurrency;const g=byCurrency.get(c)??{bookings:[],entries:0};g.entries++;byCurrency.set(c,g);}
+   // Maintenance tickets have no currency of their own: they are in the property's currency.
+   if(maintenance){const g=byCurrency.get(propertyCurrency)??{bookings:[],entries:0};g.entries++;byCurrency.set(propertyCurrency,g);}
+   if(byCurrency.size>1) {
+    const list=[...byCurrency.entries()].map(([currency,g])=>({currency,bookings:sortStatementBookings(g.bookings),entries:g.entries}));
+    const describe=list.map(g=>[g.bookings.length?`${g.bookings.length} booking${s(g.bookings.length)}`:"",g.entries?`${g.entries} expense${s(g.entries)}`:""].filter(Boolean).join(" and ")+` in ${g.currency}`).join(", ");
+    skipped.push({property:prop.name,propertyId:prop.id,reason:`Mixed currency: ${describe}. Adding them needs an exchange rate, which the app doesn't have or invent, so this statement isn't generated.`,mixedCurrency:list});
+    continue;
+   }
+   const statementCurrency = byCurrency.size===1 ? [...byCurrency.keys()][0] : propertyCurrency;
    const cleaning = rules?.includeCleaning===false ? 0 : sum("cleaningFee");
    const other = expenses.reduce((n,e)=>n+cents(e.amount),0);
    const gross=sum("grossAmount"), vat=sum("vatAmount"), tourism=sum("tourismFee"), management=sum("managementAmount"), channel=sum("channelAmount");
    const paidByAirbnb = cohostDirect ? sum("cohostPayout") : 0;
    const money=(n:number)=>(n/100).toFixed(2);
-   const data={ownerId:prop.ownerId,propertyId:prop.id,month,currency:prop.currency || rules?.currency || "AED",grossRevenue:money(gross),vatAmount:money(vat),tourismFee:money(tourism),platformFees:money(channel),managementFee:money(management),cleaningCosts:money(cleaning),maintenanceCosts:money(maintenance),otherExpenses:money(other),ownerPayout:money(gross-vat-tourism-channel-management-cleaning-maintenance-other-paidByAirbnb),paidByAirbnb:money(paidByAirbnb),feeBasis:netBasis?"net-payout":null,bookingsCount:bookings.length,nightsOccupied:bookings.reduce((n,r)=>n+r.nights,0),bookingDetails:JSON.stringify(bookings.map(r=>({id:r.id,guestName:r.guestName,checkIn:r.checkIn,checkOut:r.checkOut,platform:r.platform,grossAmount:r.grossAmount,revenue:r.revenue,vatAmount:r.vatAmount,tourismFee:r.tourismFee,managementAmount:r.managementAmount,channelAmount:r.channelAmount,cleaningFee:r.cleaningFee,ownerAmount:r.ownerAmount,cohostPayout:r.cohostPayout,...(netBasis?{channelFees:r.channelFees,managementPercent:r.managementPercent,feeBasis:r.feeBasis}:{})}))),notes:"Revenue recognized in checkout month. VAT and tourism are extracted from guest total. Cleaning deductions use the booking's agreed fee; do not also enter the same charge as an expense."+(netBasis?" Management fee is a percentage of the channel net payout (guest total minus the channel's actual fees); platform fees are the channel's actual fees.":"")+(cohostDirect?" Airbnb pays the co-host payout to the owner directly; it is shown as already paid and deducted from the balance.":""),status:"draft"};
+   const data={ownerId:prop.ownerId,propertyId:prop.id,month,currency:statementCurrency,grossRevenue:money(gross),vatAmount:money(vat),tourismFee:money(tourism),platformFees:money(channel),managementFee:money(management),cleaningCosts:money(cleaning),maintenanceCosts:money(maintenance),otherExpenses:money(other),ownerPayout:money(gross-vat-tourism-channel-management-cleaning-maintenance-other-paidByAirbnb),paidByAirbnb:money(paidByAirbnb),feeBasis:netBasis?"net-payout":null,bookingsCount:bookings.length,nightsOccupied:bookings.reduce((n,r)=>n+r.nights,0),bookingDetails:JSON.stringify(sortStatementBookings(bookings.map(r=>({id:r.id,code:confirmationCode(r.externalId),guestName:r.guestName,checkIn:r.checkIn,checkOut:r.checkOut,platform:r.platform,grossAmount:r.grossAmount,revenue:r.revenue,vatAmount:r.vatAmount,tourismFee:r.tourismFee,managementAmount:r.managementAmount,channelAmount:r.channelAmount,cleaningFee:r.cleaningFee,ownerAmount:r.ownerAmount,cohostPayout:r.cohostPayout,...(netBasis?{channelFees:r.channelFees,managementPercent:r.managementPercent,feeBasis:r.feeBasis}:{})})))),notes:"Revenue recognized in checkout month. VAT and tourism are extracted from guest total. Cleaning deductions use the booking's agreed fee; do not also enter the same charge as an expense."+(netBasis?" Management fee is a percentage of the channel net payout (guest total minus the channel's actual fees); platform fees are the channel's actual fees.":"")+(cohostDirect?" Airbnb pays the co-host payout to the owner directly; it is shown as already paid and deducted from the balance.":""),status:"draft"};
    let [row] = existing ? await tx.update(ownerStatementsTable).set(data).where(eq(ownerStatementsTable.id,existing.id)).returning() : await tx.insert(ownerStatementsTable).values(data).onConflictDoNothing().returning();
    if(!row) {
     // Another request created this property/month statement first (unique index): update it if still a draft.

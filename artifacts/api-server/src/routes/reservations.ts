@@ -5,6 +5,7 @@ import { airbnbEarningsTable } from "@workspace/db";
 import { bedroomCount, bookingFinance } from "../../../../lib/booking-finance.mjs";
 import { loadPropertyFeeSettings, ratesFromSettings } from "../lib/fee-config";
 import { parseBreakdowns, payoutComparison } from "../lib/airbnb-breakdowns.mjs";
+import { bookingCurrency } from "../../../../lib/booking-currency.mjs";
 import { Router } from "express";
 import { db, reservationsTable, propertiesTable, insertReservationSchema, cleaningTasksTable, propertySettingsTable, ownerStatementsTable, paymentsTable, ownersTable } from "@workspace/db";
 import { eq, and, ne, lt, gt, gte, lte, inArray, notInArray, or, ilike, sql, desc, isNull } from "drizzle-orm";
@@ -18,7 +19,8 @@ const router = Router();
 
 const reservationSelect = {
   externalId: reservationsTable.externalId,
-  currency: propertiesTable.currency,
+  // The booking's own currency when stamped (its property's currency changed later), else the property's.
+  currency: sql<string | null>`coalesce(${reservationsTable.currency}, ${propertiesTable.currency})`,
   guestEmail: reservationsTable.guestEmail,
   guestPhone: reservationsTable.guestPhone,
   idCollected: reservationsTable.idCollected,
@@ -95,7 +97,9 @@ async function prepareFinance(body: any, existing?: any) {
   const commission = body.channelCommissionPercent;
   if (commission !== undefined && commission !== null && commission !== "" && !/^\d+(\.\d{1,2})?$/.test(String(commission))) throw new Error("Enter the channel commission as a percentage with up to two decimals");
   const clean: any = { ...body };
-  for (const f of [...SERVER_FINANCE_FIELDS, "refreshRates", "tourismRooms", "channelCommissionPercent"]) delete clean[f];
+  // The booking's currency is never taken from the browser: it is the property's, or the one stamped on it
+  // when the property's currency changed (lib/property-currency.ts).
+  for (const f of [...SERVER_FINANCE_FIELDS, "refreshRates", "tourismRooms", "channelCommissionPercent", "currency"]) delete clean[f];
   const input: any = { ...(existing ?? {}), ...clean };
   if (input.financeMode !== "inclusive-v1") return input;
   const loaded = await loadPropertyFeeSettings(db, Number(input.propertyId));
@@ -121,6 +125,10 @@ async function prepareFinance(body: any, existing?: any) {
   // Cleaning fee: the amount entered for this booking, else the booking's saved snapshot, else the
   // property's cleaning fee from its fee settings (the single source), snapshotted onto the booking.
   if (clean.cleaningFee === undefined || clean.cleaningFee === null || clean.cleaningFee === "") {
+    const propertyCurrency = property.currency || settings.currency || "AED";
+    // The cleaning fee setting is in the property's current currency: never apply it to a booking kept in another one.
+    if (existing?.cleaningFee == null && settings.cleaningFee != null && existing?.currency && existing.currency !== propertyCurrency)
+      throw new Error(`This booking is in ${existing.currency} but the property's cleaning fee setting is in ${propertyCurrency}: enter the booking's cleaning fee in ${existing.currency}`);
     input.cleaningFee = existing?.cleaningFee ?? settings.cleaningFee ?? 0;
   }
   // A direct booking has no channel, so no channel fees (a fact, not a percentage fallback).
@@ -263,11 +271,12 @@ router.post("/reservations/airbnb-breakdowns/preview", asyncHandler(async (req, 
     if (matches.length > 1) blocking.push("More than one booking has this confirmation code");
     const { r, propertyName } = matches[0];
     const loaded = await loadPropertyFeeSettings(db, r.propertyId);
-    const currency = loaded?.settings.currency || loaded?.property.currency || "AED";
+    // Compared with the booking's own currency (an older booking keeps the currency it was recorded in).
+    const currency = bookingCurrency(r, { currency: loaded?.property.currency || loaded?.settings.currency });
     const stored = earnings.filter(e => e.confirmationCode === row.code && Number(e.propertyId) === r.propertyId);
     const storedPayout = stored.length === 1 ? Number(stored[0].amount).toFixed(2) : null;
     if (row.guestTotal == null) blocking.push("No guest paid total in the file (a blank is not 0)");
-    if (row.currency && row.currency !== currency) blocking.push(`File currency ${row.currency} differs from the property's ${currency}`);
+    if (row.currency && row.currency !== currency) blocking.push(`File currency ${row.currency} differs from the booking's ${currency}`);
     if (!row.currency) blocking.push("No currency in the file");
     if (["cancelled", "blocked"].includes(r.status)) blocking.push(`Booking is ${r.status}`);
     if (locks.some(l => l.propertyId === r.propertyId && l.month === r.checkOut.slice(0, 7))) blocking.push(`The ${r.checkOut.slice(0, 7)} statement for this property was already sent or paid`);
@@ -369,6 +378,12 @@ async function saveBooking(input: any, id?: number) {
   const [property] = await tx.select().from(propertiesTable).where(eq(propertiesTable.id,Number(input.propertyId))).for("update");
   if (!property) throw new Error("Choose an existing property");
   const [existing] = id ? await tx.select().from(reservationsTable).where(eq(reservationsTable.id,id)).for("update") : [];
+  // Moving a booking to a property in another currency would relabel its amounts.
+  if (existing && Number(existing.propertyId) !== Number(input.propertyId) && (existing.financeMode === "inclusive-v1" || existing.currency)) {
+   const [from] = await tx.select().from(propertiesTable).where(eq(propertiesTable.id, existing.propertyId));
+   const was = bookingCurrency(existing, from);
+   if (was !== (property.currency || "AED")) throw new Error(`This booking's amounts are in ${was}; ${property.name} uses ${property.currency || "AED"}. Moving it would relabel them.`);
+  }
   const availabilityChanged = !existing || ["propertyId","checkIn","checkOut","status"].some(k=>(existing as any)[k]!==input[k]);
   if (input.status !== "cancelled" && availabilityChanged) {
    const conflicts = await tx.select({id:reservationsTable.id}).from(reservationsTable).where(and(eq(reservationsTable.propertyId,input.propertyId), ne(reservationsTable.status,"cancelled"),lt(reservationsTable.checkIn,input.checkOut),gt(reservationsTable.checkOut,input.checkIn),id ? ne(reservationsTable.id,id) : undefined));
@@ -393,7 +408,7 @@ async function saveBooking(input: any, id?: number) {
   } else {
    for (const task of tasks) if (!["approved","completed"].includes(task.status)) await tx.update(cleaningTasksTable).set({propertyId:row.propertyId,scheduledDate:row.checkOut,status:task.status==="cancelled"?"dirty":task.status}).where(eq(cleaningTasksTable.id,task.id));
   }
-  return row;
+  return { ...row, currency: bookingCurrency(row, property) };
  });
 }
 router.post("/reservations", asyncHandler(async (req, res) => {

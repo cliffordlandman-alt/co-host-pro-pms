@@ -1,4 +1,5 @@
 import { guestIdComplete } from "../../../../../lib/guest-id.mjs";
+import { bookingCurrency } from "../../../../../lib/booking-currency.mjs";
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { ArrowUpRight, Check, CheckCircle2, ChevronRight, Circle, Clock3, RefreshCw, Search, Sparkles, Building2, ArrowDownLeft, ArrowUpRight as Arrival, Wrench, X } from 'lucide-react';
@@ -40,8 +41,8 @@ function OperatorToday(){
  const todayArrivalUnits=model.readiness.filter(p=>model.arrivals.some(b=>b.propertyId===p.id));
  const allArrivalsReady=!failed&&!limited&&todayArrivalUnits.length>0&&todayArrivalUnits.every(p=>p.status==='READY'||p.status==='OCCUPIED'&&p.current?.status==='checked_in');
  const known=bookings.filter(b=>b.financeMode==='inclusive-v1' && !['cancelled','blocked'].includes(b.status) && b.checkOut?.startsWith(month));
- const currencies=[...new Set(properties.map(p=>p.currency || 'AED'))];const [currency,setCurrency]=useState('AED');
- const revenue=known.filter(b=>(properties.find(p=>p.id===b.propertyId)?.currency || 'AED')===currency).reduce((n,b)=>n+Number(b.revenue || 0),0);
+ const currencies=[...new Set([...properties.map(p=>p.currency || 'AED'),...known.map(b=>bookingCurrency(b,properties.find(p=>p.id===b.propertyId)))])];const [currency,setCurrency]=useState('AED');
+ const revenue=known.filter(b=>bookingCurrency(b,properties.find(p=>p.id===b.propertyId))===currency).reduce((n,b)=>n+Number(b.revenue || 0),0);
  const incomplete=bookings.filter(b=>!b.financeMode && b.checkOut?.startsWith(month) && !['cancelled','blocked'].includes(b.status)).length;
  const alerts=[...(limited?[]:todayArrivalUnits).filter(p=>p.status!=='READY' && !(p.status==='OCCUPIED'&&p.current?.status==='checked_in')).map(p=>({id:`arrival-${p.id}`,level:'Critical',title:`${p.name} needs attention before arrival`,detail:p.reason,href:p.task?`/cleaning?task=${p.task.id}`:`/properties?property=${p.id}`})),
  ...model.jobs.filter(t=>t.scheduledDate<=today&&!['completed','approved'].includes(t.status)).map(t=>({id:`job-${t.id}`,level:t.scheduledDate<today?'Critical':'Important',title:t.assignedToId?'Cleaning needs completion':'Assign a cleaner',detail:properties.find(p=>p.id===t.propertyId)?.name || t.propertyName,href:`/cleaning?task=${t.id}`})),

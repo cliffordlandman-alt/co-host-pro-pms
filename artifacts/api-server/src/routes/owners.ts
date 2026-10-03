@@ -38,7 +38,7 @@ router.get("/owners/suggestions", async (_req, res) => {
     });
     const matched = properties.filter(p => p.match);
     if (existing && matched.every(p => p.match!.ownerId === existing.id)) continue;
-    out.push({ key: s.key, name: s.name, phone: s.phone, note: s.note, cohostOption: s.cohostOption, feeOption: s.feeOption ?? null,
+    out.push({ key: s.key, name: s.name, phone: s.phone, note: s.note, cohostOption: s.cohostOption, feeOption: s.feeOption ?? null, currencyOption: s.currencyOption ?? null,
       existingOwner: existing ? { id: existing.id, name: existing.name, phone: existing.phone } : null, properties });
   }
   res.json(out);

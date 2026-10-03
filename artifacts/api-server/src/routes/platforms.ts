@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { bookingCurrency } from "../../../../lib/booking-currency.mjs";
 import { db, reservationsTable, propertiesTable, ownersTable, importLogsTable, appSettingsTable } from "@workspace/db";
 import { eq, ne, sql, desc, inArray } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth-middleware";
@@ -25,7 +26,7 @@ router.get("/platforms", async (_req, res) => {
     if (["cancelled", "blocked"].includes(r.status)) continue;
     const s = statMap[r.platform] ??= { bookings: 0, nights: 0, revenue: 0, unverified: 0 };
     s.bookings++; s.nights += r.nights;
-    const currency = propertyRows.find(p => p.id === r.propertyId)?.currency || "AED";
+    const currency = bookingCurrency(r, propertyRows.find(p => p.id === r.propertyId));
     if (r.financeMode === "inclusive-v1" && currency === "AED") s.revenue += Math.round(Number(r.revenue || 0) * 100);
     else s.unverified++;
   }

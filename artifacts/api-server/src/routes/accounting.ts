@@ -23,6 +23,8 @@ import { parseId } from "../lib/parseId";
 import { defaultFeeSettings } from "../lib/fee-config";
 import { backfillCleaningExpenses, cleaningVendor, unitLabel } from "../lib/cleaning-costs";
 import { insertAuditLog } from "../lib/audit";
+import { changePropertyCurrency, CurrencyChangeRefused } from "../lib/property-currency";
+import { bookingCurrency } from "../../../../lib/booking-currency.mjs";
 import { cleaningCostRatesTable, vendorsTable, usersTable } from "@workspace/db";
 
 const router = Router();
@@ -47,7 +49,7 @@ const accountingSettingsSchema = z.object({
   includeMaintenance: z.boolean().optional(),
   cohostPaidToOwner: z.boolean().optional(),
   feeBasis: z.enum(["gross", "net-payout"]).optional(),
-  currency: z.string().max(3).optional(),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, "Currency must be a 3-letter code such as AED or ZAR").optional(),
   cleaningFee: z.union([z.null(), z.coerce.number().finite().min(0).max(100000).transform(n => n.toFixed(2))]).optional(),
   cleaningCostOverride: z.union([z.null(), z.coerce.number().finite().min(0).max(100000).transform(n => n.toFixed(2))]).optional(),
   cleaningRateCard: z.boolean().optional(),
@@ -135,24 +137,35 @@ router.put("/accounting/settings/:propertyId", asyncHandler(async (req, res) => 
   if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
 
   const { ownerSplitPercent: _unused, ...data } = parsed.data; // owner share is derived from the management %
-  await insertAuditLog({ action: "update", entity: "property_settings", entityId: propertyId, details: data, performedBy: req.headers["x-user-id"] as string });
-  const existing = await db.select().from(propertySettingsTable).where(eq(propertySettingsTable.propertyId, propertyId));
-  if (existing.length > 0) {
-    const result = await db.transaction(async tx => {
-      const [row] = await tx.update(propertySettingsTable)
-        .set({ ...data, updatedAt: new Date() })
-        .where(eq(propertySettingsTable.propertyId, propertyId))
-        .returning();
-      const changed = data.includeCleaning !== undefined && data.includeCleaning !== (existing[0].includeCleaning !== false);
-      return { row, cleaning: changed ? await applyIncludeCleaning(tx, propertyId, data.includeCleaning !== false) : null };
-    });
-    return res.json({ ...result.row, ...(result.cleaning ? { bookingsRecalculated: result.cleaning.updated, bookingsInPublishedMonths: result.cleaning.locked } : {}) });
-  }
+  const { currency, ...rest } = data;
   const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, propertyId));
   if (!property) return res.status(404).json({ error: "Property not found" });
-  const d = defaultFeeSettings(property);
-  const [row] = await db.insert(propertySettingsTable).values({ propertyId, tourismEnabled: d.tourismEnabled, vatEnabled: d.vatEnabled, currency: d.currency, cleaningRateCard: d.cleaningRateCard, ...data }).returning();
-  return res.status(201).json(row);
+  let result: any;
+  try {
+    result = await db.transaction(async tx => {
+      // A currency change never relabels recorded amounts (lib/property-currency.ts); refused as a whole otherwise.
+      const cur = currency !== undefined ? await changePropertyCurrency(tx, propertyId, currency, { cleaningFeeGiven: rest.cleaningFee !== undefined }) : null;
+      const [existing] = await tx.select().from(propertySettingsTable).where(eq(propertySettingsTable.propertyId, propertyId));
+      if (existing) {
+        const [row] = await tx.update(propertySettingsTable)
+          .set({ ...rest, ...(currency !== undefined ? { currency } : {}), updatedAt: new Date() })
+          .where(eq(propertySettingsTable.propertyId, propertyId))
+          .returning();
+        const changed = rest.includeCleaning !== undefined && rest.includeCleaning !== (existing.includeCleaning !== false);
+        return { row, created: false, cur, cleaning: changed ? await applyIncludeCleaning(tx, propertyId, rest.includeCleaning !== false) : null };
+      }
+      const d = defaultFeeSettings(property);
+      const [row] = await tx.insert(propertySettingsTable).values({ propertyId, tourismEnabled: d.tourismEnabled, vatEnabled: d.vatEnabled, currency: currency ?? d.currency, cleaningRateCard: d.cleaningRateCard, ...rest }).returning();
+      return { row, created: true, cur, cleaning: null };
+    });
+  } catch (e) {
+    if (e instanceof CurrencyChangeRefused) return res.status(409).json({ error: e.message });
+    throw e;
+  }
+  await insertAuditLog({ action: "update", entity: "property_settings", entityId: propertyId, details: data, performedBy: req.headers["x-user-id"] as string });
+  if (result.cur?.changed) await insertAuditLog({ action: "update", entity: "property_currency", entityId: propertyId, details: result.cur, performedBy: req.headers["x-user-id"] as string });
+  const extra = { ...(result.cleaning ? { bookingsRecalculated: result.cleaning.updated, bookingsInPublishedMonths: result.cleaning.locked } : {}), ...(result.cur?.changed ? { currencyChange: result.cur } : {}) };
+  return res.status(result.created ? 201 : 200).json({ ...result.row, ...extra });
 }));
 
 // ── Transactions ───────────────────────────────────────────────────────────────
@@ -212,7 +225,7 @@ const EDITABLE_ENTRY_FIELDS = ["type", "amount", "date", "category", "propertyId
 const money = (r: any) => ({ ...r, amount: parseFloat(r.amount || "0"), createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt });
 
 /** The one set of rules for a manual income or expense entry (used by add and edit). */
-async function validateEntry(body: any): Promise<{ input: any } | { status: number; error: string }> {
+async function validateEntry(body: any, existingCurrency?: string | null): Promise<{ input: any } | { status: number; error: string }> {
   const input = { ...body, amount: String(body.amount) };
   if (input.propertyId === "" || input.propertyId === undefined) input.propertyId = null;
   if (input.reservationId === "" || input.reservationId === undefined) input.reservationId = null;
@@ -221,7 +234,12 @@ async function validateEntry(body: any): Promise<{ input: any } | { status: numb
   if (input.revenueStream !== undefined && input.revenueStream !== null && typeof input.revenueStream !== 'boolean') return {status:400,error:'Revenue stream must be yes, no or not tagged'};
   if (input.type !== 'expense') input.revenueStream = null;
   if (!['income','expense'].includes(input.type) || !['company','owner'].includes(input.allocation)) return {status:400,error:'Choose income or expense and company or owner allocation'};
-  if(input.propertyId){const [p]=await db.select().from(propertiesTable).where(eq(propertiesTable.id,Number(input.propertyId)));if(!p)return {status:400,error:'Property not found'};input.currency ??= p.currency || 'AED';if(input.allocation==='owner'&&input.currency!==(p.currency||'AED'))return {status:400,error:'Owner expenses must use the property currency'};}
+  if(input.propertyId){const [p]=await db.select().from(propertiesTable).where(eq(propertiesTable.id,Number(input.propertyId)));if(!p)return {status:400,error:'Property not found'};// An owner expense is in the property's currency, or in its booking's (a booking kept in the currency it was
+   // recorded in), or keeps its own when edited; never another currency on the owner's statement.
+   const [booking]=input.reservationId?await db.select().from(reservationsTable).where(eq(reservationsTable.id,Number(input.reservationId))):[];
+   const home=booking?bookingCurrency(booking,p):(p.currency||'AED');
+   input.currency ??= home;
+   if(input.allocation==='owner'&&![p.currency||'AED',home,...(existingCurrency?[existingCurrency]:[])].includes(input.currency))return {status:400,error:'Owner expenses must use the property currency (or the booking\'s)'};}
   input.currency ??= 'AED';
   if(!/^[A-Z]{3}$/.test(input.currency)||!Number.isFinite(Number(input.amount))||Number(input.amount)<=0||!/^\d{4}-\d{2}-\d{2}$/.test(input.date||'')||!Number.isFinite(Date.parse(input.date))||new Date(input.date).toISOString().slice(0,10)!==input.date)return {status:400,error:'Enter a valid date, currency and positive amount'};
   if(input.allocation==='owner'&&!input.propertyId)return {status:400,error:'Choose a property for owner expenses'};
@@ -254,7 +272,7 @@ router.patch("/accounting/transactions/:id", asyncHandler(async (req, res) => {
   const merged: any = {};
   for (const f of EDITABLE_ENTRY_FIELDS) merged[f] = req.body[f] !== undefined ? req.body[f] : (existing as any)[f];
   if (/^(cleaning|maintenance):/.test(merged.reference ?? "")) return res.status(400).json({ error: "That reference is reserved for automatic entries" });
-  const v = await validateEntry(merged);
+  const v = await validateEntry(merged, Number(merged.propertyId) === Number(existing.propertyId) ? existing.currency : null);
   if ("error" in v) return res.status(v.status).json({ error: v.error });
   const { input } = v;
   const after = await publishedStatement(input.allocation === "owner" ? input.propertyId : null, input.date);

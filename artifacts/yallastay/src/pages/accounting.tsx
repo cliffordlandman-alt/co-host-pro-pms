@@ -2,6 +2,7 @@ import { CompanyFinance } from "@/components/CompanyFinance";
 import { EntryDialog, isAutomaticEntry } from "@/components/EntryDialog";
 import { printStatement } from "@/lib/print-statement";
 import { statementBalance, feeLabels } from "@/lib/statement-balance";
+import { sortStatementBookings } from "../../../../lib/booking-currency.mjs";
 import { CleaningCostSettings } from "@/components/CleaningCostSettings";
 import { apiFetch } from "@/lib/api-fetch";
 import { Pager, usePagedList } from "@/components/Pager";
@@ -172,7 +173,7 @@ function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id
               {bal.owes && <p className="text-xs text-red-700">The owner owes the company this amount for the month{bal.hasCohost ? " (Airbnb paid the owner more than their share)" : ""}. It can't be marked as paid to the owner.</p>}
             </div>
 
-            {stmt.bookingDetails && <div className="sm:col-span-2 overflow-x-auto"><p className="text-xs text-muted-foreground mb-2">Bookings recognized in checkout month</p><table className="w-full text-xs"><thead><tr>{["Guest","Dates","Total","VAT","Tourism",...(fl.netBasis?["Channel fees"]:[]),"Company","Owner",...(bal.hasCohost?["Paid by Airbnb"]:[])].map(h=><th className="text-left p-2" key={h}>{h}</th>)}</tr></thead><tbody>{JSON.parse(stmt.bookingDetails).map((r:any)=><tr key={r.id} className="border-t"><td className="p-2">{r.guestName}</td><td className="p-2 whitespace-nowrap">{r.checkIn} → {r.checkOut}</td>{["grossAmount","vatAmount","tourismFee",...(fl.netBasis?["channelAmount"]:[]),"managementAmount","ownerAmount",...(bal.hasCohost?["cohostPayout"]:[])].map(k=><td className="p-2 whitespace-nowrap" key={k}>{r[k]==null?"–":aed(Number(r[k]),stmt.currency || "AED")}</td>)}</tr>)}</tbody></table><p className="text-xs text-muted-foreground mt-2">{stmt.notes}</p><Button size="sm" variant="outline" className="mt-2" onClick={async()=>{const rows=stmt.otherExpenses>0?(ownerLines??(await f(`/api/accounting/transactions?month=${stmt.month}&propertyId=${stmt.propertyId}`)).filter((r:any)=>r.type==="expense"&&r.allocation==="owner")):[];printStatement(stmt,rows);}}>Print / Save PDF</Button></div>}
+            {stmt.bookingDetails && <div className="sm:col-span-2 overflow-x-auto"><p className="text-xs text-muted-foreground mb-2">Bookings recognized in checkout month</p><table className="w-full text-xs"><thead><tr>{["Guest","Dates","Total","VAT","Tourism",...(fl.netBasis?["Channel fees"]:[]),"Company","Owner",...(bal.hasCohost?["Paid by Airbnb"]:[])].map(h=><th className="text-left p-2" key={h}>{h}</th>)}</tr></thead><tbody>{sortStatementBookings(JSON.parse(stmt.bookingDetails)).map((r:any)=><tr key={r.id} className="border-t"><td className="p-2">{r.guestName}</td><td className="p-2 whitespace-nowrap">{r.checkIn} → {r.checkOut}</td>{["grossAmount","vatAmount","tourismFee",...(fl.netBasis?["channelAmount"]:[]),"managementAmount","ownerAmount",...(bal.hasCohost?["cohostPayout"]:[])].map(k=><td className="p-2 whitespace-nowrap" key={k}>{r[k]==null?"–":aed(Number(r[k]),stmt.currency || "AED")}</td>)}</tr>)}</tbody></table><p className="text-xs text-muted-foreground mt-2">{stmt.notes}</p><Button size="sm" variant="outline" className="mt-2" onClick={async()=>{const rows=stmt.otherExpenses>0?(ownerLines??(await f(`/api/accounting/transactions?month=${stmt.month}&propertyId=${stmt.propertyId}`)).filter((r:any)=>r.type==="expense"&&r.allocation==="owner")):[];printStatement(stmt,rows);}}>Print / Save PDF</Button></div>}
             {/* Actions */}
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</p>
@@ -305,7 +306,13 @@ function StatementsTab() {
             {noOwner.length > 0 && (
               <p className="text-xs"><span className="font-medium">No owner linked ({noOwner.length}):</span> {noOwner.map((s: any) => s.property).join(" · ")}. Link one under Properties → open the property → Edit → Owner.</p>
             )}
-            {other.map((s: any) => <p key={s.propertyId ?? s.property} className="text-xs">{s.property}: {s.reason}</p>)}
+            {other.filter((s: any) => !s.mixedCurrency).map((s: any) => <p key={s.propertyId ?? s.property} className="text-xs">{s.property}: {s.reason}</p>)}
+            {other.filter((s: any) => s.mixedCurrency).map((s: any) => (
+              <div key={`m${s.propertyId}`} data-testid="mixed-currency" className="text-xs">
+                <p><span className="font-medium">{s.property}: mixed currency, needs an exchange rate.</span> The amounts below can't be added into one statement, and the app doesn't invent a rate.</p>
+                <ul className="mt-1 list-disc pl-5">{s.mixedCurrency.map((g: any) => <li key={g.currency}><b>{g.currency}</b>: {g.bookings.map((b: any) => `${b.guestName || "Guest"} ${b.checkIn} → ${b.checkOut}`).join(" · ") || "no bookings"}{g.entries ? ` · ${g.entries} expense${g.entries === 1 ? "" : "s"}` : ""}</li>)}</ul>
+              </div>
+            ))}
           </div>
         );
       })()}
@@ -491,6 +498,44 @@ function TransactionsTab() {
 
 // ── Settings Tab ─────────────────────────────────────────────────────────────
 
+
+/** Changing a property's currency: nothing is converted and nothing already recorded is relabelled (the server
+ *  stamps existing bookings with the old currency first). Separate from Save so it is always a deliberate step. */
+function CurrencyChange({ s, onDone }: { s: any; onDone: () => void }) {
+  const { toast } = useToast();
+  const current = s.propertyCurrency || s.currency || "AED";
+  const [to, setTo] = useState(current);
+  const [cleaning, setCleaning] = useState("");
+  const [busy, setBusy] = useState(false);
+  const changed = /^[A-Z]{3}$/.test(to) && to !== current;
+  async function change() {
+    setBusy(true);
+    try {
+      const body: any = { currency: to };
+      if (s.cleaningFee != null) body.cleaningFee = cleaning.trim() === "" ? null : Number(cleaning);
+      const row = await f(`/api/accounting/settings/${s.propertyId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const kept = row?.currencyChange?.bookingsKeptInOldCurrency ?? 0;
+      toast({ title: `Currency changed to ${to}`, description: `${kept} existing booking${kept === 1 ? "" : "s"} kept in ${current}; new bookings use ${to}.` });
+      onDone();
+    } catch (e) { toast({ title: "Currency not changed", description: (e as Error).message, variant: "destructive" }); }
+    setBusy(false);
+  }
+  return (
+    <div data-testid="currency-change" className="col-span-2 sm:col-span-3 rounded-md border p-2 text-xs space-y-2">
+      <label className="flex flex-wrap items-center gap-2">Property currency: <b>{current}</b> → change to
+        <Input aria-label="New currency" className="h-8 w-20 uppercase" maxLength={3} value={to} onChange={e => setTo(e.target.value.trim().toUpperCase())} />
+      </label>
+      {changed && <>
+        <p role="note" className="rounded bg-amber-50 p-2 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">Nothing is converted. Bookings, entries and statements already recorded keep {current} (a booking of {current} 1,727 stays {current} 1,727). New bookings and imports use {to}. A month with amounts in both currencies can't be added up without an exchange rate, so its statement is held with a "mixed currency" item. Rates (%) are unchanged.</p>
+        {s.cleaningFee != null && <label className="block">Cleaning fee per booking in {to} (now {current} {s.cleaningFee}; blank = none)
+          <Input aria-label={`Cleaning fee in ${to}`} type="number" min="0" step="0.5" className="mt-1 h-8 w-32" value={cleaning} onChange={e => setCleaning(e.target.value)} />
+        </label>}
+        <Button size="sm" variant="outline" onClick={change} disabled={busy}>Change currency to {to}</Button>
+      </>}
+    </div>
+  );
+}
+
 function SettingsTab() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -507,7 +552,7 @@ function SettingsTab() {
 
   function startEdit(s: any) {
     setEditing(s.propertyId);
-    setDraft(Object.fromEntries(Object.entries(s).filter(([key])=>!["id","propertyId","propertyName","propertyCurrency"].includes(key))));
+    setDraft(Object.fromEntries(Object.entries(s).filter(([key])=>!["id","propertyId","propertyName","propertyCurrency","currency"].includes(key))));
   }
 
   return (
@@ -525,7 +570,7 @@ function SettingsTab() {
                   <h3 className="font-semibold text-sm">{s.propertyName}</h3>
                   {editing !== s.propertyId && (
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Mgmt {s.managementFeePercent}% · Cleaning fee {s.cleaningFee != null ? s.cleaningFee : "none"} · Cleaning cost {s.cleaningCostOverride === 0 ? "no cost" : s.cleaningCostOverride != null ? `${s.cleaningCostCurrency || s.propertyCurrency || "AED"} ${s.cleaningCostOverride} (override)` : s.cleaningRateCard ? "rate card" : <span className="text-amber-700 dark:text-amber-300">no rate set</span>} · Airbnb {s.platformFeeAirbnb}% · Booking {s.platformFeeBookingCom}% · Direct {s.platformFeeDirect}% · Vrbo {s.platformFeeVrbo ?? 0}% · VAT {s.vatEnabled ? `${s.vatPercent}%` : "off"} · Tourism {s.tourismEnabled ? s.tourismRate : "off"}
+                      <span data-testid="property-currency">{s.propertyCurrency || s.currency || "AED"}</span> · Mgmt {s.managementFeePercent}% · Cleaning fee {s.cleaningFee != null ? s.cleaningFee : "none"} · Cleaning cost {s.cleaningCostOverride === 0 ? "no cost" : s.cleaningCostOverride != null ? `${s.cleaningCostCurrency || s.propertyCurrency || "AED"} ${s.cleaningCostOverride} (override)` : s.cleaningRateCard ? "rate card" : <span className="text-amber-700 dark:text-amber-300">no rate set</span>} · Airbnb {s.platformFeeAirbnb}% · Booking {s.platformFeeBookingCom}% · Direct {s.platformFeeDirect}% · Vrbo {s.platformFeeVrbo ?? 0}% · VAT {s.vatEnabled ? `${s.vatPercent}%` : "off"} · Tourism {s.tourismEnabled ? s.tourismRate : "off"}
                     {s.feeBasis === "net-payout" && <span data-testid="fee-basis-net"> · Fee: {s.managementFeePercent}% of channel net payout</span>}{s.cohostPaidToOwner && <span data-testid="cohost-direct"> · Airbnb co-host payout goes to the owner</span>}
                     </p>
                   )}
@@ -543,6 +588,7 @@ function SettingsTab() {
               </div>
               {editing === s.propertyId && draft && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <CurrencyChange s={s} onDone={() => { queryClient.invalidateQueries(); setEditing(null); }} />
                   {[
                     { key: "managementFeePercent", label: "Management Fee %" },
                     { key: "cleaningFee", label: "Cleaning fee per booking (blank = none)" },

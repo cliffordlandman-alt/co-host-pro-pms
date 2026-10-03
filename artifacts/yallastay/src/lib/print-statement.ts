@@ -3,6 +3,7 @@
  * print dialog, where "Save as PDF" makes the file. Nothing is sent anywhere.
  */
 import { statementBalance, feeLabels } from "./statement-balance.ts";
+import { sortStatementBookings } from "../../../../lib/booking-currency.mjs";
 
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const money = (n: number, c: string) => `${c} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -12,6 +13,8 @@ export function statementHtml(stmt: any, ownerLines: any[], company = "YallaStay
   const monthLabel = new Date(`${stmt.month}-01T00:00:00`).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
   let bookings: any[] = [];
   try { bookings = typeof stmt.bookingDetails === "string" ? JSON.parse(stmt.bookingDetails) : stmt.bookingDetails || []; } catch { bookings = []; }
+  // Same order as the statement screen: check-in date, then confirmation code.
+  bookings = sortStatementBookings(bookings);
   const bal = statementBalance(stmt);
   const fl = feeLabels(stmt);
   const row = (label: string, value: number, minus = true, cls = "") => `<tr class="${cls}"><td>${esc(label)}</td><td class="r">${minus ? "− " : ""}${esc(money(value, c))}</td></tr>`;

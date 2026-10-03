@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, propertiesTable, ownersTable, insertPropertySchema, appSettingsTable, importLogsTable, reservationsTable, cleaningTasksTable, maintenanceTicketsTable, paymentsTable, accountingTransactionsTable, ownerStatementsTable, airbnbEarningsTable, reviewsTable, documentsTable, propertySettingsTable, templatesTable } from "@workspace/db";
 import { eq, and, inArray, isNull, sql } from "drizzle-orm";
 import { syncPropertyIcal } from "../lib/sync-scheduler";
+import { changePropertyCurrency, CurrencyChangeRefused } from "../lib/property-currency";
 import { insertAuditLog } from "../lib/audit";
 import { checkPropertyLimit } from "../lib/auth-middleware";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -206,15 +207,28 @@ router.patch("/properties/:id", asyncHandler(async (req, res) => {
   if(!parsed.success) return res.status(400).json({error:parsed.error.message});
   let fees;
   try { fees = parseFeeFields(req.body, false); } catch (e) { return res.status(400).json({ error: (e as Error).message }); }
-  const result = await db.transaction(async tx => {
-    const [row] = Object.keys(parsed.data).length
-      ? await tx.update(propertiesTable).set(parsed.data).where(eq(propertiesTable.id, id)).returning()
-      : await tx.select().from(propertiesTable).where(eq(propertiesTable.id, id));
-    if (!row) return null;
-    return { row, feeRow: await saveFeeFields(tx, row, fees) };
-  });
+  // A currency change goes through the same guard as Fee Settings: recorded amounts are never relabelled.
+  const { currency, ...propertyData } = parsed.data as typeof parsed.data & { currency?: string | null };
+  let result: any;
+  try {
+    result = await db.transaction(async tx => {
+      const [current] = await tx.select().from(propertiesTable).where(eq(propertiesTable.id, id));
+      if (!current) return null;
+      const cur = currency != null && currency !== current.currency
+        ? await changePropertyCurrency(tx, id, String(currency).trim().toUpperCase(), { cleaningFeeGiven: fees.cleaningFee !== undefined })
+        : null;
+      const [row] = Object.keys(propertyData).length
+        ? await tx.update(propertiesTable).set(propertyData).where(eq(propertiesTable.id, id)).returning()
+        : await tx.select().from(propertiesTable).where(eq(propertiesTable.id, id));
+      return { row, cur, feeRow: await saveFeeFields(tx, row, fees) };
+    });
+  } catch (e) {
+    if (e instanceof CurrencyChangeRefused) return res.status(409).json({ error: e.message });
+    throw e;
+  }
   if (!result) return res.status(404).json({ error: "Not found" });
   const { row, feeRow } = result;
+  if (result.cur?.changed) await insertAuditLog({ action: "update", entity: "property_currency", entityId: id, details: result.cur, performedBy: req.headers["x-user-id"] as string });
 
   await insertAuditLog({
     action: "update",
