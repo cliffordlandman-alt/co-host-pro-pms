@@ -33,7 +33,7 @@ export async function apiAccess(req: Request, res: Response, next: NextFunction)
     }
     if (req.path === '/accounting/statements') {
       const rows = await db.select().from(ownerStatementsTable).where(and(eq(ownerStatementsTable.ownerId,owner.id), ne(ownerStatementsTable.status,'draft'), req.query.month ? eq(ownerStatementsTable.month,String(req.query.month)) : undefined));
-      const money = ['grossRevenue','platformFees','managementFee','cleaningCosts','maintenanceCosts','otherExpenses','vatAmount','ownerPayout','tourismFee'];
+      const money = ['grossRevenue','platformFees','managementFee','cleaningCosts','maintenanceCosts','otherExpenses','vatAmount','ownerPayout','tourismFee','paidByAirbnb'];
       return res.json(rows.map(r=>({...r,propertyName:properties.find(p=>p.id===r.propertyId)?.name,...Object.fromEntries(money.map(k=>[k,Number((r as any)[k] || 0)]))})));
     }
     return res.status(403).json({error:'Owner access denied'});

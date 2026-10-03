@@ -1,6 +1,7 @@
 import { CompanyFinance } from "@/components/CompanyFinance";
 import { EntryDialog, isAutomaticEntry } from "@/components/EntryDialog";
 import { printStatement } from "@/lib/print-statement";
+import { statementBalance } from "@/lib/statement-balance";
 import { CleaningCostSettings } from "@/components/CleaningCostSettings";
 import { apiFetch } from "@/lib/api-fetch";
 import { Pager, usePagedList } from "@/components/Pager";
@@ -58,6 +59,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id: number, status: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const s = STATUS_CONFIG[stmt.status] ?? STATUS_CONFIG.draft;
+  const bal = statementBalance(stmt);
   // The owner-charged expenses behind "Expenses charged to owner", itemised (same rows the statement adds up).
   const { data: ownerLines } = useQuery({
     queryKey: ["transactions", stmt.month, String(stmt.propertyId), "owner-lines"],
@@ -87,8 +89,8 @@ function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id
             <div className="text-sm font-medium">{aed(stmt.grossRevenue,stmt.currency || "AED")}</div>
           </div>
           <div className="text-right">
-            <div className="text-xs text-muted-foreground">Payout</div>
-            <div className={`text-sm font-bold ${stmt.ownerPayout >= 0 ? "text-emerald-600" : "text-red-500"}`}>{aed(stmt.ownerPayout,stmt.currency || "AED")}</div>
+            <div className="text-xs text-muted-foreground">{bal.short}</div>
+            <div data-testid="statement-balance" className={`text-sm font-bold ${bal.owes ? "text-red-600" : "text-emerald-600"}`}>{aed(bal.amount,stmt.currency || "AED")}</div>
           </div>
           <Badge className={`text-xs border ${s.color} hidden sm:flex`}>{s.label}</Badge>
           {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
@@ -150,13 +152,24 @@ function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id
                   <span className="text-red-500">− {aed(stmt.vatAmount,stmt.currency || "AED")}</span>
                 </div>
               )}
+              {bal.hasCohost && <>
+                <div className="flex justify-between border-t pt-2">
+                  <span>Owner share</span>
+                  <span className="font-medium">{aed(bal.ownerShare,stmt.currency || "AED")}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Already paid to owner by Airbnb <span className="text-xs">(co-host payout)</span></span>
+                  <span className="text-red-500">− {aed(bal.paidByAirbnb,stmt.currency || "AED")}</span>
+                </div>
+              </>}
               <div className="flex justify-between font-semibold border-t pt-2 text-base">
-                <span>Owner Payout</span>
-                <span className={stmt.ownerPayout >= 0 ? "text-emerald-600" : "text-red-500"}>{aed(stmt.ownerPayout,stmt.currency || "AED")}</span>
+                <span>{bal.label}</span>
+                <span className={bal.owes ? "text-red-600" : "text-emerald-600"}>{aed(bal.amount,stmt.currency || "AED")}</span>
               </div>
+              {bal.owes && <p className="text-xs text-red-700">The owner owes the company this amount for the month{bal.hasCohost ? " (Airbnb paid the owner more than their share)" : ""}. It can't be marked as paid to the owner.</p>}
             </div>
 
-            {stmt.bookingDetails && <div className="sm:col-span-2 overflow-x-auto"><p className="text-xs text-muted-foreground mb-2">Bookings recognized in checkout month</p><table className="w-full text-xs"><thead><tr>{["Guest","Dates","Total","VAT","Tourism","Company","Owner"].map(h=><th className="text-left p-2" key={h}>{h}</th>)}</tr></thead><tbody>{JSON.parse(stmt.bookingDetails).map((r:any)=><tr key={r.id} className="border-t"><td className="p-2">{r.guestName}</td><td className="p-2 whitespace-nowrap">{r.checkIn} → {r.checkOut}</td>{["grossAmount","vatAmount","tourismFee","managementAmount","ownerAmount"].map(k=><td className="p-2 whitespace-nowrap" key={k}>{aed(Number(r[k]),stmt.currency || "AED")}</td>)}</tr>)}</tbody></table><p className="text-xs text-muted-foreground mt-2">{stmt.notes}</p><Button size="sm" variant="outline" className="mt-2" onClick={async()=>{const rows=stmt.otherExpenses>0?(ownerLines??(await f(`/api/accounting/transactions?month=${stmt.month}&propertyId=${stmt.propertyId}`)).filter((r:any)=>r.type==="expense"&&r.allocation==="owner")):[];printStatement(stmt,rows);}}>Print / Save PDF</Button></div>}
+            {stmt.bookingDetails && <div className="sm:col-span-2 overflow-x-auto"><p className="text-xs text-muted-foreground mb-2">Bookings recognized in checkout month</p><table className="w-full text-xs"><thead><tr>{["Guest","Dates","Total","VAT","Tourism","Company","Owner",...(bal.hasCohost?["Paid by Airbnb"]:[])].map(h=><th className="text-left p-2" key={h}>{h}</th>)}</tr></thead><tbody>{JSON.parse(stmt.bookingDetails).map((r:any)=><tr key={r.id} className="border-t"><td className="p-2">{r.guestName}</td><td className="p-2 whitespace-nowrap">{r.checkIn} → {r.checkOut}</td>{["grossAmount","vatAmount","tourismFee","managementAmount","ownerAmount",...(bal.hasCohost?["cohostPayout"]:[])].map(k=><td className="p-2 whitespace-nowrap" key={k}>{r[k]==null?"–":aed(Number(r[k]),stmt.currency || "AED")}</td>)}</tr>)}</tbody></table><p className="text-xs text-muted-foreground mt-2">{stmt.notes}</p><Button size="sm" variant="outline" className="mt-2" onClick={async()=>{const rows=stmt.otherExpenses>0?(ownerLines??(await f(`/api/accounting/transactions?month=${stmt.month}&propertyId=${stmt.propertyId}`)).filter((r:any)=>r.type==="expense"&&r.allocation==="owner")):[];printStatement(stmt,rows);}}>Print / Save PDF</Button></div>}
             {/* Actions */}
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</p>
@@ -166,7 +179,7 @@ function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id
                     <Send className="h-3.5 w-3.5 mr-1" />Mark as Sent
                   </Button>
                 )}
-                {stmt.status === "sent" && (
+                {stmt.status === "sent" && !bal.owes && (
                   <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => onStatusChange(stmt.id, "paid")}>
                     <CheckCircle2 className="h-3.5 w-3.5 mr-1" />Mark as Paid
                   </Button>
@@ -245,9 +258,9 @@ function StatementsTab() {
       </div>
 
       {lastRun && lastRun.month === selectedMonth && lastRun.skipped.some((s: any) => !s.locked) && (() => {
-        const toVerify = lastRun.skipped.filter((s: any) => s.unverified?.length);
+        const toVerify = lastRun.skipped.filter((s: any) => s.unverified?.length || s.cohostMissing?.length);
         const noOwner = lastRun.skipped.filter((s: any) => s.noOwner);
-        const other = lastRun.skipped.filter((s: any) => !s.unverified?.length && !s.noOwner && !s.locked && !s.duplicate);
+        const other = lastRun.skipped.filter((s: any) => !s.unverified?.length && !s.cohostMissing?.length && !s.noOwner && !s.locked && !s.duplicate);
         return (
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100 space-y-3" role="status">
             <div className="flex items-start justify-between gap-2">
@@ -261,13 +274,20 @@ function StatementsTab() {
                   <div key={s.propertyId}>
                     <p className="font-medium text-xs">{s.property}</p>
                     <ul className="mt-1 space-y-1">
-                      {s.unverified.map((b: any) => (
+                      {(s.unverified ?? []).map((b: any) => (
                         <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
                           <span>{b.guestName || "Guest"} · {b.checkIn} → {b.checkOut} · {b.platform}</span>
                           <Link href={`/reservations/${b.id}`} className="rounded border border-amber-400 bg-white/70 px-2 py-0.5 font-medium text-amber-900 hover:bg-white dark:bg-transparent dark:text-amber-100">Verify</Link>
                         </li>
                       ))}
+                      {(s.cohostMissing ?? []).map((b: any) => (
+                        <li key={`c${b.id}`} data-testid="cohost-missing" className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <span>{b.guestName || "Guest"} · {b.checkIn} → {b.checkOut} · <b>co-host payout missing</b></span>
+                          <Link href={`/verify-bookings?month=${lastRun.month}&propertyId=${s.propertyId}`} className="rounded border border-amber-400 bg-white/70 px-2 py-0.5 font-medium text-amber-900 hover:bg-white dark:bg-transparent dark:text-amber-100">Verify</Link>
+                        </li>
+                      ))}
                     </ul>
+                    {s.cohostRequired && <p className="mt-1 text-[11px] opacity-80">Airbnb pays the co-host payout to this owner directly, so each Airbnb booking needs that amount (enter it on Verify) before the balance can be worked out.</p>}
                   </div>
                 ))}
               </div>
@@ -296,13 +316,13 @@ function StatementsTab() {
           {[
             { label: "Gross Revenue", key: "grossRevenue" as const, color: "text-emerald-600" },
             { label: "Management Fees", key: "managementFee" as const, color: "text-amber-600" },
-            { label: "Total Payouts", key: "ownerPayout" as const, color: "text-primary" },
+            { label: "Balance due to owners", key: "ownerPayout" as const, color: "text-primary" }, // net of co-host payouts Airbnb paid owners directly
           ].map(({ label, key, color }) => (
             <Card key={label}>
               <CardContent className="pt-3 pb-3">
                 <div className="text-xs text-muted-foreground mb-1">{label}</div>
                 <div className={`text-lg font-bold ${color}`}>{serverMoney(key)}</div>
-                <div className="text-[11px] text-muted-foreground">All {summary.total} statement{summary.total !== 1 ? "s" : ""}{statusFilter !== "all" ? ` (${statusFilter})` : ""} this month</div>
+                <div className="text-[11px] text-muted-foreground">All {summary.total} statement{summary.total !== 1 ? "s" : ""}{statusFilter !== "all" ? ` (${statusFilter})` : ""} this month{key === "ownerPayout" ? "; net of co-host payouts Airbnb paid owners, a minus means owners owe" : ""}</div>
               </CardContent>
             </Card>
           ))}
@@ -496,6 +516,7 @@ function SettingsTab() {
                   {editing !== s.propertyId && (
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Mgmt {s.managementFeePercent}% · Cleaning fee {s.cleaningFee != null ? s.cleaningFee : "none"} · Cleaning cost {s.cleaningCostOverride === 0 ? "no cost" : s.cleaningCostOverride != null ? `${s.cleaningCostCurrency || s.propertyCurrency || "AED"} ${s.cleaningCostOverride} (override)` : s.cleaningRateCard ? "rate card" : <span className="text-amber-700 dark:text-amber-300">no rate set</span>} · Airbnb {s.platformFeeAirbnb}% · Booking {s.platformFeeBookingCom}% · Direct {s.platformFeeDirect}% · Vrbo {s.platformFeeVrbo ?? 0}% · VAT {s.vatEnabled ? `${s.vatPercent}%` : "off"} · Tourism {s.tourismEnabled ? s.tourismRate : "off"}
+                    {s.cohostPaidToOwner && <span data-testid="cohost-direct"> · Airbnb co-host payout goes to the owner</span>}
                     </p>
                   )}
                 </div>
@@ -545,6 +566,10 @@ function SettingsTab() {
                     <div className="flex items-center gap-2">
                       <Switch id={`maint-${s.propertyId}`} checked={draft.includeMaintenance} onCheckedChange={v => setDraft((p: any) => ({ ...p, includeMaintenance: v }))} />
                       <Label htmlFor={`maint-${s.propertyId}`} className="text-xs">Include maintenance costs</Label>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <Switch id={`cohost-${s.propertyId}`} checked={!!draft.cohostPaidToOwner} onCheckedChange={v => setDraft((p: any) => ({ ...p, cohostPaidToOwner: v }))} />
+                      <Label htmlFor={`cohost-${s.propertyId}`} className="text-xs">Airbnb co-host payout goes directly to the owner<span className="block text-[11px] font-normal text-muted-foreground">Statements show each booking's co-host payout as already paid to the owner by Airbnb and deduct it from the balance.</span></Label>
                     </div>
                   </div>
                 </div>

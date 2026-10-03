@@ -7,7 +7,7 @@ import { loadPropertyFeeSettings, ratesFromSettings } from "../lib/fee-config";
 import { parseBreakdowns, payoutComparison } from "../lib/airbnb-breakdowns.mjs";
 import { Router } from "express";
 import { db, reservationsTable, propertiesTable, insertReservationSchema, cleaningTasksTable, propertySettingsTable, ownerStatementsTable, paymentsTable, ownersTable } from "@workspace/db";
-import { eq, and, ne, lt, gt, gte, lte, inArray, notInArray, or, ilike, sql, desc } from "drizzle-orm";
+import { eq, and, ne, lt, gt, gte, lte, inArray, notInArray, or, ilike, sql, desc, isNull } from "drizzle-orm";
 import { insertAuditLog } from "../lib/audit";
 import { asyncHandler } from "../lib/asyncHandler";
 import { parseId } from "../lib/parseId";
@@ -196,11 +196,14 @@ router.get("/reservations/unverified", asyncHandler(async (req, res) => {
   const propertyId = req.query.propertyId ? parseId(String(req.query.propertyId)) : null;
   const ownerId = req.query.ownerId ? parseId(String(req.query.ownerId)) : null;
   const conds = [gte(reservationsTable.checkOut, `${month}-01`), lte(reservationsTable.checkOut, `${month}-31`), notInArray(reservationsTable.status, ["cancelled", "blocked"]),
-    or(sql`${reservationsTable.financeMode} is null`, ne(reservationsTable.financeMode, "inclusive-v1"))];
+    or(sql`${reservationsTable.financeMode} is null`, ne(reservationsTable.financeMode, "inclusive-v1"),
+      // verified Airbnb bookings still missing the co-host payout on properties where Airbnb pays it to the owner
+      and(eq(reservationsTable.platform, "airbnb"), isNull(reservationsTable.cohostPayout), eq(propertySettingsTable.cohostPaidToOwner, true)))];
   if (propertyId) conds.push(eq(reservationsTable.propertyId, propertyId));
   if (ownerId) conds.push(eq(propertiesTable.ownerId, ownerId));
-  const rows = await db.select({ r: reservationsTable, propertyName: propertiesTable.name, ownerId: propertiesTable.ownerId, ownerName: ownersTable.name })
+  const rows = await db.select({ r: reservationsTable, propertyName: propertiesTable.name, ownerId: propertiesTable.ownerId, ownerName: ownersTable.name, cohostPaidToOwner: propertySettingsTable.cohostPaidToOwner })
     .from(reservationsTable).innerJoin(propertiesTable, eq(reservationsTable.propertyId, propertiesTable.id)).leftJoin(ownersTable, eq(propertiesTable.ownerId, ownersTable.id))
+    .leftJoin(propertySettingsTable, eq(propertySettingsTable.propertyId, reservationsTable.propertyId))
     .where(and(...conds)).orderBy(propertiesTable.name, reservationsTable.checkOut, reservationsTable.id);
   const codes = [...new Set(rows.map(x => x.r.externalId).filter((x): x is string => !!x && x.startsWith("airbnb:")).map(x => x.slice(7)))];
   const earnings = codes.length ? await db.select().from(airbnbEarningsTable).where(inArray(airbnbEarningsTable.confirmationCode, codes)) : [];
@@ -210,11 +213,12 @@ router.get("/reservations/unverified", asyncHandler(async (req, res) => {
     const loaded = await loadPropertyFeeSettings(db, pid);
     if (loaded) defaults.set(pid, { settings: loaded.settings, property: loaded.property });
   }
-  res.json(rows.map(({ r, propertyName, ownerId, ownerName }) => {
+  res.json(rows.map(({ r, propertyName, ownerId, ownerName, cohostPaidToOwner }) => {
     const d = defaults.get(r.propertyId); const rates = d ? ratesFromSettings(d.settings, r.platform) : null;
     const f = reservationFinancials(r, earnings, { currency: d?.settings.currency || d?.property.currency });
     return { id: r.id, propertyId: r.propertyId, propertyName, ownerId, ownerName, guestName: r.guestName, checkIn: r.checkIn, checkOut: r.checkOut, platform: r.platform, status: r.status,
       cohostPayout: r.cohostPayout != null ? Number(r.cohostPayout) : null,
+      verified: r.financeMode === "inclusive-v1", cohostRequired: cohostPaidToOwner === true && r.platform === "airbnb",
       currency: f.currency, channelEarnings: f.channelEarnings, recordedAmount: f.recordedAmount,
       defaults: { cleaningFee: d?.settings.cleaningFee != null ? Number(d.settings.cleaningFee) : 0, channelPercent: rates?.channelPercent ?? 0, managementPercent: rates?.managementPercent ?? null, vatRate: rates?.vatRate ?? 0, tourismEnabled: !!rates?.tourismEnabled },
       needsRooms: !!rates?.tourismEnabled && d != null && bedroomCount(d.property) == null,

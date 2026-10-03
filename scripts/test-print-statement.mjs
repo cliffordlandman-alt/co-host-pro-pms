@@ -9,4 +9,14 @@ assert.match(html, /Sea &lt;View&gt; 1BR/); assert.match(html, /A &amp; B Owner/
 assert.match(html, /September 2026/); assert.match(html, /AC repair \(Maintenance\)/); assert.match(html, /Towels \(Supplies\)/);
 assert.match(html, /Expenses charged to owner<\/td><td class="r">− AED 320\.00/); assert.match(html, /Owner payout<\/td><td class="r">AED 6,060\.00/);
 assert.match(html, /Harry &lt;script&gt;/);
-console.log('PASS: printable statement shows only the statement, itemised owner expenses, escaped');
+// Co-host payout paid to the owner directly by Airbnb: owner share, already paid, then the balance; a negative
+// balance reads "Owner owes company" with a positive amount (never a bare negative).
+const co = { ...stmt, otherExpenses: 0, ownerPayout: 354.82, paidByAirbnb: 4328.32,
+  bookingDetails: JSON.stringify([{ guestName: 'G', checkIn: '2026-09-01', checkOut: '2026-09-03', platform: 'airbnb', grossAmount: '2730.00', ownerAmount: '2102.10', cohostPayout: '1942.83' }]) };
+const h2 = statementHtml(co, []);
+assert.match(h2, /Owner share<\/td><td class="r">AED 4,683\.14/); assert.match(h2, /Already paid to owner by Airbnb \(co-host payout\)<\/td><td class="r">− AED 4,328\.32/);
+assert.match(h2, /Balance due to owner<\/td><td class="r">AED 354\.82/); assert.match(h2, /Paid by Airbnb<\/th>/); assert.match(h2, /AED 1,942\.83/);
+const h3 = statementHtml({ ...co, ownerPayout: -120.5 }, []);
+assert.match(h3, /Owner owes company<\/td><td class="r">AED 120\.50/); assert.doesNotMatch(h3, /AED -120/);
+assert.match(statementHtml({ ...stmt, ownerPayout: -5 }, []), /Owner owes company<\/td><td class="r">AED 5\.00/);
+console.log('PASS: printable statement shows only the statement, itemised owner expenses, escaped; co-host payout already paid by Airbnb and "Owner owes company"');

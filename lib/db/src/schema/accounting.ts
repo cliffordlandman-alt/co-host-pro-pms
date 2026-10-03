@@ -21,6 +21,8 @@ export const propertySettingsTable = pgTable("property_settings", {
   vatPercent: numeric("vat_percent", { precision: 5, scale: 2 }).notNull().default("5"),
   includeCleaning: boolean("include_cleaning").notNull().default(true),
   includeMaintenance: boolean("include_maintenance").notNull().default(true),
+  // Airbnb pays the co-host payout straight to the owner (owner is the co-host); statements deduct it.
+  cohostPaidToOwner: boolean("cohost_paid_to_owner").notNull().default(false),
   currency: text("currency").notNull().default("AED"),
   /** Cleaning fee charged per booking (deducted from the owner; company income). Single source of truth;
    *  each booking snapshots it into reservations.cleaning_fee when calculated. */
@@ -71,6 +73,8 @@ export const ownerStatementsTable = pgTable("owner_statements", {
   otherExpenses: numeric("other_expenses", { precision: 10, scale: 2 }).notNull().default("0"),
   vatAmount: numeric("vat_amount", { precision: 10, scale: 2 }).notNull().default("0"),
   ownerPayout: numeric("owner_payout", { precision: 10, scale: 2 }).notNull().default("0"),
+  // Co-host payouts Airbnb paid the owner directly (already deducted from ownerPayout, the balance due).
+  paidByAirbnb: numeric("paid_by_airbnb", { precision: 10, scale: 2 }).notNull().default("0"),
   nightsOccupied: integer("nights_occupied").notNull().default(0),
   bookingsCount: integer("bookings_count").notNull().default(0),
   status: text("status").notNull().default("draft"),

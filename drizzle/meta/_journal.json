@@ -127,6 +127,13 @@
       "when": 1790800017000,
       "tag": "0017_reservation_cohost_payout",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790900018000,
+      "tag": "0018_cohost_paid_to_owner",
+      "breakpoints": true
     }
   ]
 }

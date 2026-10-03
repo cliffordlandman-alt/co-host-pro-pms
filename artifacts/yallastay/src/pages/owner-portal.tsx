@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api-fetch";
+import { statementBalance } from "@/lib/statement-balance";
 import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -253,12 +254,12 @@ function OwnerStatements({ ownerId }: { ownerId: number }) {
           {[
             { label: "Gross Revenue", value: totalGross, color: "text-emerald-600" },
             { label: "Deductions", value: totalDeductions, color: "text-red-500" },
-            { label: "Your Payout", value: totalPayout, color: "text-primary font-bold" },
+            { label: "Your Payout", value: totalPayout, color: "text-primary font-bold" }, // balance after co-host payouts Airbnb paid you directly
           ].map(({ label, value, color }) => (
             <Card key={label} className="text-center">
               <CardContent className="pt-3 pb-3">
                 <div className="text-xs text-muted-foreground mb-1">{label}</div>
-                <div className={`text-base font-bold ${color}`}>{statementCurrencies.map((currency:any)=>{const rows=(statements||[]).filter((s:any)=>(s.currency||"AED")===currency);const total=rows.reduce((n:number,r:any)=>n+Number(label==="Gross Revenue"?r.grossRevenue:label==="Your Payout"?r.ownerPayout:r.grossRevenue-r.ownerPayout),0);return <div key={currency}>{aed(total,currency)}</div>;})}</div>
+                <div className={`text-base font-bold ${color}`}>{statementCurrencies.map((currency:any)=>{const rows=(statements||[]).filter((s:any)=>(s.currency||"AED")===currency);const total=rows.reduce((n:number,r:any)=>n+Number(label==="Gross Revenue"?r.grossRevenue:label==="Your Payout"?r.ownerPayout:r.grossRevenue-r.ownerPayout-Number(r.paidByAirbnb||0)),0);return <div key={currency}>{label==="Your Payout"&&Math.round(total*100)<0?`You owe ${aed(-total,currency)}`:aed(total,currency)}</div>;})}</div>
               </CardContent>
             </Card>
           ))}
@@ -327,10 +328,16 @@ function OwnerStatements({ ownerId }: { ownerId: number }) {
                         <span className="text-red-400">− {aed(stmt.vatAmount,stmt.currency || "AED")}</span>
                       </div>
                     )}
-                    <div className="flex justify-between font-semibold border-t pt-2 text-base mt-1">
-                      <span>Your Payout</span>
-                      <span className={stmt.ownerPayout >= 0 ? "text-emerald-600" : "text-red-500"}>{aed(stmt.ownerPayout,stmt.currency || "AED")}</span>
-                    </div>
+                    {(() => { const bal = statementBalance(stmt, "owner"); return <>
+                      {bal.hasCohost && <>
+                        <div className="flex justify-between border-t pt-2"><span>Your share</span><span className="font-medium">{aed(bal.ownerShare,stmt.currency || "AED")}</span></div>
+                        <div className="flex justify-between text-muted-foreground"><span>Already paid to you by Airbnb (co-host payout)</span><span className="text-red-400">− {aed(bal.paidByAirbnb,stmt.currency || "AED")}</span></div>
+                      </>}
+                      <div className="flex justify-between font-semibold border-t pt-2 text-base mt-1">
+                        <span>{bal.label}</span>
+                        <span className={bal.owes ? "text-red-600" : "text-emerald-600"}>{aed(bal.amount,stmt.currency || "AED")}</span>
+                      </div>
+                    </>; })()}
                   </div>
 
                   {stmt.paidAt && (
@@ -453,7 +460,7 @@ function OwnerOverview({ properties, ownerId }: { properties: any[]; ownerId: nu
                     <div className="text-xs text-muted-foreground">{format(new Date(stmt.month + "-01"), "MMMM yyyy")}</div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="font-semibold text-sm text-emerald-600">{aed(stmt.ownerPayout,stmt.currency || "AED")}</span>
+                    {(() => { const bal = statementBalance(stmt, "owner"); return <span className={`font-semibold text-sm ${bal.owes ? "text-red-600" : "text-emerald-600"}`}>{bal.owes ? "You owe " : ""}{aed(bal.amount,stmt.currency || "AED")}</span>; })()}
                     <Badge className={`text-xs border ${s.color}`}>{s.label}</Badge>
                   </div>
                 </div>

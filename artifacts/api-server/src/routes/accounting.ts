@@ -45,6 +45,7 @@ const accountingSettingsSchema = z.object({
   vatPercent: toDecimalStr,
   includeCleaning: z.boolean().optional(),
   includeMaintenance: z.boolean().optional(),
+  cohostPaidToOwner: z.boolean().optional(),
   currency: z.string().max(3).optional(),
   cleaningFee: z.union([z.null(), z.coerce.number().finite().min(0).max(100000).transform(n => n.toFixed(2))]).optional(),
   cleaningCostOverride: z.union([z.null(), z.coerce.number().finite().min(0).max(100000).transform(n => n.toFixed(2))]).optional(),
@@ -71,6 +72,7 @@ router.get("/accounting/settings", asyncHandler(async (_req, res) => {
       vatPercent: propertySettingsTable.vatPercent,
       includeCleaning: propertySettingsTable.includeCleaning,
       includeMaintenance: propertySettingsTable.includeMaintenance,
+      cohostPaidToOwner: propertySettingsTable.cohostPaidToOwner,
       currency: propertySettingsTable.currency,
       cleaningCostOverride: propertySettingsTable.cleaningCostOverride,
       cleaningRateCard: propertySettingsTable.cleaningRateCard,
@@ -131,6 +133,7 @@ router.put("/accounting/settings/:propertyId", asyncHandler(async (req, res) => 
   if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
 
   const { ownerSplitPercent: _unused, ...data } = parsed.data; // owner share is derived from the management %
+  await insertAuditLog({ action: "update", entity: "property_settings", entityId: propertyId, details: data, performedBy: req.headers["x-user-id"] as string });
   const existing = await db.select().from(propertySettingsTable).where(eq(propertySettingsTable.propertyId, propertyId));
   if (existing.length > 0) {
     const result = await db.transaction(async tx => {
@@ -379,6 +382,7 @@ router.get("/accounting/statements", asyncHandler(async (req, res) => {
       otherExpenses: ownerStatementsTable.otherExpenses,
       vatAmount: ownerStatementsTable.vatAmount,
       ownerPayout: ownerStatementsTable.ownerPayout,
+      paidByAirbnb: ownerStatementsTable.paidByAirbnb,
       nightsOccupied: ownerStatementsTable.nightsOccupied,
       bookingsCount: ownerStatementsTable.bookingsCount,
       status: ownerStatementsTable.status,
@@ -405,6 +409,7 @@ router.get("/accounting/statements", asyncHandler(async (req, res) => {
     otherExpenses: parseFloat(r.otherExpenses || "0"),
     vatAmount: parseFloat(r.vatAmount || "0"),
     ownerPayout: parseFloat(r.ownerPayout || "0"),
+    paidByAirbnb: parseFloat(r.paidByAirbnb || "0"),
     createdAt: r.createdAt.toISOString(),
   }));
   res.json(p ? paged(items, total, p, summary) : items);

@@ -1,4 +1,5 @@
 import { ContactEditor } from "@/components/ContactEditor";
+import { SuggestedOwners } from "@/components/SuggestedOwners";
 import { apiFetch } from "@/lib/api-fetch";
 import { useState, useEffect } from "react";
 import { useGetOwners, useGetProperties } from "@workspace/api-client-react";
@@ -160,6 +161,8 @@ export default function Owners() {
           Add Owner
         </Button>
       </div>
+
+      <SuggestedOwners />
 
       <div className="rounded-xl border bg-card overflow-hidden">
         <Table>
