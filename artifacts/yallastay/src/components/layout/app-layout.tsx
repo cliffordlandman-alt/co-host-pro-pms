@@ -57,6 +57,7 @@ const navGroups = [
   {
     label: "Financial Reporting",
     items: [
+      { href: "/income",     icon: PieChart,      label: "Income per property",   mobile: false },
       { href: "/reports",    icon: PieChart,      label: "Analytics & Reporting", mobile: false },
       { href: "/accounting", icon: FileBarChart,  label: "Owner Statements",      mobile: false },
       { href: "/verify-bookings", icon: CheckCircle2, label: "Verify bookings",     mobile: false },

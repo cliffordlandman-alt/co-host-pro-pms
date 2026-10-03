@@ -3,7 +3,9 @@ import { bookingCurrency } from "../../../../lib/booking-currency.mjs";
 import { dubaiToday, addDays, addMonths } from "../lib/dubai-date";
 import { earningsDate } from "../../../../lib/company-statement.mjs";
 import { Router } from "express";
-import { db, reservationsTable, propertiesTable, maintenanceTicketsTable, airbnbEarningsTable, accountingTransactionsTable } from "@workspace/db";
+import { db, reservationsTable, propertiesTable, maintenanceTicketsTable, airbnbEarningsTable, accountingTransactionsTable, propertySettingsTable, ownerStatementsTable, ownersTable } from "@workspace/db";
+import { incomeReport, incomePropertyDetail } from "../../../../lib/income-report.mjs";
+import { asyncHandler } from "../lib/asyncHandler";
 import { eq, ne, and, gte, lte, sql } from "drizzle-orm";
 
 const router = Router();
@@ -77,5 +79,31 @@ router.get("/reports/platforms", async (req, res) => {
   }
   res.json(Object.values(rows).map(r => ({ platform: r.platform, count: r.count, currency, revenue: r.revenue / 100, unverifiedBookings: r.unverified })));
 });
+
+// Income per property (month or calendar year). Read only: owner figures come from the owner-statement
+// calculation (or the published statement as stored), company figures from the company statement.
+function incomePeriod(q: any): { month?: string; year?: string } | { error: string } {
+  if (q.year != null && q.year !== "") return /^(20\d\d)$/.test(String(q.year)) ? { year: String(q.year) } : { error: "Valid year required (YYYY)" };
+  const month = String(q.month || dubaiToday().slice(0, 7));
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? { month } : { error: "Valid month required (YYYY-MM)" };
+}
+async function incomeData() {
+  const [properties, settings, bookings, transactions, tickets, earnings, statements, owners] = await Promise.all([db.select().from(propertiesTable), db.select().from(propertySettingsTable), db.select().from(reservationsTable),
+    db.select().from(accountingTransactionsTable), db.select().from(maintenanceTicketsTable), db.select().from(airbnbEarningsTable), db.select().from(ownerStatementsTable), db.select({ id: ownersTable.id, name: ownersTable.name }).from(ownersTable)]);
+  return { properties: properties.sort((a, b) => a.name.localeCompare(b.name)), settings, bookings, transactions, tickets, earnings, statements, owners };
+}
+router.get("/reports/income", asyncHandler(async (req, res) => {
+  const period = incomePeriod(req.query);
+  if ("error" in period) return res.status(400).json(period);
+  res.json(incomeReport(await incomeData(), period));
+}));
+router.get("/reports/income/:propertyId", asyncHandler(async (req, res) => {
+  const period = incomePeriod(req.query);
+  if ("error" in period) return res.status(400).json(period);
+  const id = Number(req.params.propertyId);
+  const detail = Number.isInteger(id) && id > 0 ? incomePropertyDetail(await incomeData(), id, period) : null;
+  if (!detail) return res.status(404).json({ error: "Property not found" });
+  res.json(detail);
+}));
 
 export default router;
