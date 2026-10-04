@@ -88,7 +88,7 @@ const STEPS = [
     skip: true,
     body: (
       <div className="space-y-3 text-sm text-muted-foreground">
-        <p>Connect your booking platforms so reservations, calendars, and guest messages flow into YallaStay automatically.</p>
+        <p>Connect your booking platforms so reservations, calendars, and guest messages flow into Co-Host Pro automatically.</p>
         <div className="bg-muted/40 rounded-xl p-4 text-xs space-y-1.5">
           <div className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" /> Airbnb — iCal sync or API (coming soon)</div>
           <div className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" /> Booking.com — iCal + extranet setup</div>

@@ -32,9 +32,9 @@ function TotalsCard({ t }: { t: IncomeTotal }) {
       </div>
       {t.properties === 0 ? <p className="mt-3 text-sm text-muted-foreground">No verified {t.currency} income in this period yet.</p> : <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Figure label="Gross booking income" value={money(t.gross, t.currency)} />
-        <Figure label="YallaStay management fee" value={money(t.managementFee, t.currency)} strong />
+        <Figure label="Company management fee" value={money(t.managementFee, t.currency)} strong />
         <Figure label="Owner share" value={money(t.ownerShare, t.currency)} />
-        <Figure label="Net to YallaStay" value={money(t.companyNet, t.currency)} strong />
+        <Figure label="Net to company" value={money(t.companyNet, t.currency)} strong />
       </div>}
       {t.unverifiedBookings > 0 && <p className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
         <b>{t.unverifiedBookings} booking{t.unverifiedBookings === 1 ? "" : "s"} not verified yet</b> and not in these figures.{t.unverifiedEstimate ? <> Airbnb host payouts recorded for them: <b>{money(t.unverifiedEstimate, t.currency)}</b> (estimate, not the guest total).</> : null}{" "}
@@ -62,9 +62,9 @@ function PropertyCard({ p, href }: { p: IncomeProperty; href: string }) {
         {rows.map(r => <div key={r.currency} className="mt-3">
           <div className="grid grid-cols-2 gap-x-3 gap-y-2">
             <Figure label="Gross booking income" value={money(r.gross, r.currency)} />
-            <Figure label="YallaStay fee" value={money(r.managementFee, r.currency)} strong />
+            <Figure label="Company fee" value={money(r.managementFee, r.currency)} strong />
             <Figure label="Owner share" value={money(r.ownerShare, r.currency)} />
-            <Figure label="Net to YallaStay" value={money(r.companyNet, r.currency)} />
+            <Figure label="Net to company" value={money(r.companyNet, r.currency)} />
           </div>
           <p className="text-xs text-muted-foreground mt-2">{r.bookings} booking{r.bookings === 1 ? "" : "s"} · {r.nights} nights · {p.occupancy.percent}% occupied · channel fees {money(r.channelFees, r.currency)} · cleaning & expenses {money(r.cleaning + r.expenses, r.currency)}{r.taxes ? ` · VAT & tourism ${money(r.taxes, r.currency)}` : ""}</p>
         </div>)}
@@ -76,7 +76,7 @@ function PropertyCard({ p, href }: { p: IncomeProperty; href: string }) {
 
 const COLS: { key: keyof IncomeRow | "occ" | "bn"; label: string; hint?: string }[] = [
   { key: "bn", label: "Bookings · nights" }, { key: "occ", label: "Occupancy" }, { key: "gross", label: "Gross booking income" }, { key: "taxes", label: "VAT & tourism" }, { key: "channelFees", label: "Channel fees" },
-  { key: "cleaning", label: "Cleaning & expenses" }, { key: "managementFee", label: "YallaStay fee" }, { key: "ownerShare", label: "Owner share" }, { key: "companyNet", label: "Net to YallaStay" },
+  { key: "cleaning", label: "Cleaning & expenses" }, { key: "managementFee", label: "Company fee" }, { key: "ownerShare", label: "Owner share" }, { key: "companyNet", label: "Net to company" },
 ];
 function PropertyTable({ props, hrefOf, showTaxes }: { props: IncomeProperty[]; hrefOf: (p: IncomeProperty) => string; showTaxes: boolean }) {
   const [, go] = useLocation();
@@ -142,8 +142,8 @@ export default function IncomePage() {
           <ul className="mt-2 space-y-1 text-muted-foreground list-disc pl-5">
             <li><b>Gross booking income</b>: what guests paid for bookings that checked out in the period (verified bookings only).</li>
             <li><b>Channel fees</b>: Airbnb/Booking.com fees. <b>Cleaning & expenses</b>: cleaning charged to the owner, owner expenses and repairs.</li>
-            <li><b>YallaStay fee</b>: the management fee, the company's commission. <b>Owner share</b>: what the owner earns after all deductions (including any co-host payout Airbnb paid the owner directly).</li>
-            <li><b>Net to YallaStay</b>: company income from the property (management fee, cleaning charged, Airbnb co-host income) minus company costs for it (cleaners, company-paid repairs), as on the company statement.</li>
+            <li><b>Company fee</b>: the management fee, the company's commission. <b>Owner share</b>: what the owner earns after all deductions (including any co-host payout Airbnb paid the owner directly).</li>
+            <li><b>Net to company</b>: company income from the property (management fee, cleaning charged, Airbnb co-host income) minus company costs for it (cleaners, company-paid repairs), as on the company statement.</li>
             <li><b>Occupancy</b>: nights booked in the period ÷ nights in the period. <b>Estimate</b>: some bookings aren't verified yet, so their money isn't counted; verify them to complete the figures.</li>
             <li>Each property is shown in its own currency. AED and ZAR are never added together and no exchange rate is used.</li>
           </ul></details>

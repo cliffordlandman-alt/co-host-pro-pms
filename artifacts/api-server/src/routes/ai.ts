@@ -10,6 +10,8 @@ import {
   aiRequestsTable,
 } from "@workspace/db";
 import { desc } from "drizzle-orm";
+import { BRAND } from "../../../../lib/brand.mjs";
+import { documentCompanyName } from "./app-settings";
 
 const router = Router();
 const MODEL = "gpt-4o-mini";
@@ -42,7 +44,7 @@ async function trackRequest(
   }
 }
 
-const SYSTEM_PROMPT = `You are an expert AI assistant for YallaStay, a premium Dubai holiday home management company. You help property managers with:
+const SYSTEM_PROMPT = `You are an expert AI assistant in ${BRAND}, the property management app of a premium Dubai holiday home management company. You help property managers with:
 - Writing guest messages (confirmations, check-in instructions, review requests, payment reminders)
 - Drafting owner updates and monthly summaries
 - Summarising maintenance issues and creating repair summaries
@@ -240,6 +242,7 @@ router.post("/ai/tools/whatsapp-draft", async (req, res) => {
   };
 
   const context = TYPE_CONTEXTS[messageType] ?? "a professional guest message";
+  const company = await documentCompanyName();
 
   const prompt = `Write ${context} for:
 
@@ -253,7 +256,7 @@ Requirements:
 - WhatsApp-optimised format (use line breaks, minimal punctuation)
 - Warm but professional tone matching premium Dubai hospitality
 - Max 150 words
-- End with a warm sign-off from "The YallaStay Team"
+- End with a warm sign-off from "The ${company} Team"
 - Do NOT use markdown formatting (no ** or ##)`;
 
   try {

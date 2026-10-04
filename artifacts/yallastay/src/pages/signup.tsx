@@ -4,9 +4,10 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth-context";
 import {
   Loader2, Eye, EyeOff, Mail, Lock, User, Building2, Phone,
-  Shield, Globe, CheckCircle2, ArrowLeft, Briefcase,
+  Shield, CheckCircle2, ArrowLeft, Briefcase,
 } from "lucide-react";
-import logoPath from "../assets/yallastay-logo.png";
+import logoPath from "../assets/cohost-logo.svg";
+import { BRAND } from "../../../../lib/brand.mjs";
 import dubaiSkyline from "../assets/dubai-skyline.png";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -99,9 +100,9 @@ export default function Signup() {
 
           <div className="relative z-10 flex flex-col h-full">
             <div className="ys-a1 flex items-center gap-3">
-              <img src={logoPath} alt="YallaStay" className="h-16 w-16" style={{ filter:"drop-shadow(0 0 20px rgba(45,212,191,0.7))" }} />
+              <img src={logoPath} alt={BRAND} className="h-16 w-16" style={{ filter:"drop-shadow(0 0 20px rgba(45,212,191,0.7))" }} />
               <div>
-                <div className="text-xl font-extrabold text-white">Yalla<span className="text-teal-400">Stay</span></div>
+                <div className="text-xl font-extrabold text-white">Co-Host <span className="text-teal-400">Pro</span></div>
                 <div className="text-[10px] text-teal-300/60 tracking-[0.15em] uppercase">Property Management</div>
               </div>
             </div>
@@ -147,7 +148,7 @@ export default function Signup() {
 
             <div className="mb-7">
               <h1 className="text-2xl font-bold text-white">Create your account</h1>
-              <p className="text-white/45 text-sm mt-1">Get started with YallaStay — free to use</p>
+              <p className="text-white/45 text-sm mt-1">Get started with {BRAND}, free to use</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -165,7 +166,7 @@ export default function Signup() {
               {/* Company + Phone */}
               <div className="grid grid-cols-2 gap-3">
                 <Field icon={<Building2 className="h-4 w-4" />} label="Company Name">
-                  <input type="text" value={form.company} onChange={upd("company")} className="ys-input w-full h-11 pl-10 pr-4 rounded-xl text-sm" placeholder="YallaStay LLC" />
+                  <input type="text" value={form.company} onChange={upd("company")} className="ys-input w-full h-11 pl-10 pr-4 rounded-xl text-sm" placeholder="Your company name" />
                 </Field>
                 <Field icon={<Phone className="h-4 w-4" />} label="Phone">
                   <input type="tel" value={form.phone} onChange={upd("phone")} className="ys-input w-full h-11 pl-10 pr-4 rounded-xl text-sm" placeholder="+971 50 000 0000" />
@@ -235,12 +236,6 @@ export default function Signup() {
               </p>
             </form>
 
-            <div className="mt-6 flex justify-center">
-              <a href="/yallastay-home/" className="flex items-center gap-1.5 text-teal-400/60 hover:text-teal-400 transition-colors text-xs font-medium">
-                <Globe className="h-3.5 w-3.5" />
-                Visit YallaStay Website
-              </a>
-            </div>
           </div>
         </div>
       </div>

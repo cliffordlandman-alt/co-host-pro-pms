@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api-fetch";
+import { BRAND } from "../../../../lib/brand.mjs";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CreditCard, Plus, Loader2, Building2, Crown, Zap, Rocket, CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
@@ -66,7 +67,7 @@ export default function Subscriptions() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><CreditCard className="h-6 w-6 text-purple-600" /> PMS Subscriptions</h1>
-          <p className="text-muted-foreground mt-1">Manage external clients using YallaStay PMS</p>
+          <p className="text-muted-foreground mt-1">Manage external clients using {BRAND}</p>
         </div>
         <Button onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-2" /> Add Client</Button>
       </div>

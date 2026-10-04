@@ -12,7 +12,8 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { useAuth } from "@/contexts/auth-context";
-import logoPath from "../assets/yallastay-logo.png";
+import logoPath from "../assets/cohost-logo.svg";
+import { BRAND } from "../../../../lib/brand.mjs";
 import { channelColor } from "@/lib/channel-colors";
 
 
@@ -130,7 +131,7 @@ export default function Dashboard() {
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 mb-0.5">
-              <img src={logoPath} alt="YallaStay" className="h-6 w-6 hidden sm:block" />
+              <img src={logoPath} alt={BRAND} className="h-6 w-6 hidden sm:block" />
               <p className="text-teal-300 text-xs font-medium">{dateStr}</p>
             </div>
             <h1 className="text-xl font-bold mt-0.5">{greeting}, {firstName} 👋</h1>

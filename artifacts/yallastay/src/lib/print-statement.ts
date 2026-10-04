@@ -4,11 +4,13 @@
  */
 import { statementBalance, feeLabels } from "./statement-balance.ts";
 import { sortStatementBookings } from "../../../../lib/booking-currency.mjs";
+import { BRAND } from "../../../../lib/brand.mjs";
 
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const money = (n: number, c: string) => `${c} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export function statementHtml(stmt: any, ownerLines: any[], company = "YallaStay Holiday Homes") {
+/** company = Settings → Company → "Company name on documents" (useDocumentName); defaults to the product name. */
+export function statementHtml(stmt: any, ownerLines: any[], company: string = BRAND) {
   const c = stmt.currency || "AED";
   const monthLabel = new Date(`${stmt.month}-01T00:00:00`).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
   let bookings: any[] = [];
@@ -42,7 +44,7 @@ export function statementHtml(stmt: any, ownerLines: any[], company = "YallaStay
 <style>body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827;margin:32px;font-size:13px}h1{font-size:20px;margin:0}h2{font-size:14px;margin:24px 0 8px}
 .muted{color:#4b5563}table{width:100%;border-collapse:collapse}td,th{padding:6px 4px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}.r{text-align:right;white-space:nowrap}
 tr.share td{font-weight:600;border-top:1px solid #9ca3af}tr.sub td{font-size:11px;color:#4b5563;padding-left:16px}tr.total td{font-weight:700;font-size:15px;border-top:2px solid #111827;border-bottom:none}.head{display:flex;justify-content:space-between;gap:16px;margin-bottom:16px}
-@media print{body{margin:12mm}}</style></head><body>
+@media print{body{margin:12mm}}@media screen and (max-width:640px){body{margin:12px}table{display:block;overflow-x:auto}}</style></head><body>
 <div class="head"><div><h1>Owner statement</h1><div class="muted">${esc(company)}</div></div><div class="r"><strong>${esc(monthLabel)}</strong><div class="muted">Status: ${esc(stmt.status)}</div></div></div>
 <p><strong>Property:</strong> ${esc(stmt.propertyName)}<br><strong>Owner:</strong> ${esc(stmt.ownerName || "—")}<br><strong>Bookings:</strong> ${esc(stmt.bookingsCount)} · ${esc(stmt.nightsOccupied)} nights</p>
 <table>${lines}</table>
@@ -51,9 +53,9 @@ ${bookingRows ? `<h2>Bookings recognised in this month (by checkout date)</h2><t
 </body></html>`;
 }
 
-export function printStatement(stmt: any, ownerLines: any[]) {
+export function printStatement(stmt: any, ownerLines: any[], company: string = BRAND) {
   const w = window.open("", "_blank");
   if (!w) { window.alert("Allow pop-ups for this site to print or save the statement as PDF."); return; }
-  w.document.open(); w.document.write(statementHtml(stmt, ownerLines)); w.document.close();
+  w.document.open(); w.document.write(statementHtml(stmt, ownerLines, company)); w.document.close();
   w.focus(); setTimeout(() => w.print(), 300);
 }

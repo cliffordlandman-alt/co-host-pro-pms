@@ -2,7 +2,8 @@ import { CommandSearch } from "@/components/today/CommandSearch";
 import { CheckCircle2, RefreshCw, ShieldCheck, History } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { Link, useLocation, useSearch } from "wouter";
-import logoPath from "../../assets/yallastay-logo.png";
+import logoPath from "../../assets/cohost-logo.svg";
+import { BRAND } from "../../../../../lib/brand.mjs";
 import {
   LayoutDashboard, Building, CalendarDays, CalendarRange, BedDouble,
   Sparkles, Wrench, Users, UserCircle, CreditCard, BarChart2, Star,
@@ -271,16 +272,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="px-4 pt-5 pb-4 border-b border-sidebar-border/30">
           <Link href="/dashboard">
             <div className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity">
-              <img src={logoPath} alt="YallaStay Logo" className="h-10 w-10 flex-shrink-0" />
+              <img src={logoPath} alt={BRAND} className="h-10 w-10 flex-shrink-0" />
               <div>
-                <div className="font-bold text-base tracking-tight leading-tight">YallaStay</div>
-                <div className="text-[11px] text-sidebar-foreground/50 leading-tight">Holiday Homes</div>
+                <div data-testid="sidebar-wordmark" className="font-bold text-base tracking-tight leading-tight">{BRAND}</div>
+                <div className="text-[11px] text-sidebar-foreground/50 leading-tight">Property management</div>
               </div>
             </div>
           </Link>
-          <div className="mt-3 bg-sidebar-accent/50 rounded-lg px-3 py-1.5">
-            <p className="text-[11px] text-teal-400 font-semibold tracking-wide uppercase">Owners Come First</p>
-          </div>
         </div>
 
         <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-4">
@@ -314,8 +312,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <header className="md:hidden flex items-center justify-between p-3 bg-sidebar text-sidebar-foreground sticky top-0 z-20 border-b border-sidebar-border/30">
           <Link href="/dashboard">
             <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
-              <img src={logoPath} alt="YallaStay Logo" className="h-7 w-auto" />
-              <span className="font-bold text-base tracking-tight">YallaStay</span>
+              <img src={logoPath} alt={BRAND} className="h-7 w-auto" />
+              <span className="font-bold text-base tracking-tight">{BRAND}</span>
             </div>
           </Link>
           <NotificationsBell />

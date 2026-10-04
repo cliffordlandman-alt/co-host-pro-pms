@@ -3,7 +3,7 @@ import { db, usersTable, ownersTable, propertiesTable, reservationsTable, ownerS
 import { eq, and, inArray, ne, sql } from 'drizzle-orm';
 import { getTokenPayload } from './auth-middleware';
 
-const publicPaths = new Set(['/healthz', '/auth/login', '/auth/register', '/owner-auth/send-code', '/owner-auth/verify']);
+const publicPaths = new Set(['/healthz', '/auth/login', '/auth/register', '/owner-auth/send-code', '/owner-auth/verify', '/brand']);
 const attempts = new Map<string, {count:number; until:number}>();
 // Outbound calendar feeds are read by Airbnb, Booking.com and Vrbo without a login: the 43-character token is the secret.
 const PUBLIC_FEED = /^\/ical\/[A-Za-z0-9_-]{43}\/(airbnb|booking_com|vrbo|all)\.ics$/;

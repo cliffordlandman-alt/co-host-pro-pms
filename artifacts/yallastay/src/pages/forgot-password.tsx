@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { Loader2, Mail, ArrowLeft, CheckCircle2, Shield } from "lucide-react";
-import logoPath from "../assets/yallastay-logo.png";
+import logoPath from "../assets/cohost-logo.svg";
+import { BRAND } from "../../../../lib/brand.mjs";
 
 export default function ForgotPassword() {
   const [, setLocation] = useLocation();
@@ -34,8 +35,8 @@ export default function ForgotPassword() {
         <div className="ys-r1 w-full max-w-[400px]">
 
           <div className="flex flex-col items-center mb-8 text-center">
-            <img src={logoPath} alt="YallaStay" className="h-14 w-14 mb-4" style={{ filter:"drop-shadow(0 0 12px rgba(45,212,191,0.5))" }} />
-            <div className="text-xl font-extrabold text-white">Yalla<span className="text-teal-400">Stay</span></div>
+            <img src={logoPath} alt={BRAND} className="h-14 w-14 mb-4" style={{ filter:"drop-shadow(0 0 12px rgba(45,212,191,0.5))" }} />
+            <div className="text-xl font-extrabold text-white">Co-Host <span className="text-teal-400">Pro</span></div>
             <div className="text-[10px] text-teal-300/60 tracking-[0.15em] uppercase mt-0.5">Property Management</div>
           </div>
 

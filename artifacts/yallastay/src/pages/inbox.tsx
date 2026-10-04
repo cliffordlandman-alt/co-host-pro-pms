@@ -37,7 +37,7 @@ const AI_REPLY_TEMPLATES: Record<string, string[]> = {
     "Hi {name}, no problem at all! Our team will drop off extra towels shortly. Let me know if there's anything else you need 😊",
   ],
   "wifi":            [
-    "Hi {name}! The WiFi details are: Network: YallaStay_Guest / Password: Welcome2024. If you're still having issues please try restarting the router under the TV unit.",
+    "Hi {name}! The WiFi details are: Network: Guest_WiFi / Password: Welcome2024. If you're still having issues please try restarting the router under the TV unit.",
     "Hi {name}, sorry to hear about the WiFi. Try connecting to the 5GHz network — it tends to be faster. Password is Welcome2024. Let me know if that helps!",
   ],
   "check-in":        [

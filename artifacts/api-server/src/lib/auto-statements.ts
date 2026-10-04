@@ -10,6 +10,9 @@ import { refreshOwnerStatements } from "./owner-statements";
 import { outboundDeliveryEnabled } from "./outbound";
 import { dubaiToday } from "./dubai-date";
 import { insertAuditLog } from "./audit";
+import { DEFAULT_FROM_EMAIL } from "../../../../lib/brand.mjs";
+import { statementEmail } from "../../../../lib/owner-emails.mjs";
+import { documentCompanyName } from "../routes/app-settings";
 
 const RUN_KEY = "autoStatementsLastRun";
 
@@ -24,12 +27,10 @@ export async function emailStatement(owner: { name: string; email: string | null
   if (!owner.email) throw new Error("The owner has no email address");
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error("Owner email delivery is not configured");
-  const from = process.env.RESEND_FROM_EMAIL || "YallaStay Portal <noreply@yallastay.ae>";
-  const m = (v: unknown) => `${st.currency || "AED"} ${Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const html = `<div style="font-family:sans-serif;max-width:520px"><p>Hi ${owner.name},</p><p>Your owner statement for <b>${propertyName}</b>, ${st.month}, is ready in the Owner Portal.</p>
-    <p>Stays: ${st.bookingsCount} · Gross: ${m(st.grossRevenue)}${Number(st.paidByAirbnb) ? ` · Already paid to you by Airbnb: ${m(st.paidByAirbnb)}` : ""} · Balance: ${m(st.ownerPayout)}</p></div>`;
+  const from = process.env.RESEND_FROM_EMAIL || DEFAULT_FROM_EMAIL;
+  const { subject, html } = statementEmail({ ownerName: owner.name, propertyName, statement: st, company: await documentCompanyName() });
   const res = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: [owner.email], subject: `Owner statement ${st.month} · ${propertyName}`, html }) });
+    body: JSON.stringify({ from, to: [owner.email], subject, html }) });
   if (!res.ok) throw new Error("Failed to send email");
 }
 

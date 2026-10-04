@@ -262,7 +262,7 @@ export default function AuditLog() {
     ).join("\n");
     const blob = new Blob([header + rows], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = "yallastay-audit-log.csv"; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = "co-host-pro-audit-log.csv"; a.click();
     URL.revokeObjectURL(url);
   }
 

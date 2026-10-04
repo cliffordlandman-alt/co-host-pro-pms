@@ -23,15 +23,15 @@ function Breakdown({ r, excludesCleaning }: { r: IncomeRow; excludesCleaning: bo
         {line("Channel fees", r.channelFees)}
         {line(excludesCleaning ? "Cleaning (not charged to this owner)" : "Cleaning", r.cleaning)}
         {line("Expenses & repairs", r.expenses)}
-        {line("YallaStay management fee", r.managementFee)}
+        {line("Company management fee", r.managementFee)}
         {line("Owner share", r.ownerShare, "", true)}
-        {r.paidByAirbnb !== 0 && <p className="text-xs text-muted-foreground mt-1">Of which Airbnb paid the owner directly {money(r.paidByAirbnb, r.currency)}; balance from YallaStay {money(r.ownerBalance, r.currency)}.</p>}
+        {r.paidByAirbnb !== 0 && <p className="text-xs text-muted-foreground mt-1">Of which Airbnb paid the owner directly {money(r.paidByAirbnb, r.currency)}; balance from the company {money(r.ownerBalance, r.currency)}.</p>}
       </section>
       <section className="rounded-2xl border bg-card p-4 text-sm">
-        <h3 className="font-semibold mb-3">YallaStay · {r.currency}</h3>
+        <h3 className="font-semibold mb-3">Company · {r.currency}</h3>
         {line("Company income from this property", r.companyIncome, "")}
         {line("Company costs for this property", r.companyCosts)}
-        {line("Net to YallaStay", r.companyNet, "", true)}
+        {line("Net to company", r.companyNet, "", true)}
         <p className="text-xs text-muted-foreground mt-2">Income is the management fee, cleaning charged and any Airbnb co-host income; costs are cleaners and company-paid repairs. Same lines as the company statement.</p>
       </section>
     </div>
@@ -52,7 +52,7 @@ function BookingRow({ b, verifyHref }: { b: any; verifyHref: string }) {
       {b.verified ? <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-xs">
         <div><p className="text-muted-foreground">Guest paid</p><p className="font-semibold tabular-nums">{money(b.grossAmount, b.currency)}</p></div>
         <div><p className="text-muted-foreground">Channel fees</p><p className="tabular-nums">{money(b.channelAmount, b.currency)}</p></div>
-        <div><p className="text-muted-foreground">YallaStay fee</p><p className="tabular-nums">{money(b.managementAmount, b.currency)}</p></div>
+        <div><p className="text-muted-foreground">Company fee</p><p className="tabular-nums">{money(b.managementAmount, b.currency)}</p></div>
         <div><p className="text-muted-foreground">Owner</p><p className="tabular-nums">{money(b.ownerAmount, b.currency)}</p></div>
       </div> : <p className="text-xs text-amber-900 mt-2">Not verified, so not in the figures above. {b.estimate?.length ? `${b.estimate.map((e: any) => `${e.source}: ${money(e.amount, e.currency)}`).join(" · ")} (not the guest total).` : "No amount recorded yet."} <Link href={verifyHref} className="underline font-medium">Verify</Link></p>}
     </div>
@@ -104,7 +104,7 @@ export default function IncomePropertyPage() {
           {data.ownerEntries.map((e: any) => <div key={`e${e.id}`} className="flex justify-between gap-3 rounded-xl border bg-card p-3 text-sm"><span>{e.date} · {e.description}<span className="text-muted-foreground"> · {e.category}</span></span><span className="tabular-nums">{money(e.amount, e.currency)}</span></div>)}
           {data.maintenance.map((t: any) => <div key={`m${t.id}`} className="flex justify-between gap-3 rounded-xl border bg-card p-3 text-sm"><span>{t.completedAt} · {t.issue}<span className="text-muted-foreground"> · repair</span></span><span className="tabular-nums">{money(t.amount, data.property.currency)}</span></div>)}
         </section>}
-        {data.companyLines.length > 0 && <section className="space-y-2"><h2 className="font-semibold text-lg">YallaStay income & costs</h2>
+        {data.companyLines.length > 0 && <section className="space-y-2"><h2 className="font-semibold text-lg">Company income & costs</h2>
           {data.companyLines.map((l: any) => <div key={l.id} className="flex justify-between gap-3 rounded-xl border bg-card p-3 text-sm"><span className="min-w-0">{l.date} · {l.description}<span className="text-muted-foreground"> · {l.category}</span></span><span className={`tabular-nums shrink-0 ${l.type === "income" ? "text-emerald-700" : "text-rose-700"}`}>{l.type === "income" ? "+" : "−"}{money(l.amount, l.currency)}</span></div>)}
         </section>}
       </>}

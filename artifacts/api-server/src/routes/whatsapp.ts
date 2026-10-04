@@ -20,7 +20,7 @@ router.post("/whatsapp/test", async (req, res) => {
   if (!phone) return res.status(400).json({ error: "phone is required" });
   if (!outboundDeliveryEnabled()) return res.status(503).json({ error: OUTBOUND_OFF });
 
-  const text = message ?? "✅ YallaPMS WhatsApp notifications are working correctly!";
+  const text = message ?? "✅ Co-Host Pro WhatsApp notifications are working correctly!";
   const ok = await sendWhatsApp(phone, text);
   if (!ok) {
     return res.status(500).json({

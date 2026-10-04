@@ -19,7 +19,9 @@ import {
   addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval,
   format, parseISO, isSameDay,
 } from "date-fns";
-import logoPath from "../assets/yallastay-logo.png";
+import logoPath from "../assets/cohost-logo.svg";
+import { BRAND } from "../../../../lib/brand.mjs";
+import { useDocumentName } from "@/lib/use-brand";
 import { useToast } from "@/hooks/use-toast";
 import { CHANNEL_COLORS, LEGEND, barStyle, channelColor } from "@/lib/channel-colors";
 
@@ -487,6 +489,8 @@ export default function OwnerPortal() {
 
   const ownerId = parseInt(sessionStorage.getItem("ownerPortalId") || "0");
   const ownerName = sessionStorage.getItem("ownerPortalName") || "Owner";
+  const companyName = useDocumentName();
+  useEffect(() => { document.title = `Owner Portal · ${companyName}`; return () => { document.title = BRAND; }; }, [companyName]);
 
   useEffect(() => {
     if (!ownerId || !sessionStorage.getItem("ownerPortalToken")) setLocation("/owner-login");
@@ -515,12 +519,12 @@ export default function OwnerPortal() {
           <div className="flex items-center gap-3">
             <img
               src={logoPath}
-              alt="YallaStay"
+              alt={BRAND}
               className="h-11 w-11 rounded-2xl bg-white p-1.5 shadow-lg ring-2 ring-white/10 transition-transform hover:scale-105"
             />
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-extrabold text-base leading-none tracking-tight">YallaStay</span>
+                <span data-testid="portal-company" className="font-extrabold text-base leading-none tracking-tight">{companyName}</span>
                 <span className="text-xs bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full font-semibold">Owner Portal</span>
               </div>
               <div className="text-xs text-sidebar-foreground/50 mt-0.5">Welcome back, {ownerName}</div>
@@ -580,16 +584,16 @@ export default function OwnerPortal() {
         )}
       </div>
 
-      {/* Powered by YallaStay footer */}
+      {/* Powered-by footer */}
       <footer className="fixed bottom-0 left-0 right-0 bg-background/90 backdrop-blur-sm border-t py-2.5 z-10">
         <div className="max-w-5xl mx-auto px-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src={logoPath} alt="YallaStay" className="h-5 w-5 rounded-md bg-sidebar p-0.5" />
+            <img src={logoPath} alt={BRAND} className="h-5 w-5 rounded-md bg-sidebar p-0.5" />
             <span className="text-xs text-muted-foreground">
-              <span className="font-semibold text-foreground">Powered by YallaStay</span> · Property Management System
+              <span className="font-semibold text-foreground">Powered by {BRAND}</span> · Property Management System
             </span>
           </div>
-          <span className="text-[10px] text-muted-foreground hidden sm:block">Owners Come First · Dubai, UAE</span>
+          <span className="text-[10px] text-muted-foreground hidden sm:block">{companyName}</span>
         </div>
       </footer>
     </div>

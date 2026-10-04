@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth-context";
-import { Loader2, Eye, EyeOff, LogIn, Mail, Lock, Shield, Globe, Building2, TrendingUp, Star, CheckCircle2, UserPlus, ArrowLeft } from "lucide-react";
-import logoPath from "../assets/yallastay-logo.png";
+import { Loader2, Eye, EyeOff, LogIn, Mail, Lock, Shield, Building2, TrendingUp, Star, CheckCircle2, UserPlus } from "lucide-react";
+import logoPath from "../assets/cohost-logo.svg";
+import { BRAND } from "../../../../lib/brand.mjs";
 import dubaiSkyline from "../assets/dubai-skyline.png";
 
 const FEATURES = [
@@ -79,16 +80,16 @@ export default function Login() {
           <div className="absolute inset-x-0 bottom-0 h-1/2 pointer-events-none" style={{ background:"linear-gradient(to top, rgba(4,14,18,0.85) 0%, transparent 100%)" }} />
 
           <div className="relative z-10 flex flex-col h-full">
-            <a href="/yallastay-home/" className="ys-a1 flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer w-fit">
+            <div className="ys-a1 flex items-center gap-3 w-fit">
               <div className="relative">
                 <div className="absolute inset-0 rounded-2xl blur-2xl" style={{ background:"rgba(13,148,136,0.55)", transform:"scale(1.6)" }} />
-                <img src={logoPath} alt="YallaStay" className="relative h-44 w-44" style={{ filter:"drop-shadow(0 0 28px rgba(45,212,191,0.8))" }} />
+                <img src={logoPath} alt={BRAND} className="relative h-44 w-44" style={{ filter:"drop-shadow(0 0 28px rgba(45,212,191,0.8))" }} />
               </div>
               <div>
-                <div className="text-2xl font-extrabold text-white tracking-tight leading-none">Yalla<span className="text-teal-400">Stay</span></div>
+                <div data-testid="brand-wordmark" className="text-2xl font-extrabold text-white tracking-tight leading-none">Co-Host <span className="text-teal-400">Pro</span></div>
                 <div className="text-[11px] font-semibold text-teal-300/70 tracking-[0.15em] uppercase mt-0.5">Property Management</div>
               </div>
-            </a>
+            </div>
 
             <div className="flex-1 flex flex-col justify-center mt-12">
               <div className="ys-a2">
@@ -127,21 +128,10 @@ export default function Login() {
         <div className="ys-right flex items-center justify-center p-6 sm:p-8 md:p-10" style={{ width:"480px", flexShrink:0, background:"rgba(8,20,26,0.97)" }}>
           <div className="ys-r1 w-full max-w-[380px]">
 
-            {/* Back button */}
-            <div className="mb-6">
-              <a
-                href="/yallastay-home/"
-                className="inline-flex items-center gap-1.5 text-white/40 hover:text-teal-400 transition-colors text-sm font-medium group"
-              >
-                <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
-                Back to website
-              </a>
-            </div>
-
             <div className="flex flex-col items-center mb-7 text-center">
-              <img src={logoPath} alt="YallaStay" className="h-12 w-12 rounded-xl mb-4 block md:hidden" style={{ filter:"drop-shadow(0 0 8px rgba(45,212,191,0.35))" }} />
+              <img src={logoPath} alt={BRAND} className="h-12 w-12 rounded-xl mb-4 block md:hidden" style={{ filter:"drop-shadow(0 0 8px rgba(45,212,191,0.35))" }} />
               <h1 className="text-2xl font-bold text-white">Welcome back</h1>
-              <p className="text-white/45 text-sm mt-1">Sign in to your YallaStay account</p>
+              <p className="text-white/45 text-sm mt-1">Sign in to your {BRAND} account</p>
             </div>
 
             {successMsg && (
@@ -207,14 +197,14 @@ export default function Login() {
                 style={{ background:"linear-gradient(135deg,#0d9488,#0f766e)", cursor: loading ? "wait" : "pointer" }}
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
-                Sign In to YallaStay
+                Sign In to {BRAND}
               </button>
             </form>
 
             <div className="ys-r2 mt-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="flex-1 h-px" style={{ background:"rgba(255,255,255,0.08)" }} />
-                <span className="text-white/30 text-xs font-medium">New to YallaStay?</span>
+                <span className="text-white/30 text-xs font-medium">New to {BRAND}?</span>
                 <div className="flex-1 h-px" style={{ background:"rgba(255,255,255,0.08)" }} />
               </div>
               <button
@@ -228,12 +218,6 @@ export default function Login() {
               </button>
             </div>
 
-            <div className="ys-r3 mt-5 flex justify-center">
-              <a href="/yallastay-home/" className="flex items-center gap-1.5 text-teal-400/60 hover:text-teal-400 transition-colors text-xs font-medium">
-                <Globe className="h-3.5 w-3.5" />
-                Visit YallaStay Website
-              </a>
-            </div>
           </div>
         </div>
       </div>

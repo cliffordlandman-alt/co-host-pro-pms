@@ -29,6 +29,7 @@ import {
   Building, RefreshCw, Pencil, Trash2, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentName } from "@/lib/use-brand";
 import { format, subMonths } from "date-fns";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -80,6 +81,7 @@ function StatementBookings({ stmt, fl, hasCohost }: { stmt: any; fl: ReturnType<
 }
 
 function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id: number, status: string) => void }) {
+  const documentName = useDocumentName();
   const [expanded, setExpanded] = useState(false);
   const s = STATUS_CONFIG[stmt.status] ?? STATUS_CONFIG.draft;
   const bal = statementBalance(stmt);
@@ -196,7 +198,7 @@ function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id
               {bal.owes && <p className="text-xs text-red-700">The owner owes the company this amount for the month{bal.hasCohost ? " (Airbnb paid the owner more than their share)" : ""}. It can't be marked as paid to the owner.</p>}
             </div>
 
-            {stmt.bookingDetails && <div className="sm:col-span-2 overflow-x-auto"><p className="text-xs text-muted-foreground mb-2">Bookings recognized in checkout month</p><StatementBookings stmt={stmt} fl={fl} hasCohost={bal.hasCohost} /><p className="text-xs text-muted-foreground mt-2">{stmt.notes}</p><Button size="sm" variant="outline" className="mt-2" onClick={async()=>{const rows=stmt.otherExpenses>0?(ownerLines??(await f(`/api/accounting/transactions?month=${stmt.month}&propertyId=${stmt.propertyId}`)).filter((r:any)=>r.type==="expense"&&r.allocation==="owner")):[];printStatement(stmt,rows);}}>Print / Save PDF</Button></div>}
+            {stmt.bookingDetails && <div className="sm:col-span-2 overflow-x-auto"><p className="text-xs text-muted-foreground mb-2">Bookings recognized in checkout month</p><StatementBookings stmt={stmt} fl={fl} hasCohost={bal.hasCohost} /><p className="text-xs text-muted-foreground mt-2">{stmt.notes}</p><Button size="sm" variant="outline" className="mt-2" onClick={async()=>{const rows=stmt.otherExpenses>0?(ownerLines??(await f(`/api/accounting/transactions?month=${stmt.month}&propertyId=${stmt.propertyId}`)).filter((r:any)=>r.type==="expense"&&r.allocation==="owner")):[];printStatement(stmt,rows,documentName);}}>Print / Save PDF</Button></div>}
             {/* Actions */}
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</p>

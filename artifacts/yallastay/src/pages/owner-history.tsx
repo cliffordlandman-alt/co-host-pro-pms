@@ -5,6 +5,7 @@ import { useGetProperties } from "@workspace/api-client-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDocumentName } from "@/lib/use-brand";
 import { ChevronDown, ChevronUp, FileText, Printer, RefreshCw } from "lucide-react";
 
 // Statement history: every month with stays for one property, from the same owner-statement calculation as the
@@ -37,13 +38,13 @@ function basisText(h: History) {
 }
 
 /** Clean printable page (no app menus); "Save as PDF" in the print dialog makes the file. Nothing is sent. */
-function printHistory(h: History) {
+function printHistory(h: History, company: string) {
   const L = labels(h);
   const row = (name: string, f: Fig) => `<tr><td>${esc(name)}</td><td class="r">${f.bookings}</td><td class="r">${esc(money(f.gross, f.currency))}</td><td class="r">${esc(money(f.channel, f.currency))}</td><td class="r">${esc(money(f.management, f.currency))}</td><td class="r">${esc(money(f.ownerShare, f.currency))}</td><td class="r">${esc(money(f.paidByAirbnb, f.currency))}</td><td class="r">${esc(money(f.balance, f.currency))}</td></tr>`;
   const head = `<tr><th></th><th class="r">Stays</th><th class="r">${L.gross}</th><th class="r">${L.channel}</th><th class="r">${L.fee}</th><th class="r">${L.share}</th><th class="r">${L.paid}</th><th class="r">${L.balance}</th></tr>`;
   const stays = h.months.flatMap(m => m.stays.map(s => `<tr><td>${esc(s.code ?? "")}</td><td>${esc(s.checkIn)} → ${esc(s.checkOut)}</td><td class="r">${esc(money(s.grossAmount != null ? Number(s.grossAmount) : null, h.property.currency || "AED"))}</td><td class="r">${esc(money(s.ownerAmount != null ? Number(s.ownerAmount) : null, h.property.currency || "AED"))}</td><td>${(s.payouts ?? []).map((p: any) => `${esc(p.paidOn ?? "")}${p.paidTo ? ` · ${esc(p.paidTo)}` : ""}${p.sentAmount != null ? ` · sent as ${esc(p.sentCurrency)} ${esc(Number(p.sentAmount).toFixed(2))}` : ""}`).join("<br>")}</td></tr>`)).join("");
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Statement history · ${esc(h.property.name)}</title><style>body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827;margin:32px;font-size:12px}h1{font-size:20px;margin:0}h2{font-size:14px;margin:20px 0 6px}.muted{color:#4b5563}table{width:100%;border-collapse:collapse}td,th{padding:5px 4px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}.r{text-align:right;white-space:nowrap}tr.total td{font-weight:700;border-top:2px solid #111827}@media print{body{margin:12mm}}</style></head><body>
-<h1>Statement history</h1><p><strong>${esc(h.property.name)}</strong><br>Owner: ${esc(h.owner?.name ?? "—")}<br><span class="muted">${esc(basisText(h))}</span></p>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Statement history · ${esc(h.property.name)}</title><style>body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827;margin:32px;font-size:12px}h1{font-size:20px;margin:0}h2{font-size:14px;margin:20px 0 6px}.muted{color:#4b5563}table{width:100%;border-collapse:collapse}td,th{padding:5px 4px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}.r{text-align:right;white-space:nowrap}tr.total td{font-weight:700;border-top:2px solid #111827}@media print{body{margin:12mm}}@media screen and (max-width:640px){body{margin:12px}table{display:block;overflow-x:auto}}</style></head><body>
+<h1>Statement history</h1><div class="muted">${esc(company)}</div><p><strong>${esc(h.property.name)}</strong><br>Owner: ${esc(h.owner?.name ?? "—")}<br><span class="muted">${esc(basisText(h))}</span></p>
 <h2>By year</h2><table>${head}${h.years.map(y => row(`${y.year}${h.totals.length > 1 ? ` (${y.currency})` : ""}`, y)).join("")}${h.totals.map(t => `<tbody class="total">${row(`Total ${t.currency}`, t).replace("<tr>", '<tr class="total">')}</tbody>`).join("")}</table>
 ${h.sentInOtherCurrency.map(s => `<p class="muted">Airbnb sent ${s.transfers} payout${s.transfers === 1 ? "" : "s"} as ${esc(s.currency)} ${esc(s.amount.toFixed(2))} in total (PayPal). Reference only: not added to the totals above.</p>`).join("")}
 <h2>Stays (by checkout month)</h2><table><tr><th>Code</th><th>Dates</th><th class="r">${L.gross}</th><th class="r">Owner</th><th>Paid by Airbnb</th></tr>${stays}</table></body></html>`;
@@ -53,6 +54,7 @@ ${h.sentInOtherCurrency.map(s => `<p class="muted">Airbnb sent ${s.transfers} pa
 }
 
 export default function OwnerHistoryPage() {
+  const documentName = useDocumentName();
   const qc = useQueryClient();
   const [, setLocation] = useLocation();
   const propertyId = new URLSearchParams(useSearch()).get("propertyId") ?? "";
@@ -96,7 +98,7 @@ export default function OwnerHistoryPage() {
               <p className="text-sm text-muted-foreground">Owner: {h.owner ? <Link href="/owners" className="underline">{h.owner.name}</Link> : "not linked"} · {basisText(h)}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => printHistory(h)} disabled={!h.months.length}><Printer className="mr-1 h-4 w-4" />Print / Save PDF</Button>
+              <Button variant="outline" size="sm" onClick={() => printHistory(h, documentName)} disabled={!h.months.length}><Printer className="mr-1 h-4 w-4" />Print / Save PDF</Button>
               <Button size="sm" onClick={generate} disabled={busy || !h.owner || !h.months.length}><RefreshCw className={`mr-1 h-4 w-4 ${busy ? "animate-spin" : ""}`} />{busy ? "Generating…" : "Generate monthly statements"}</Button>
             </div>
           </div>

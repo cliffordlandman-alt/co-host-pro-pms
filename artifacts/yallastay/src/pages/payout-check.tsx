@@ -106,7 +106,7 @@ export default function PayoutCheckPage() {
         <Importer imported={data.imported} />
         {data.rows.length === 0 && data.transfers.length === 0 ? <p className="text-sm text-muted-foreground">Nothing imported yet. Import the earnings file to start.</p> : <>
           <section className="grid grid-cols-2 sm:grid-cols-4 gap-2" data-testid="payout-summary">
-            {[["Matched", c.matched, "text-emerald-700"], ["Don't match", c.mismatch, c.mismatch ? "text-amber-700" : ""], ["No booking in YallaPMS", c.noBooking, c.noBooking ? "text-rose-700" : ""], ["Bookings with no payout", c.missing, c.missing ? "text-rose-700" : ""],
+            {[["Matched", c.matched, "text-emerald-700"], ["Don't match", c.mismatch, c.mismatch ? "text-amber-700" : ""], ["No booking in Co-Host Pro", c.noBooking, c.noBooking ? "text-rose-700" : ""], ["Bookings with no payout", c.missing, c.missing ? "text-rose-700" : ""],
               ["Upcoming", c.upcoming, ""], ["Transfers matched", c.transfersMatched, "text-emerald-700"], ["Transfers same day only", c.transfersByDate, ""], ["Transfers with a problem", c.transfersProblem, c.transfersProblem ? "text-rose-700" : ""]].map(([l, n, cls]) =>
               <div key={l as string} className="rounded-xl border bg-card p-3"><p className="text-xs text-muted-foreground">{l}</p><p className={`text-xl font-bold tabular-nums ${cls}`}>{n as number}</p></div>)}
           </section>
@@ -127,7 +127,7 @@ export default function PayoutCheckPage() {
           </section>
 
           {data.missing.length > 0 && <section className="space-y-2" data-testid="payout-missing"><h2 className="font-semibold text-lg">Airbnb bookings with no payout in the file</h2>
-            <p className="text-xs text-muted-foreground">Bookings in YallaPMS that checked in between {data.window.from} and {data.window.to} at a listing the file covers, with no payout line.</p>
+            <p className="text-xs text-muted-foreground">Bookings in Co-Host Pro that checked in between {data.window.from} and {data.window.to} at a listing the file covers, with no payout line.</p>
             {data.missing.map((m: any) => <div key={m.reservationId} className="flex items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50/50 p-3 text-sm">
               <span className="min-w-0"><Link href={`/reservations/${m.reservationId}`} className="font-medium hover:underline">{m.guestName}</Link> <span className="text-xs text-muted-foreground">{m.propertyName} · {m.checkIn} → {m.checkOut}{m.code ? ` · ${m.code}` : " · no confirmation code"}</span></span>
               <Clock className="h-4 w-4 text-rose-700 shrink-0" /></div>)}

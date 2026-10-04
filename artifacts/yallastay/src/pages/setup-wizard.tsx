@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import logoPath from "../assets/yallastay-logo.png";
+import logoPath from "../assets/cohost-logo.svg";
+import { BRAND } from "../../../../lib/brand.mjs";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -67,7 +68,7 @@ export default function SetupWizard() {
       await apiFetch(`${API}/api/settings/company`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: { name: data.companyName, currency: data.companyCurrency } }),
+        body: JSON.stringify({ value: { name: data.companyName, documentName: data.companyName, currency: data.companyCurrency } }),
       });
       return true;
     } catch { toast({ title: "Failed to save", variant: "destructive" }); return false; }
@@ -178,7 +179,7 @@ export default function SetupWizard() {
     <div className="min-h-screen flex flex-col bg-background">
       {/* Top bar */}
       <div className="border-b px-6 py-4 flex items-center gap-3">
-        <img src={logoPath} alt="YallaStay" className="h-8 w-auto" />
+        <img src={logoPath} alt={BRAND} className="h-8 w-auto" />
         <span className="text-sm text-muted-foreground">First-time setup</span>
       </div>
 
@@ -214,7 +215,7 @@ export default function SetupWizard() {
             {/* Step 1: Company */}
             {step === 1 && (
               <StepCard
-                title="Welcome to YallaStay"
+                title={`Welcome to ${BRAND}`}
                 subtitle="Let's set up your property management system. Start with your company details."
                 step="Step 1 of 6"
               >

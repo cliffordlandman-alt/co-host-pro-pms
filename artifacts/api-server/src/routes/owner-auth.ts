@@ -4,6 +4,9 @@ import { Router } from "express";
 import { outboundDeliveryEnabled, OUTBOUND_OFF } from "../lib/outbound";
 import { db, ownersTable, ownerOtpTable } from "@workspace/db";
 import { eq, and, gt, desc } from "drizzle-orm";
+import { DEFAULT_FROM_EMAIL } from "../../../../lib/brand.mjs";
+import { ownerCodeEmail } from "../../../../lib/owner-emails.mjs";
+import { documentCompanyName } from "./app-settings";
 
 const router = Router();
 
@@ -22,37 +25,18 @@ async function sendEmail(to: string, ownerName: string, code: string): Promise<v
   if (!outboundDeliveryEnabled()) throw new Error(OUTBOUND_OFF);
   const apiKey = process.env.RESEND_API_KEY;
 
-  const html = `
-    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;background:#f8fafc;padding:32px;border-radius:12px">
-      <div style="text-align:center;margin-bottom:24px">
-        <div style="font-size:22px;font-weight:700;color:#0f2a3f">YallaStay</div>
-        <div style="font-size:13px;color:#64748b">Holiday Homes · Owner Portal</div>
-      </div>
-      <div style="background:#fff;border-radius:8px;padding:24px;border:1px solid #e2e8f0">
-        <p style="margin:0 0 12px;color:#1e293b">Hi ${ownerName},</p>
-        <p style="margin:0 0 20px;color:#475569">Your one-time access code for the YallaStay Owner Portal is:</p>
-        <div style="background:#0f2a3f;color:#5eead4;font-size:36px;font-weight:700;letter-spacing:8px;text-align:center;padding:16px;border-radius:8px;margin:0 0 20px">
-          ${code}
-        </div>
-        <p style="margin:0 0 8px;color:#64748b;font-size:13px">This code expires in <strong>15 minutes</strong> and can only be used once.</p>
-        <p style="margin:0;color:#94a3b8;font-size:12px">If you didn't request this code, please ignore this email.</p>
-      </div>
-      <div style="text-align:center;margin-top:20px;color:#94a3b8;font-size:11px">
-        YallaStay Holiday Homes — Owners Come First
-      </div>
-    </div>
-  `;
+  const { subject, html } = ownerCodeEmail({ ownerName, code, company: await documentCompanyName() });
 
   if (!apiKey) {
     throw new Error("Owner email delivery is not configured");
   }
 
-  const fromEmail = process.env.RESEND_FROM_EMAIL || "YallaStay Portal <noreply@yallastay.ae>";
+  const fromEmail = process.env.RESEND_FROM_EMAIL || DEFAULT_FROM_EMAIL;
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: fromEmail, to: [to], subject: `${code} — Your YallaStay Owner Portal Code`, html }),
+    body: JSON.stringify({ from: fromEmail, to: [to], subject, html }),
   });
 
   if (!res.ok) {

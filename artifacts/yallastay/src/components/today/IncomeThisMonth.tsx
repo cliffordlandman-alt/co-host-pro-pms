@@ -18,7 +18,7 @@ export function IncomeThisMonth() {
       </div>
       {isLoading || !data ? <Skeleton className="h-28" /> : <>
         <div className="flex flex-wrap gap-x-6 gap-y-3 mb-4">{data.totals.filter(t => t.properties).map(t => <div key={t.currency}>
-          <p className="text-[11px] text-muted-foreground">{t.currency} · YallaStay fee</p><p className="text-2xl font-bold tabular-nums text-primary">{money(t.managementFee, t.currency)}</p>
+          <p className="text-[11px] text-muted-foreground">{t.currency} · Company fee</p><p className="text-2xl font-bold tabular-nums text-primary">{money(t.managementFee, t.currency)}</p>
           <p className="text-xs text-muted-foreground">Gross {money(t.gross, t.currency)} · owners {money(t.ownerShare, t.currency)}</p></div>)}
           {!data.totals.some(t => t.properties) && <p className="text-sm text-muted-foreground">No verified income yet this month.</p>}</div>
         {props.length ? <div className="divide-y">{props.slice(0, 8).map(p => { const rows = p.rows.filter(hasFigures); return (

@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api-fetch";
+import { BRAND } from "../../../../lib/brand.mjs";
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -88,14 +89,14 @@ function ToggleRow({ label, desc, checked, onCheckedChange }: { label: string; d
 
 // ─── Company ──────────────────────────────────────────────────────────────────
 function CompanySection({ settings, onSave }: { settings: any; onSave: (v: any) => void }) {
-  const [form, setForm] = useState({ name: "YallaStay Holiday Homes", phone: "+971 50 000 0000", email: "hello@yallastay.ae", address: "Dubai Marina, Dubai, UAE", website: "https://yallastay.ae", currency: "AED", vatNumber: "", invoicePrefix: "INV-", receiptPrefix: "RCP-", language: "English", ...settings?.company });
+  const [form, setForm] = useState({ name: "", documentName: BRAND, phone: "+971 50 000 0000", email: "", address: "Dubai Marina, Dubai, UAE", website: "", currency: "AED", vatNumber: "", invoicePrefix: "INV-", receiptPrefix: "RCP-", language: "English", ...settings?.company });
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
   function set(k: string, v: string) { setForm((f: Record<string,string>) => ({ ...f, [k]: v })); }
   async function save() { setSaving(true); await onSave(form); setSaving(false); toast({ title: "Company settings saved" }); }
   return (
     <SectionCard title="Company Details" desc="Used on invoices, receipts, owner statements, and reports" onSave={save} saving={saving}>
-      <Field label="Company Name"><Input value={form.name} onChange={e => set("name", e.target.value)} /></Field>
+      <Field label="Company name on documents"><Input data-testid="document-name" value={form.documentName} onChange={e => set("documentName", e.target.value)} placeholder={BRAND} maxLength={120} /><p className="text-xs text-muted-foreground mt-1">Shown on owner statements and their PDFs, in the Owner Portal and in emails to owners. Leave empty to use {BRAND}.</p></Field>
       <Field label="Email"><Input type="email" value={form.email} onChange={e => set("email", e.target.value)} /></Field>
       <Field label="Phone"><Input value={form.phone} onChange={e => set("phone", e.target.value)} /></Field>
       <Field label="Address"><Input value={form.address} onChange={e => set("address", e.target.value)} /></Field>
@@ -124,7 +125,7 @@ function ThemeSection() {
   const { theme, setColorScheme, setAccent, setDensity } = useTheme();
   const { toast } = useToast();
   return (
-    <SectionCard title="Appearance & Theme" desc="Customize how YallaStay PMS looks and feels" onSave={() => toast({ title: "Theme saved" })}>
+    <SectionCard title="Appearance & Theme" desc={`Customize how ${BRAND} looks and feels`} onSave={() => toast({ title: "Theme saved" })}>
       <Field label="Color Mode">
         <div className="flex gap-2 flex-wrap">
           {(["light","dark","system"] as const).map(m => (

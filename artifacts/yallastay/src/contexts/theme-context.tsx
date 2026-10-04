@@ -18,7 +18,7 @@ interface ThemeContextType {
 }
 
 const ACCENT_VARS: Record<AccentColor, { primary: string; ring: string; label: string; swatch: string }> = {
-  teal:   { primary: "174 72% 36%",  ring: "174 72% 36%",  label: "YallaStay Teal",  swatch: "#1a9e8f" },
+  teal:   { primary: "174 72% 36%",  ring: "174 72% 36%",  label: "Teal",  swatch: "#1a9e8f" },
   gold:   { primary: "43 96% 44%",   ring: "43 96% 44%",   label: "Black & Gold",    swatch: "#d4a017" },
   blue:   { primary: "221 83% 53%",  ring: "221 83% 53%",  label: "Ocean Blue",      swatch: "#3b82f6" },
   green:  { primary: "142 71% 45%",  ring: "142 71% 45%",  label: "Emerald",         swatch: "#22c55e" },
