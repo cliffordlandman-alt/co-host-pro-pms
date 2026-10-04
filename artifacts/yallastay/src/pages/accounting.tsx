@@ -570,7 +570,7 @@ function SettingsTab() {
                   <h3 className="font-semibold text-sm">{s.propertyName}</h3>
                   {editing !== s.propertyId && (
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      <span data-testid="property-currency">{s.propertyCurrency || s.currency || "AED"}</span> · Mgmt {s.managementFeePercent}% · Cleaning fee {s.cleaningFee != null ? s.cleaningFee : "none"} · Cleaning cost {s.cleaningCostOverride === 0 ? "no cost" : s.cleaningCostOverride != null ? `${s.cleaningCostCurrency || s.propertyCurrency || "AED"} ${s.cleaningCostOverride} (override)` : s.cleaningRateCard ? "rate card" : <span className="text-amber-700 dark:text-amber-300">no rate set</span>} · Airbnb {s.platformFeeAirbnb}% · Booking {s.platformFeeBookingCom}% · Direct {s.platformFeeDirect}% · Vrbo {s.platformFeeVrbo ?? 0}% · VAT {s.vatEnabled ? `${s.vatPercent}%` : "off"} · Tourism {s.tourismEnabled ? s.tourismRate : "off"}
+                      <span data-testid="property-currency">{s.propertyCurrency || s.currency || "AED"}</span> · Mgmt {s.managementFeePercent}% · Cleaning fee {s.cleaningFee != null ? s.cleaningFee : "none"} · Cleaning cost {s.cleaningCostOverride === 0 ? "no cost" : s.cleaningCostOverride != null ? `${s.cleaningCostCurrency || s.propertyCurrency || "AED"} ${s.cleaningCostOverride} (override)` : s.cleaningRateCard ? "rate card" : <span className="text-amber-700 dark:text-amber-300">no rate set</span>} · Airbnb {s.platformFeeAirbnb}% · Booking {s.platformFeeBookingCom}% · Direct {s.platformFeeDirect}% · Vrbo {s.platformFeeVrbo ?? 0}% · VAT {s.vatEnabled ? `${s.vatPercent}%` : "off"}{s.vatConfirmed ? "" : " (not confirmed)"} · Tourism {s.tourismEnabled ? s.tourismRate : "off"}{s.tourismConfirmed ? "" : " (not confirmed)"}
                     {s.feeBasis === "net-payout" && <span data-testid="fee-basis-net"> · Fee: {s.managementFeePercent}% of channel net payout</span>}{s.cohostPaidToOwner && <span data-testid="cohost-direct"> · Airbnb co-host payout goes to the owner</span>}
                     </p>
                   )}
@@ -606,7 +606,7 @@ function SettingsTab() {
                     </div>
                   ))}
                   <div className="flex flex-col gap-3 pt-1">
-                    {[['tourismEnabled','Tourism fee enabled'],['vatEnabled','VAT enabled']].map(([key,label])=><label key={key} className="flex items-center gap-2 text-xs"><Switch checked={draft[key]} onCheckedChange={v=>setDraft((p:any)=>({...p,[key]:v}))}/>{label}</label>)}
+                    {[['tourismEnabled','Tourism fee enabled'],['tourismConfirmed','Tourism Dirham rate confirmed (for the compliance report)'],['vatEnabled','VAT enabled'],['vatConfirmed','VAT position confirmed (for the compliance report)']].map(([key,label])=><label key={key} className="flex items-center gap-2 text-xs"><Switch checked={draft[key]} onCheckedChange={v=>setDraft((p:any)=>({...p,[key]:v}))}/>{label}</label>)}
                     <div className="flex items-center gap-2">
                       <Switch id={`cleaning-${s.propertyId}`} checked={draft.includeCleaning} onCheckedChange={v => setDraft((p: any) => ({ ...p, includeCleaning: v }))} />
                       <Label htmlFor={`cleaning-${s.propertyId}`} className="text-xs">Deduct the booking cleaning fee from the owner's share</Label>

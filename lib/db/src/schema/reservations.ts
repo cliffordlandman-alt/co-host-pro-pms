@@ -46,6 +46,9 @@ export const reservationsTable = pgTable("reservations", {
   paymentStatus: text("payment_status").notNull().default("pending"),
   notes: text("notes"),
   status: text("status").notNull().default("confirmed"),
+  /** DTCM guest registration set by hand: not_needed, airbnb_verified, pending or registered. Null = worked out
+   *  from the booking (lib/compliance.mjs registrationStatus). Not a money field. */
+  dtcmRegistration: text("dtcm_registration"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, t => [
   uniqueIndex("reservations_property_external_id_unique").on(t.propertyId, t.externalId),

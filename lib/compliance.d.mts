@@ -1,0 +1,17 @@
+export declare const isDubai: (property: any) => boolean;
+export declare const EXPIRY_FIELDS: { key: string; label: string }[];
+export declare const REMINDER_DAYS: number[];
+export declare function daysUntil(today: string, date: string): number;
+export declare function renewalStage(days: number): string | null;
+export type Reminder = { propertyId: number; propertyName: string; field: string; label: string; expiry: string; days: number; stage: string };
+export declare function renewalReminders(permits: any[], properties: any[], today: string): Reminder[];
+export declare function reminderText(r: Reminder): string;
+export declare function validatePermit(body: any): { values: Record<string, string | null>; error?: undefined } | { error: string; values?: undefined };
+export declare const REGISTRATION_LABEL: Record<string, string>;
+export declare function registrationOptions(b: any): string[];
+export declare function registrationStatus(b: any, property: any): string | null;
+export declare function taxSettings(rules: any): any;
+export declare function taxReport(input: { properties: any[]; settings: any[]; bookings: any[]; month: string }): any;
+export declare function taxReportCsv(report: any): string;
+export declare const prevMonth: (month: string) => string;
+export declare function filingReminder(input: { today: string; filings: any[]; hasDubai: boolean }): { kind: string; period: string; due: string; days: number; overdue: boolean } | null;

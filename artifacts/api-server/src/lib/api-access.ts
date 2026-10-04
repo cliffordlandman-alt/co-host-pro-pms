@@ -75,10 +75,10 @@ export async function apiAccess(req: Request, res: Response, next: NextFunction)
     return res.status(403).json({error:"Only your assigned tasks are available"});
   }
   const allowed: Record<string,string[]> = {
-    manager:['calendar-sync','dashboard','properties','owners','staff','reservations','cleaning','maintenance','payments','reports','accounting','notifications','messages','reviews','documents','pricing','platforms','channels','task-centre','guests'],
-    reservations:['dashboard','properties','reservations','messages','notifications','task-centre','guests'],
-    operations:['dashboard','properties','reservations','cleaning','maintenance','staff','notifications','task-centre','guests'],
-    accountant:['properties','owners','reservations','payments','accounting','reports','dashboard','notifications'],
+    manager:['compliance','calendar-sync','dashboard','properties','owners','staff','reservations','cleaning','maintenance','payments','reports','accounting','notifications','messages','reviews','documents','pricing','platforms','channels','task-centre','guests'],
+    reservations:['compliance','dashboard','properties','reservations','messages','notifications','task-centre','guests'],
+    operations:['compliance','dashboard','properties','reservations','cleaning','maintenance','staff','notifications','task-centre','guests'],
+    accountant:['compliance','properties','owners','reservations','payments','accounting','reports','dashboard','notifications'],
   };
   if (!(allowed[user.role] || []).includes(root)) return res.status(403).json({error:'Your role does not have access to this area'});
   if (['reservations','operations','accountant'].includes(user.role) && ['properties','owners','staff','dashboard'].includes(root) && req.method !== 'GET') return res.status(403).json({error:'Administrator access required'});

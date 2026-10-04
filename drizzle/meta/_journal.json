@@ -155,6 +155,13 @@
       "when": 1790900021000,
       "tag": "0021_calendar_export",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790900022000,
+      "tag": "0022_dubai_compliance",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, propertiesTable, ownersTable, insertPropertySchema, appSettingsTable, importLogsTable, reservationsTable, cleaningTasksTable, maintenanceTicketsTable, paymentsTable, accountingTransactionsTable, ownerStatementsTable, airbnbEarningsTable, reviewsTable, documentsTable, propertySettingsTable, templatesTable, calendarExportsTable, channelSyncHealthTable } from "@workspace/db";
+import { db, propertiesTable, ownersTable, insertPropertySchema, appSettingsTable, importLogsTable, reservationsTable, cleaningTasksTable, maintenanceTicketsTable, paymentsTable, accountingTransactionsTable, ownerStatementsTable, airbnbEarningsTable, reviewsTable, documentsTable, propertySettingsTable, templatesTable, calendarExportsTable, channelSyncHealthTable, propertyPermitsTable } from "@workspace/db";
 import { eq, and, inArray, isNull, sql } from "drizzle-orm";
 import { syncPropertyIcal } from "../lib/sync-scheduler";
 import { changePropertyCurrency, CurrencyChangeRefused } from "../lib/property-currency";
@@ -260,6 +260,7 @@ router.delete("/properties/:id", asyncHandler(async (req, res) => {
     await tx.delete(appSettingsTable).where(eq(appSettingsTable.key, `ical_sync_${id}`));
     await tx.delete(calendarExportsTable).where(eq(calendarExportsTable.propertyId, id));
     await tx.delete(channelSyncHealthTable).where(eq(channelSyncHealthTable.propertyId, id));
+    await tx.delete(propertyPermitsTable).where(eq(propertyPermitsTable.propertyId, id));
     return tx.delete(propertiesTable).where(eq(propertiesTable.id, id)).returning({ id: propertiesTable.id });
   });
   if (!deleted.length) return res.status(404).json({ error: "Not found" });

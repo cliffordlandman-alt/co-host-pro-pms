@@ -11,6 +11,10 @@ export const propertySettingsTable = pgTable("property_settings", {
   tourismRate: numeric("tourism_rate", {precision:10,scale:2}).notNull().default("10"),
   tourismEnabled: boolean("tourism_enabled").notNull().default(true),
   vatEnabled: boolean("vat_enabled").notNull().default(true),
+  /** Clifford has confirmed this property's Tourism Dirham rate / VAT position (open decisions until then):
+   *  the compliance report shows "rate not confirmed" while false. Never changes any calculation. */
+  tourismConfirmed: boolean("tourism_confirmed").notNull().default(false),
+  vatConfirmed: boolean("vat_confirmed").notNull().default(false),
   managementFeePercent: numeric("management_fee_percent", { precision: 5, scale: 2 }).notNull().default("20"),
   platformFeeAirbnb: numeric("platform_fee_airbnb", { precision: 5, scale: 2 }).notNull().default("3"),
   platformFeeBookingCom: numeric("platform_fee_booking_com", { precision: 5, scale: 2 }).notNull().default("15"),

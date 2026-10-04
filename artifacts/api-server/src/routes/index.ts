@@ -33,6 +33,7 @@ import whatsappRouter from "./whatsapp";
 import pricingRouter from "./pricing";
 import ownerAnalyticsRouter from "./owner-analytics";
 import calendarSyncRouter from "./calendar-sync";
+import complianceRouter from "./compliance";
 
 const router: IRouter = Router();
 
@@ -70,5 +71,6 @@ router.use(whatsappRouter);
 router.use(pricingRouter);
 router.use(ownerAnalyticsRouter);
 router.use(calendarSyncRouter);
+router.use(complianceRouter);
 
 export default router;

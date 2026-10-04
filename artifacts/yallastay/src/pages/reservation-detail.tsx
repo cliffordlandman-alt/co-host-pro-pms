@@ -1,6 +1,7 @@
 import { BookingFinanceEditor } from "@/components/BookingFinanceEditor";
 import { ReservationMoney, BookingExpenses } from "@/components/ReservationMoney";
 import { guestIdComplete, idVerifiedByChannel, dtcmPassportNeeded } from "../../../../lib/guest-id.mjs";
+import { DtcmRegistration } from "@/components/DtcmRegistration";
 import { apiFetch } from "@/lib/api-fetch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
@@ -316,6 +317,7 @@ export default function ReservationDetail() {
 
         {editing && <div className="grid gap-3 sm:grid-cols-2">{["guestEmail","guestPhone"].map(key=><label key={key} className="text-sm">{key === "guestEmail" ? "Guest email" : "Guest phone"}<Input value={draft?.[key] ?? ""} onChange={e=>setDraft((d:any)=>({...d,[key]:e.target.value}))}/></label>)}{draft?.paymentStatus === "partial" && <label className="text-sm">Outstanding balance<Input type="number" min="0" step="0.01" value={draft?.balanceDue ?? ""} onChange={e=>setDraft((d:any)=>({...d,balanceDue:e.target.value}))}/></label>}</div>}
         {idChannel && <p className="text-sm text-emerald-700">Guest ID verified by {idChannel}. No ID copy is stored here.</p>}
+        <DtcmRegistration reservationId={reservation.id} />
         {dtcmPassportNeeded(reservation, property) && <p className="text-xs text-muted-foreground">DTCM registration: {idChannel} does not pass on the guest's passport copy, and Dubai guest registration still needs one. Once you have it, edit the booking and tick "ID / Passport Collected".</p>}
         {editing && (
           <div className="space-y-1.5">

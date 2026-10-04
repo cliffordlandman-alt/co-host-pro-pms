@@ -25,6 +25,7 @@ import Reports from "@/pages/reports";
 import IncomePage from "@/pages/income";
 import IncomePropertyPage from "@/pages/income-property";
 import CalendarSyncPage from "@/pages/calendar-sync";
+import CompliancePage from "@/pages/compliance";
 import Reviews from "@/pages/reviews";
 import Inbox from "@/pages/inbox";
 import Accounting from "@/pages/accounting";
@@ -153,6 +154,7 @@ function Router() {
               <Route path="/income" component={IncomePage} />
               <Route path="/income/:id" component={IncomePropertyPage} />
               <Route path="/calendar-sync" component={CalendarSyncPage} />
+              <Route path="/compliance" component={CompliancePage} />
               <Route path="/reviews" component={Reviews} />
               <Route path="/inbox" component={Inbox} />
               <Route path="/airbnb-import" component={AirbnbImport} />

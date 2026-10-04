@@ -1,5 +1,5 @@
 import { CommandSearch } from "@/components/today/CommandSearch";
-import { CheckCircle2, RefreshCw } from "lucide-react";
+import { CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { Link, useLocation, useSearch } from "wouter";
 import logoPath from "../../assets/yallastay-logo.png";
@@ -52,6 +52,7 @@ const navGroups: { label: string; collapsible?: boolean; items: NavItem[] }[] = 
       { href: "/staff",      icon: UserCircle, label: "Staff" },
       { href: "/platforms",  icon: Layers,     label: "Platforms" },
       { href: "/calendar-sync", icon: RefreshCw, label: "Calendar sync", role: ["admin", "super_admin", "manager"] },
+      { href: "/compliance",    icon: ShieldCheck, label: "Dubai compliance", role: ["admin", "super_admin", "manager", "accountant", "reservations", "operations"] },
     ],
   },
   {

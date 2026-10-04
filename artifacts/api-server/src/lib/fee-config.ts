@@ -18,6 +18,7 @@ export function defaultFeeSettings(p: PropertyLike) {
     id: null as number | null,
     propertyId: p.id,
     tourismRate: "10", tourismEnabled: dubai, vatEnabled: dubai,
+    tourismConfirmed: false, vatConfirmed: false,
     managementFeePercent: "20",
     cleaningFee: null as string | null,
     platformFeeAirbnb: "3", platformFeeBookingCom: "15", platformFeeDirect: "0", platformFeeVrbo: "0",
