@@ -32,6 +32,7 @@ import airbnbRouter from "./airbnb";
 import whatsappRouter from "./whatsapp";
 import pricingRouter from "./pricing";
 import ownerAnalyticsRouter from "./owner-analytics";
+import calendarSyncRouter from "./calendar-sync";
 
 const router: IRouter = Router();
 
@@ -68,5 +69,6 @@ router.use(airbnbRouter);
 router.use(whatsappRouter);
 router.use(pricingRouter);
 router.use(ownerAnalyticsRouter);
+router.use(calendarSyncRouter);
 
 export default router;

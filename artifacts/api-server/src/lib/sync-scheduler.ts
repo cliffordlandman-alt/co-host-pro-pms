@@ -1,7 +1,10 @@
-import { db, propertiesTable, reservationsTable, cleaningTasksTable, appSettingsTable, notificationsTable, ownerStatementsTable, propertySettingsTable } from "@workspace/db";
+import { db, propertiesTable, reservationsTable, cleaningTasksTable, appSettingsTable, notificationsTable, ownerStatementsTable, propertySettingsTable, channelSyncHealthTable } from "@workspace/db";
 import { dubaiToday } from "./dubai-date";
 import { eq, and, ne } from "drizzle-orm";
 import { parseIcalEvents, planIcalSync, type IcalFlag } from "../../../../lib/ical-sync.mjs";
+import { needsFailingAlert } from "../../../../lib/calendar-export.mjs";
+import { redactText } from "../../../../lib/redact.mjs";
+import { notifyManagers } from "./whatsapp";
 
 type Platform = "airbnb" | "booking_com" | "vrbo";
 const FEEDS: Record<Platform, { column: "airbnbIcalUrl" | "bookingComIcalUrl" | "vrboIcalUrl"; hosts: string[]; label: string }> = {
@@ -21,7 +24,7 @@ async function raiseOnce(tx: any, flag: IcalFlag, reservationId: number | undefi
   await tx.insert(notificationsTable).values({ type: flag.type, title: `${titles[flag.type] || "Channel calendar"} · ${propertyName}`, message: flag.message, link: reservationId ? `/reservations/${reservationId}` : null, entityType: "reservation", entityId });
 }
 
-export async function syncPropertyIcal(propertyId: number, platform: Platform) {
+async function syncPropertyIcalOnce(propertyId: number, platform: Platform): Promise<any> {
   const feed = FEEDS[platform];
   if (!feed) return { error: "Unsupported channel" };
   const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, propertyId));
@@ -39,7 +42,7 @@ export async function syncPropertyIcal(propertyId: number, platform: Platform) {
     if (!/BEGIN:VCALENDAR/.test(icalText)) throw new Error("The link did not return a calendar");
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Fetch failed";
-    return { error: `Failed to fetch iCal feed: ${msg}` };
+    return { error: `Failed to fetch iCal feed: ${msg}`, feedError: true };
   }
 
   const events = parseIcalEvents(icalText);
@@ -89,6 +92,49 @@ export async function syncPropertyIcal(propertyId: number, platform: Platform) {
   if (existingSetting.length > 0) await db.update(appSettingsTable).set({ value: status, updatedAt: new Date() }).where(eq(appSettingsTable.key, syncStatusKey));
   else await db.insert(appSettingsTable).values({ key: syncStatusKey, value: status });
   return { ...status, skipped: result.unchanged };
+}
+
+const dubaiTime = (d: Date) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Dubai", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(d) + " Dubai";
+
+/** Record one sync attempt in channel_sync_health; raise the in-app alert once a feed has failed for more than 2 hours. */
+async function recordFeedHealth(propertyId: number, platform: Platform, outcome: { ok: true; summary: string } | { ok: false; error: string }) {
+  const now = new Date();
+  const [row] = await db.select().from(channelSyncHealthTable).where(and(eq(channelSyncHealthTable.propertyId, propertyId), eq(channelSyncHealthTable.platform, platform)));
+  const patch = outcome.ok
+    ? { lastAttemptAt: now, lastSuccessAt: now, failingSince: null, alertedAt: null, lastSummary: outcome.summary }
+    // Error texts never carry the private feed link.
+    : { lastAttemptAt: now, lastError: redactText(outcome.error).slice(0, 500), lastErrorAt: now, failingSince: row?.failingSince ?? now };
+  const [saved] = row
+    ? await db.update(channelSyncHealthTable).set(patch).where(eq(channelSyncHealthTable.id, row.id)).returning()
+    : await db.insert(channelSyncHealthTable).values({ propertyId, platform, ...patch }).returning();
+  const entityId = `${propertyId}:${platform}`;
+  if (outcome.ok) {
+    // Recovered: close the open "failing" alert for this feed.
+    if (row?.failingSince) await db.update(notificationsTable).set({ read: true }).where(and(eq(notificationsTable.type, "ical_feed_failing"), eq(notificationsTable.entityId, entityId), eq(notificationsTable.read, false)));
+    return;
+  }
+  if (!needsFailingAlert(saved, now)) return;
+  const [property] = await db.select({ name: propertiesTable.name }).from(propertiesTable).where(eq(propertiesTable.id, propertyId));
+  const label = FEEDS[platform].label;
+  const message = `The ${label} calendar has failed to sync since ${dubaiTime(saved.failingSince!)}. New ${label} bookings and cancellations are not coming in until it works again. Last error: ${saved.lastError}`;
+  await db.insert(notificationsTable).values({ type: "ical_feed_failing", title: `Calendar sync failing · ${property?.name ?? "Property"} · ${label}`, message, link: "/calendar-sync", entityType: "channel_feed", entityId });
+  await db.update(channelSyncHealthTable).set({ alertedAt: now }).where(eq(channelSyncHealthTable.id, saved.id));
+  // WhatsApp to managers only when outgoing delivery is switched on (OUTBOUND_DELIVERY=on); otherwise nothing leaves.
+  await notifyManagers(`YallaPMS: ${property?.name ?? "Property"} – ${message}`).catch(() => {});
+}
+
+/** Sync one property's channel calendar and record the outcome for the sync-health panel. */
+export async function syncPropertyIcal(propertyId: number, platform: Platform): Promise<any> {
+  let res: any;
+  try { res = await syncPropertyIcalOnce(propertyId, platform); }
+  catch (err) {
+    await recordFeedHealth(propertyId, platform, { ok: false, error: `Sync failed: ${err instanceof Error ? err.message : String(err)}` }).catch(() => {});
+    throw err;
+  }
+  if (res?.feedError) await recordFeedHealth(propertyId, platform, { ok: false, error: res.error }).catch(() => {});
+  else if (!res?.error) await recordFeedHealth(propertyId, platform, { ok: true, summary: `${res.total} events: ${res.created} new, ${res.updated} updated, ${res.released} released, ${res.flagged} flagged` }).catch(() => {});
+  if (res?.feedError) { const { feedError, ...rest } = res; return rest; }
+  return res;
 }
 
 export async function runAllSyncs() {

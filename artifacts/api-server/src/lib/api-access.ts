@@ -5,7 +5,10 @@ import { getTokenPayload } from './auth-middleware';
 
 const publicPaths = new Set(['/healthz', '/auth/login', '/auth/register', '/owner-auth/send-code', '/owner-auth/verify']);
 const attempts = new Map<string, {count:number; until:number}>();
+// Outbound calendar feeds are read by Airbnb, Booking.com and Vrbo without a login: the 43-character token is the secret.
+const PUBLIC_FEED = /^\/ical\/[A-Za-z0-9_-]{43}\/(airbnb|booking_com|vrbo|all)\.ics$/;
 export async function apiAccess(req: Request, res: Response, next: NextFunction) {
+  if (req.method === 'GET' && PUBLIC_FEED.test(req.path)) return next();
   if (publicPaths.has(req.path)) {
     if (req.method !== 'GET') {
       const key = `${req.ip}:${req.path}`;
@@ -72,7 +75,7 @@ export async function apiAccess(req: Request, res: Response, next: NextFunction)
     return res.status(403).json({error:"Only your assigned tasks are available"});
   }
   const allowed: Record<string,string[]> = {
-    manager:['dashboard','properties','owners','staff','reservations','cleaning','maintenance','payments','reports','accounting','notifications','messages','reviews','documents','pricing','platforms','channels','task-centre','guests'],
+    manager:['calendar-sync','dashboard','properties','owners','staff','reservations','cleaning','maintenance','payments','reports','accounting','notifications','messages','reviews','documents','pricing','platforms','channels','task-centre','guests'],
     reservations:['dashboard','properties','reservations','messages','notifications','task-centre','guests'],
     operations:['dashboard','properties','reservations','cleaning','maintenance','staff','notifications','task-centre','guests'],
     accountant:['properties','owners','reservations','payments','accounting','reports','dashboard','notifications'],

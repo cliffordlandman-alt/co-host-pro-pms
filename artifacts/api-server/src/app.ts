@@ -14,7 +14,8 @@ app.use(
         return {
           id: req.id,
           method: req.method,
-          url: req.url?.split("?")[0],
+          // Calendar export links carry a secret token: never write it to the server log.
+          url: req.url?.split("?")[0]?.replace(/\/ical\/[^/]+/, "/ical/[redacted]"),
         };
       },
       res(res) {
