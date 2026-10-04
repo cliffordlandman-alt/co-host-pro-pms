@@ -25,7 +25,7 @@ import { backfillCleaningExpenses, cleaningVendor, unitLabel } from "../lib/clea
 import { insertAuditLog } from "../lib/audit";
 import { changePropertyCurrency, CurrencyChangeRefused } from "../lib/property-currency";
 import { bookingCurrency } from "../../../../lib/booking-currency.mjs";
-import { cleaningCostRatesTable, vendorsTable, usersTable } from "@workspace/db";
+import { cleaningCostRatesTable, vendorsTable, usersTable, ownerPayoutsTable } from "@workspace/db";
 
 const router = Router();
 
@@ -437,7 +437,9 @@ router.get("/accounting/statements", asyncHandler(async (req, res) => {
     paidByAirbnb: parseFloat(r.paidByAirbnb || "0"),
     createdAt: r.createdAt.toISOString(),
   }));
-  res.json(p ? paged(items, total, p, summary) : items);
+  const payouts = await payoutsFor(items.map(i => i.id));
+  const withPayouts = items.map(i => { const list = payouts.filter(x => x.statementId === i.id); return { ...i, payouts: list, paidTotal: list.reduce((n, x) => n + Math.round(x.amount * 100), 0) / 100 }; });
+  res.json(p ? paged(withPayouts, total, p, summary) : withPayouts);
 }));
 
 // Property/month pairs holding more than one statement (only possible in data from before the unique rule).
@@ -450,6 +452,81 @@ router.post("/accounting/statements/generate", asyncHandler(async (req,res)=>{
  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month || "")) return res.status(400).json({error:"Valid month required (YYYY-MM)"});
  const result=await refreshOwnerStatements(month);
  return res.json(result);
+}));
+
+// ── Owner payouts: money paid against a statement, with date, method and bank reference ──
+export const PAYOUT_METHODS = ["bank_transfer", "cash", "cheque", "other"] as const;
+async function payoutsFor(statementIds: number[]) {
+  if (!statementIds.length) return [];
+  const rows = await db.select().from(ownerPayoutsTable).where(inArray(ownerPayoutsTable.statementId, statementIds)).orderBy(ownerPayoutsTable.paidOn, ownerPayoutsTable.id);
+  return rows.map(r => ({ id: r.id, statementId: r.statementId, amount: Number(r.amount), currency: r.currency, paidOn: r.paidOn, method: r.method, reference: r.reference, notes: r.notes, createdBy: r.createdBy, createdAt: r.createdAt.toISOString() }));
+}
+const statementSettled = (s: { paidByAirbnb: string | null; ownerPayout: string | null }) => Number(s.paidByAirbnb) > 0 && Math.abs(Math.round(Number(s.ownerPayout) * 100)) < 100;
+const payoutSchema = z.object({
+  amount: z.coerce.number().finite().positive("Enter the amount paid").refine(n => Math.round(n * 100) === n * 100 || Math.abs(Math.round(n * 100) - n * 100) < 1e-6, "Use at most 2 decimals"),
+  paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter the date the money was paid"),
+  method: z.enum(PAYOUT_METHODS, { message: "Choose how it was paid" }),
+  reference: z.string().trim().max(120).optional().nullable(),
+  notes: z.string().trim().max(500).optional().nullable(),
+});
+const money2 = (n: number, c: string) => `${c} ${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+router.get("/accounting/statements/:id/payouts", asyncHandler(async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) return res.status(400).json({ error: "Invalid id" });
+  res.json(await payoutsFor([id]));
+}));
+
+router.post("/accounting/statements/:id/payouts", asyncHandler(async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) return res.status(400).json({ error: "Invalid id" });
+  const parsed = payoutSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid payout" });
+  const v = parsed.data, reference = v.reference || null, notes = v.notes || null;
+  if (new Date(v.paidOn + "T00:00:00Z").toISOString().slice(0, 10) !== v.paidOn) return res.status(400).json({ error: "Enter a real date" });
+  if (v.paidOn > dubaiToday()) return res.status(400).json({ error: "The payout date can't be in the future" });
+  if ((v.method === "bank_transfer") && !reference) return res.status(400).json({ error: "Enter the bank reference for the transfer" });
+  if ((v.method === "cheque") && !reference) return res.status(400).json({ error: "Enter the cheque number" });
+  if (v.method === "other" && !reference && !notes) return res.status(400).json({ error: "Say how it was paid (reference or note)" });
+  const [st] = await db.select().from(ownerStatementsTable).where(eq(ownerStatementsTable.id, id));
+  if (!st) return res.status(404).json({ error: "Not found" });
+  const twins = await db.select({ id: ownerStatementsTable.id }).from(ownerStatementsTable).where(and(eq(ownerStatementsTable.propertyId, st.propertyId), eq(ownerStatementsTable.month, st.month), ne(ownerStatementsTable.id, id)));
+  if (twins.length) return res.status(409).json({ error: `This property already has another statement for ${st.month}. Resolve the duplicate first.` });
+  if (v.paidOn < `${st.month}-01`) return res.status(400).json({ error: `The payout date is before ${st.month}, the statement's month` });
+  const result = await db.transaction(async tx => {
+    const [locked] = await tx.select().from(ownerStatementsTable).where(eq(ownerStatementsTable.id, id)).for("update");
+    if (locked.status === "draft") return { status: 409, error: "Send the statement to the owner before recording a payout" };
+    if (locked.status === "paid") return { status: 409, error: "This statement is already marked paid" };
+    if (statementSettled(locked) || Number(locked.ownerPayout) <= 0) return { status: 400, error: "Nothing is owed to the owner on this statement, so there is no payout to record" };
+    const currency = locked.currency || "AED";
+    const before = await tx.select({ amount: ownerPayoutsTable.amount }).from(ownerPayoutsTable).where(eq(ownerPayoutsTable.statementId, id));
+    const paid = before.reduce((n, r) => n + Math.round(Number(r.amount) * 100), 0), balance = Math.round(Number(locked.ownerPayout) * 100), add = Math.round(v.amount * 100);
+    if (paid + add > balance) return { status: 400, error: `That would pay ${money2((paid + add) / 100, currency)}, more than the ${money2(balance / 100, currency)} balance${paid ? ` (${money2(paid / 100, currency)} already recorded)` : ""}` };
+    const label = { bank_transfer: "bank transfer", cash: "cash", cheque: "cheque", other: "other" }[v.method];
+    const [pay] = await tx.insert(paymentsTable).values({ type: "owner_payout", propertyId: locked.propertyId, ownerId: locked.ownerId, amount: (add / 100).toFixed(2), status: "paid", paidAt: v.paidOn, dueDate: v.paidOn, description: `Owner statement #${id} · ${locked.month} · ${label}${reference ? ` ${reference}` : ""}` }).returning({ id: paymentsTable.id });
+    const [row] = await tx.insert(ownerPayoutsTable).values({ statementId: id, propertyId: locked.propertyId, ownerId: locked.ownerId, amount: (add / 100).toFixed(2), currency, paidOn: v.paidOn, method: v.method, reference, notes, paymentId: pay.id, createdBy: res.locals.user?.email ?? null }).returning();
+    return { row, remaining: (balance - paid - add) / 100 };
+  });
+  if ("error" in result) return res.status(result.status!).json({ error: result.error });
+  await insertAuditLog({ action: "create", entity: "owner_payout", entityId: result.row!.id, details: { statementId: id, amount: Number(result.row!.amount), currency: result.row!.currency, paidOn: v.paidOn, method: v.method, reference }, performedBy: res.locals.user?.email });
+  res.status(201).json({ payouts: await payoutsFor([id]), remaining: result.remaining });
+}));
+
+router.delete("/accounting/statements/:id/payouts/:payoutId", asyncHandler(async (req, res) => {
+  const id = parseId(req.params.id), pid = parseId(req.params.payoutId);
+  if (id === null || pid === null) return res.status(400).json({ error: "Invalid id" });
+  const result = await db.transaction(async tx => {
+    const [locked] = await tx.select().from(ownerStatementsTable).where(eq(ownerStatementsTable.id, id)).for("update");
+    if (!locked) return { status: 404, error: "Not found" };
+    if (locked.status === "paid") return { status: 409, error: "The statement is paid, so its payout records are kept" };
+    const [row] = await tx.delete(ownerPayoutsTable).where(and(eq(ownerPayoutsTable.id, pid), eq(ownerPayoutsTable.statementId, id))).returning();
+    if (!row) return { status: 404, error: "Payout record not found" };
+    if (row.paymentId) await tx.delete(paymentsTable).where(eq(paymentsTable.id, row.paymentId));
+    return { row };
+  });
+  if ("error" in result) return res.status(result.status!).json({ error: result.error });
+  await insertAuditLog({ action: "delete", entity: "owner_payout", entityId: pid, details: { statementId: id, amount: Number(result.row!.amount), currency: result.row!.currency, paidOn: result.row!.paidOn, method: result.row!.method, reference: result.row!.reference }, performedBy: res.locals.user?.email });
+  res.json({ payouts: await payoutsFor([id]) });
 }));
 
 router.patch("/accounting/statements/:id", asyncHandler(async (req, res) => {
@@ -469,16 +546,26 @@ router.patch("/accounting/statements/:id", asyncHandler(async (req, res) => {
   if(!["draft","sent","paid"].includes(status) || (existing.status==="paid" && status!=="paid") || (existing.status==="sent" && status==="draft")) return res.status(400).json({error:"Invalid statement transition"});
   // Co-host payouts Airbnb paid the owner leave the balance at about 0: under 1.00 either way is rounding,
   // the statement is settled and no payout is recorded.
-  const settled = Number(existing.paidByAirbnb) > 0 && Math.abs(Math.round(Number(existing.ownerPayout)*100)) < 100;
+  const settled = statementSettled(existing);
   if(status==="paid" && Number(existing.ownerPayout)<0 && !settled) return res.status(400).json({error:"A negative balance cannot be marked as a payout"});
   const today=dubaiToday();
   const row = await db.transaction(async tx=>{
     const [locked]=await tx.select().from(ownerStatementsTable).where(eq(ownerStatementsTable.id,id)).for("update");
     if(locked.status==="paid") return locked;
-    const [updated]=await tx.update(ownerStatementsTable).set({status,notes: req.body.notes ?? locked.notes,...(status==="sent"?{sentAt:today}:{}),...(status==="paid"?{paidAt:today}:{})}).where(eq(ownerStatementsTable.id,id)).returning();
-    if(status==="paid" && !settled) await tx.insert(paymentsTable).values({type:"owner_payout",propertyId:locked.propertyId,ownerId:locked.ownerId,amount:locked.ownerPayout,status:"paid",paidAt:today,dueDate:today,description:`Owner statement #${id} · ${locked.month}`});
+    // Paid only with proof: the payout records (date, method, reference) must add up to the balance. A settled
+    // statement (Airbnb already paid the owner; the rest is rounding) has nothing to pay.
+    let paidAt=today;
+    if(status==="paid" && !settled){
+      const pays=await tx.select({amount:ownerPayoutsTable.amount,paidOn:ownerPayoutsTable.paidOn}).from(ownerPayoutsTable).where(eq(ownerPayoutsTable.statementId,id));
+      const cur=locked.currency||"AED", paid=pays.reduce((n,r)=>n+Math.round(Number(r.amount)*100),0), balance=Math.round(Number(locked.ownerPayout)*100);
+      if(!pays.length) return {error:"Record the payout first (date, method and bank reference). A statement is only marked paid once the payout is recorded."};
+      if(paid!==balance) return {error:`Payouts recorded: ${money2(paid/100,cur)} of ${money2(balance/100,cur)}. Record the remaining ${money2((balance-paid)/100,cur)} before marking it paid.`};
+      paidAt=pays.map(p=>p.paidOn).sort().at(-1)!;
+    }
+    const [updated]=await tx.update(ownerStatementsTable).set({status,notes: req.body.notes ?? locked.notes,...(status==="sent"?{sentAt:today}:{}),...(status==="paid"?{paidAt}:{})}).where(eq(ownerStatementsTable.id,id)).returning();
     return updated;
   });
+  if("error" in row) return res.status(400).json({error:row.error});
   return res.json({...row,ownerPayout:Number(row.ownerPayout),grossRevenue:Number(row.grossRevenue)});
 }));
 

@@ -8,7 +8,7 @@ import {
   Sparkles, Wrench, Users, UserCircle, CreditCard, BarChart2, Star,
   MessageCircle, BookOpen, KeyRound, Layers, Menu, X, Zap, FileText,
   Settings2, Bot, Crown, MessageSquare, ChevronDown, LogOut, Shield,
-  PieChart, Receipt, FileBarChart, Link2, Tv2, MapPin, Smartphone, DollarSign, ListChecks,
+  PieChart, Receipt, FileBarChart, Link2, Tv2, MapPin, Smartphone, DollarSign, ListChecks, Scale,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
@@ -40,6 +40,7 @@ const navGroups: { label: string; collapsible?: boolean; items: NavItem[] }[] = 
       { href: "/accounting",                icon: FileBarChart, label: "Owner statements" },
       { href: "/accounting?tab=transactions", icon: Receipt,    label: "Income & expenses" },
       { href: "/payments",                  icon: DollarSign,   label: "Payments" },
+      { href: "/payout-check",              icon: Scale,          label: "Airbnb payout check", role: ["admin", "super_admin", "manager", "accountant"] },
       { href: "/reports",                   icon: BarChart2,    label: "Reports" },
     ],
   },

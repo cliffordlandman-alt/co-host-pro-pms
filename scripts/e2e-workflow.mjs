@@ -150,6 +150,9 @@ try {
   rec('14a Owner statement after cleaning', st2 && near(st2.ownerPayout, 1805.71) ? 'OK' : 'FAIL', st2 ? `payout ${st2.ownerPayout}; owner charged the booking cleaning fee ${st2.cleaningCosts} (company income); cleaning company cost is a company expense, not charged to the owner` : 'missing');
   rec('14b Dashboard reflects', dash2.todayCheckOuts >= 1 ? 'OK' : 'FAIL', `today checkouts ${dash2.todayCheckOuts}, cleaningPending ${dash2.cleaningPending}, monthRevenue ${dash2.monthRevenue}`);
   const publish = await api(`/accounting/statements/${st2.id}`, 'PATCH', { status: 'sent' });
+  const unpaid = await api(`/accounting/statements/${st2.id}`, 'PATCH', { status: 'paid' });
+  const proof = await api(`/accounting/statements/${st2.id}/payouts`, 'POST', { amount: st2.ownerPayout, paidOn: todayDubai, method: 'bank_transfer', reference: 'E2E-TRANSFER-1' });
+  rec('14c0 Paid only with a payout record', unpaid.status === 400 && proof.status === 201 ? 'OK' : 'FAIL', `mark paid without payout ${unpaid.status}; payout recorded ${proof.status}`);
   const paid = await api(`/accounting/statements/${st2.id}`, 'PATCH', { status: 'paid' });
   const edit = await api(`/reservations/${b.id}`, 'PATCH', { grossAmount: 3400 });
   rec('14c Publish + pay statement, then booking locked', publish.status === 200 && paid.status === 200 && edit.status === 400 ? 'OK' : 'FAIL', `sent ${publish.status}, paid ${paid.status}, later edit ${edit.status}`);

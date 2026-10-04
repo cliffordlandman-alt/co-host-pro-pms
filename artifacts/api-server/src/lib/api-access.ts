@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { db, usersTable, ownersTable, propertiesTable, reservationsTable, ownerStatementsTable, staffTable, cleaningTasksTable, maintenanceTicketsTable } from '@workspace/db';
+import { db, usersTable, ownersTable, propertiesTable, reservationsTable, ownerStatementsTable, staffTable, cleaningTasksTable, maintenanceTicketsTable, ownerPayoutsTable } from '@workspace/db';
 import { eq, and, inArray, ne, sql } from 'drizzle-orm';
 import { getTokenPayload } from './auth-middleware';
 
@@ -37,7 +37,10 @@ export async function apiAccess(req: Request, res: Response, next: NextFunction)
     if (req.path === '/accounting/statements') {
       const rows = await db.select().from(ownerStatementsTable).where(and(eq(ownerStatementsTable.ownerId,owner.id), ne(ownerStatementsTable.status,'draft'), req.query.month ? eq(ownerStatementsTable.month,String(req.query.month)) : undefined));
       const money = ['grossRevenue','platformFees','managementFee','cleaningCosts','maintenanceCosts','otherExpenses','vatAmount','ownerPayout','tourismFee','paidByAirbnb'];
-      return res.json(rows.map(r=>({...r,propertyName:properties.find(p=>p.id===r.propertyId)?.name,...Object.fromEntries(money.map(k=>[k,Number((r as any)[k] || 0)]))})));
+      // The owner sees how and when they were paid (date, method, bank reference); internal notes stay internal.
+      const pays = rows.length ? await db.select().from(ownerPayoutsTable).where(inArray(ownerPayoutsTable.statementId, rows.map(r => r.id))) : [];
+      return res.json(rows.map(r=>({...r,propertyName:properties.find(p=>p.id===r.propertyId)?.name,...Object.fromEntries(money.map(k=>[k,Number((r as any)[k] || 0)])),
+        payouts: pays.filter(p => p.statementId === r.id).sort((a, b) => a.paidOn.localeCompare(b.paidOn)).map(p => ({ id: p.id, amount: Number(p.amount), currency: p.currency, paidOn: p.paidOn, method: p.method, reference: p.reference }))})));
     }
     return res.status(403).json({error:'Owner access denied'});
   }

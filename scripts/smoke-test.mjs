@@ -90,6 +90,7 @@ try {
  await request('/reservations/'+b.id,'PATCH',{refreshRates:true});
  assert.equal((await request('/accounting/statements?month=2026-10')).find(s=>s.id===statement.id).ownerPayout,645-repairOct);
  await request('/accounting/statements/'+statement.id,'PATCH',{status:'sent'});
+ await request('/accounting/statements/'+statement.id+'/payouts','POST',{amount:645-repairOct,paidOn:'2026-10-02',method:'bank_transfer',reference:'SMOKE-1'},201);
  await request('/accounting/statements/'+statement.id,'PATCH',{status:'paid'});
  await request('/accounting/statements/'+statement.id,'PATCH',{status:'paid'});
  const payouts=(await request('/payments')).filter(p=>p.type==='owner_payout');assert.equal(payouts.length,1);

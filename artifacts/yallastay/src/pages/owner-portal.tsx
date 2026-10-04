@@ -1,3 +1,4 @@
+import { PayoutLine } from "@/components/OwnerPayouts";
 import { apiFetch } from "@/lib/api-fetch";
 import { statementBalance, feeLabels } from "@/lib/statement-balance";
 import { useState, useMemo, useEffect } from "react";
@@ -342,9 +343,12 @@ function OwnerStatements({ ownerId }: { ownerId: number }) {
                   </div>
 
                   {stmt.paidAt && (
-                    <div className="flex items-center gap-1.5 mt-2 text-xs text-emerald-600">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      Payment transferred on {stmt.paidAt}
+                    <div className="mt-2 space-y-1">
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-600">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        {stmt.payouts?.length ? "Paid to you" : `Payment transferred on ${stmt.paidAt}`}
+                      </div>
+                      {stmt.payouts?.length > 0 && <ul className="space-y-1 pl-5">{stmt.payouts.map((p: any) => <PayoutLine key={p.id} p={p} />)}</ul>}
                     </div>
                   )}
                   {stmt.sentAt && !stmt.paidAt && (

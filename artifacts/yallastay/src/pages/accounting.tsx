@@ -7,6 +7,7 @@ import { CleaningCostSettings } from "@/components/CleaningCostSettings";
 import { apiFetch } from "@/lib/api-fetch";
 import { Pager, usePagedList } from "@/components/Pager";
 import { AirbnbIncome } from "@/components/AirbnbIncome";
+import { OwnerPayouts } from "@/components/OwnerPayouts";
 import { useState } from "react";
 import { Link, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -183,8 +184,8 @@ function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id
                     <Send className="h-3.5 w-3.5 mr-1" />Mark as Sent
                   </Button>
                 )}
-                {stmt.status === "sent" && !bal.owes && (
-                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => onStatusChange(stmt.id, "paid")}>
+                {stmt.status === "sent" && !bal.owes && (bal.settled || Math.round((stmt.paidTotal ?? 0) * 100) === Math.round(stmt.ownerPayout * 100)) && (
+                  <Button size="sm" data-testid="mark-paid" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => onStatusChange(stmt.id, "paid")}>
                     <CheckCircle2 className="h-3.5 w-3.5 mr-1" />{bal.settled ? "Mark as settled" : "Mark as Paid"}
                   </Button>
                 )}
@@ -192,6 +193,8 @@ function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id
                 {stmt.sentAt && !stmt.paidAt && <span className="text-xs text-muted-foreground self-center">Sent {stmt.sentAt}</span>}
               </div>
               <Badge className={`text-xs border ${s.color} mt-1`}>{s.label}</Badge>
+              {stmt.status === "sent" && !bal.owes && !bal.settled && <p className="text-xs text-muted-foreground">A statement is marked paid only once the payout is recorded (date, method and bank reference) and adds up to the balance.</p>}
+              {!bal.settled && !bal.owes && stmt.status !== "draft" && <OwnerPayouts stmt={stmt} balance={stmt.ownerPayout} canRecord={stmt.status === "sent"} />}
             </div>
           </div>
         </div>

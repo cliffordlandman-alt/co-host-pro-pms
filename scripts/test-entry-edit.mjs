@@ -64,6 +64,7 @@ try {
   assert.match((await api(`/accounting/transactions/${e2.id}`, 'PATCH', { date: '2026-09-28' }, 409)).error, /has been sent/, 'cannot move an entry onto a sent statement');
   assert.equal((await api(`/accounting/transactions/${co.id}`, 'PATCH', { amount: 45 })).amount, 45, 'company entries are not on the owner statement');
   assert.equal((await api(`/accounting/transactions/${e2.id}`, 'PATCH', { amount: 35 })).amount, 35, 'open month still editable');
+  await api(`/accounting/statements/${st.id}/payouts`, 'POST', { amount: (await api('/accounting/statements')).find(x => x.id === st.id).ownerPayout, paidOn: '2026-10-01', method: 'bank_transfer', reference: 'TEST-REF-1' }, 201);
   await api(`/accounting/statements/${st.id}`, 'PATCH', { status: 'paid' });
   assert.match((await api(`/accounting/transactions/${e1.id}`, 'PATCH', { notes: 'x' }, 409)).error, /has been paid/);
   assert.equal((await api('/accounting/transactions')).find(t => t.id === e1.id).amount, 120.5, 'locked entry unchanged');
