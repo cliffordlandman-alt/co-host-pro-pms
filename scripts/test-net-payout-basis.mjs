@@ -108,12 +108,12 @@ try {
   assert.ok(row('HMNOFEES01').blocking.some(m => /no Airbnb fees/i.test(m)), 'net basis without fees is blocked');
   assert.ok(row('HMNETBAD01').review.some(m => /doesn't equal the co-host \+ host payout/.test(m)));
   assert.ok(!row('HMSTD00002').review.some(m => /doesn't equal/.test(m)), 'the net cross-check never flags standard-basis properties (they import as before)');
-  assert.equal(row('HMSTD00001').bulkOk, true); assert.equal(row('HMSTD00001').preview.feeBasis, 'gross'); assert.equal(row('HMSTD00001').preview.channelAmount, 30, 'standard property keeps its % setting');
+  assert.equal(row('HMSTD00001').bulkOk, true); assert.equal(row('HMSTD00001').preview.feeBasis, 'gross'); assert.equal(row('HMSTD00001').preview.channelAmount, 163, 'standard property: Airbnb\'s actual fees from the breakdown, not the % estimate');
   for (const r of pv.rows.filter(r => r.bulkOk)) await api(`/reservations/${r.reservationId}`, 'PATCH', { grossAmount: r.guestTotal, financeMode: 'inclusive-v1', cohostPayout: r.cohost.amount ?? undefined, channelFees: r.channelFees ?? undefined });
   const r1 = await api(`/reservations/${b1.id}`);
   assert.equal(r1.feeBasis, 'net-payout'); assert.equal(r1.channelAmount, 444.31); assert.equal(r1.managementAmount, 342.85); assert.equal(r1.ownerAmount, 1942.84); assert.equal(r1.channelFees, 444.31);
   const rs = await api(`/reservations/${s1.id}`);
-  assert.equal(rs.feeBasis, null); assert.equal(rs.channelAmount, 30); assert.equal(rs.managementAmount, 200); assert.equal(rs.ownerAmount, 770); assert.equal(rs.channelFees, 163, 'actual fees recorded, not used on the standard basis');
+  assert.equal(rs.feeBasis, null); assert.equal(rs.channelAmount, 163); assert.equal(rs.managementAmount, 200); assert.equal(rs.ownerAmount, 637); assert.equal(rs.channelFees, 163, 'standard basis: actual fees are the channel line, management stays % of revenue');
   // One path: the preview of an edit equals the saved result; no fees = clear error, never 3%.
   const fp = await api(`/reservations/${b1.id}/finance-preview`, 'POST', { grossAmount: '2730.00', channelFees: '444.31' });
   assert.equal(fp.ok, true); assert.equal(fp.feeBasis, 'net-payout'); assert.equal(fp.ownerAmount, 1942.84); assert.equal(fp.managementAmount, 342.85);
@@ -146,7 +146,7 @@ try {
   assert.equal(cents(gh.managementFee), 76382, '15% of net payout'); assert.equal(cents(gh.paidByAirbnb), 432832); assert.equal(cents(gh.ownerPayout), 1, 'balance about 0');
   assert.equal(JSON.parse(gh.bookingDetails)[0].feeBasis, 'net-payout');
   assert.equal(cents(gl.ownerPayout), 0, 'Green Lawn settled exactly');
-  assert.equal(st.feeBasis, null); assert.equal(cents(st.platformFees), 3000); assert.equal(cents(st.ownerPayout), 77000);
+  assert.equal(st.feeBasis, null); assert.equal(cents(st.platformFees), 16300, 'standard basis: actual Airbnb fees'); assert.equal(cents(st.ownerPayout), 63700);
   assert.ok(!('channelFees' in JSON.parse(st.bookingDetails)[0]), 'standard statements keep their booking details shape');
   assert.doesNotMatch(st.notes, /net payout/);
   // Settled (rounding): can be marked paid; no owner payout recorded.

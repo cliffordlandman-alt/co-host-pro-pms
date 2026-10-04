@@ -60,7 +60,7 @@ try {
   assert.deepEqual(sug.currencyOption, { currency: 'ZAR', label: 'Set Garden Retreat currency to ZAR' });
   assert.equal(sug.properties[0].expectedCurrency, 'ZAR'); assert.equal(sug.properties[0].match.id, GR.id);
   const changed = await api(`/accounting/settings/${GR.id}`, 'PUT', { currency: 'ZAR' });
-  assert.deepEqual(changed.currencyChange, { changed: true, from: 'AED', to: 'ZAR', bookingsKeptInOldCurrency: 4, cleaningCostCurrencyKept: false });
+  assert.deepEqual(changed.currencyChange, { changed: true, from: 'AED', to: 'ZAR', bookingsKeptInOldCurrency: 4, bookingsFollowingNewCurrency: 0, cleaningCostCurrencyKept: false });
   const bon = await api('/owners', 'POST', { name: sug.name, phone: sug.phone }, 201);
   await api(`/properties/${GR.id}`, 'PATCH', { ownerId: bon.id });
   const audit = await api('/audit-log');

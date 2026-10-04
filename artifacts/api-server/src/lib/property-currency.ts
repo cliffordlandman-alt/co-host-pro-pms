@@ -1,10 +1,12 @@
 import { propertiesTable, propertySettingsTable, reservationsTable, maintenanceTicketsTable, paymentsTable } from "@workspace/db";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, inArray } from "drizzle-orm";
 
 /**
  * Changing a property's currency never relabels an amount already recorded.
- * - Bookings: those without a currency of their own are stamped with the OLD currency first (an AED 1,727 booking
- *   stays AED 1,727); bookings created afterwards have none and use the new currency.
+ * - Bookings with recorded amounts (verified figures, a guest total, an Airbnb payout, fees, a cleaning fee, a balance
+ *   or a payment) and no currency of their own are stamped with the OLD currency first (an AED 1,727 booking stays
+ *   AED 1,727). Bookings with no amounts at all (e.g. stays from the calendar feed waiting for their figures) have
+ *   nothing to relabel: they stay unstamped and follow the new currency, like bookings created afterwards.
  * - Entries, owner statements and Airbnb earnings already store their own currency.
  * - The cleaning cost override without its own currency keeps the old one (its currency is stamped).
  * - Refused (nothing changes) where an amount has no currency of its own and would be relabelled:
@@ -16,6 +18,13 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 export class CurrencyChangeRefused extends Error {}
 
 export const CURRENCY_RE = /^[A-Z]{3}$/;
+
+/** A booking carries an amount in its property's currency (so a currency change must not relabel it). */
+export function hasRecordedAmounts(r: any) {
+  if (r.financeMode === "inclusive-v1") return true;
+  return ["grossAmount", "revenue", "airbnbPayout", "cohostPayout", "channelFees", "cleaningFee", "balanceDue", "ownerAmount", "managementAmount", "channelAmount"]
+    .some(k => r[k] != null && r[k] !== "" && Number(r[k]) !== 0);
+}
 
 export async function changePropertyCurrency(tx: any, propertyId: number, to: string, opts: { cleaningFeeGiven: boolean }) {
   if (!CURRENCY_RE.test(to)) throw new CurrencyChangeRefused("Currency must be a 3-letter code such as AED or ZAR");
@@ -38,8 +47,12 @@ export async function changePropertyCurrency(tx: any, propertyId: number, to: st
   if (payments.length) problems.push(`${payments.length} payment${payments.length === 1 ? "" : "s"} not linked to a booking: they have no currency of their own, so they would be relabelled ${to}`);
   if (problems.length) throw new CurrencyChangeRefused(`Currency not changed: ${problems.join("; ")}.`);
 
-  const kept = await tx.update(reservationsTable).set({ currency: from })
-    .where(and(eq(reservationsTable.propertyId, propertyId), isNull(reservationsTable.currency))).returning({ id: reservationsTable.id });
+  const unstamped = await tx.select().from(reservationsTable).where(and(eq(reservationsTable.propertyId, propertyId), isNull(reservationsTable.currency)));
+  const paid = unstamped.length ? new Set((await tx.select({ id: paymentsTable.reservationId }).from(paymentsTable)
+    .where(inArray(paymentsTable.reservationId, unstamped.map((r: any) => r.id)))).map((p: any) => p.id)) : new Set();
+  const keepIds = unstamped.filter((r: any) => paid.has(r.id) || hasRecordedAmounts(r)).map((r: any) => r.id);
+  const kept = keepIds.length ? await tx.update(reservationsTable).set({ currency: from })
+    .where(inArray(reservationsTable.id, keepIds)).returning({ id: reservationsTable.id }) : [];
   let cleaningCostCurrencyKept = false;
   if (settings && settings.cleaningCostOverride != null && !settings.cleaningCostCurrency) {
     await tx.update(propertySettingsTable).set({ cleaningCostCurrency: from }).where(eq(propertySettingsTable.propertyId, propertyId));
@@ -47,5 +60,5 @@ export async function changePropertyCurrency(tx: any, propertyId: number, to: st
   }
   await tx.update(propertiesTable).set({ currency: to }).where(eq(propertiesTable.id, propertyId));
   if (settings) await tx.update(propertySettingsTable).set({ currency: to, updatedAt: new Date() }).where(eq(propertySettingsTable.propertyId, propertyId));
-  return { changed: true as const, from, to, bookingsKeptInOldCurrency: kept.length, cleaningCostCurrencyKept };
+  return { changed: true as const, from, to, bookingsKeptInOldCurrency: kept.length, bookingsFollowingNewCurrency: unstamped.length - kept.length, cleaningCostCurrencyKept };
 }

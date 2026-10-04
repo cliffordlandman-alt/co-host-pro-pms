@@ -315,14 +315,16 @@ async function buildBreakdownPreview(csv: unknown, propertyFor: Record<string, u
     const loaded = await settingsOf(target!.id);
     const settings = loaded?.settings;
     const basis: "gross" | "net-payout" | "airbnb-payout" = settings?.feeBasis === "net-payout" || settings?.feeBasis === "airbnb-payout" ? settings.feeBasis : "gross";
-    const currency = r ? bookingCurrency(r, { currency: loaded?.property.currency || settings?.currency }) : (target!.currency || settings?.currency || "AED");
+    const propertyCurrency = { currency: loaded?.property.currency || settings?.currency };
+    let currency = r ? bookingCurrency(r, propertyCurrency) : (target!.currency || settings?.currency || "AED");
     if (!r) {
       if (!row.checkIn || !row.checkOut) blocking.push("No stay dates in the file");
       else {
         // The same stay may already be on the calendar from the Airbnb feed (or entered by hand): link it.
         const [twin] = await db.select().from(reservationsTable).where(and(eq(reservationsTable.propertyId, target!.id), eq(reservationsTable.platform, "airbnb"), eq(reservationsTable.checkIn, row.checkIn), eq(reservationsTable.checkOut, row.checkOut), ne(reservationsTable.status, "cancelled"),
           or(isNull(reservationsTable.externalId), sql`${reservationsTable.externalId} like 'ical:airbnb:%'`)));
-        if (twin) { r = twin; action = "link"; notes.push(`Links the stay already on the calendar (booking #${twin.id}) to ${row.code}`); }
+        // A linked booking keeps its own currency (stamped when the property's currency changed): compare with that.
+        if (twin) { r = twin; action = "link"; currency = bookingCurrency(twin, propertyCurrency); notes.push(`Links the stay already on the calendar (booking #${twin.id}) to ${row.code}`); }
         else {
           const clash = await db.select({ id: reservationsTable.id, guestName: reservationsTable.guestName, checkIn: reservationsTable.checkIn, checkOut: reservationsTable.checkOut, externalId: reservationsTable.externalId }).from(reservationsTable)
             .where(and(eq(reservationsTable.propertyId, target!.id), ne(reservationsTable.status, "cancelled"), lt(reservationsTable.checkIn, row.checkOut), gt(reservationsTable.checkOut, row.checkIn)));
@@ -391,9 +393,13 @@ async function buildBreakdownPreview(csv: unknown, propertyFor: Record<string, u
     // Already applied: nothing to change (re-running the same file is safe).
     let upToDate = false;
     if (r && action === "update") {
-      if (verify && r.financeMode === "inclusive-v1" && (r.feeBasis ?? "gross") === basis && eqMoney(r.grossAmount, body.grossAmount) && (body.channelFees === undefined || eqMoney(r.channelFees, body.channelFees))
-        && (body.airbnbPayout === undefined || eqMoney(r.airbnbPayout, body.airbnbPayout)) && (body.cohostPayout === undefined || eqMoney(r.cohostPayout, body.cohostPayout)) && (body.cleaningFee === undefined || eqMoney(r.cleaningFee, body.cleaningFee))) upToDate = true;
+      const sameFigures = verify && r.financeMode === "inclusive-v1" && (r.feeBasis ?? "gross") === basis && eqMoney(r.grossAmount, body.grossAmount) && (body.channelFees === undefined || eqMoney(r.channelFees, body.channelFees))
+        && (body.airbnbPayout === undefined || eqMoney(r.airbnbPayout, body.airbnbPayout)) && (body.cohostPayout === undefined || eqMoney(r.cohostPayout, body.cohostPayout)) && (body.cleaningFee === undefined || eqMoney(r.cleaningFee, body.cleaningFee));
+      // Saved before Airbnb's actual fees were used on the standard basis (channel line was the estimated %): same figures, recalculated.
+      const estimatedFees = sameFigures && basis === "gross" && body.channelFees != null && !eqMoney(r.channelAmount, body.channelFees);
+      if (sameFigures && !estimatedFees) upToDate = true;
       if (upToDate) action = "none";
+      else if (estimatedFees) notes.push(`Same figures; recalculated with Airbnb's actual fees ${fmtMoney(body.channelFees, currency)} instead of the estimated channel % (${fmtMoney(r.channelAmount, currency)})`);
       else if (r.financeMode === "inclusive-v1") review.push(basis === "airbnb-payout" ? "Booking is already verified; applying replaces its Airbnb figures" : "Booking is already verified; applying replaces its guest total");
     }
     let preview: any = null;

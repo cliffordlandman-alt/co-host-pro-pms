@@ -95,7 +95,7 @@ try {
   assert.equal(by.HMNOTHERE1.matched, false); assert.equal(by.HMNOTHERE1.needsProperty, true, 'no booking and no property named like the listing: choose one');
   assert.equal((await api(`/reservations/${clean1.id}`)).financeMode !== 'inclusive-v1', true, 'preview saves nothing');
   // Apply = the normal booking edit (what the screen sends for a ticked row).
-  const apply = (row, extra = {}) => api(`/reservations/${row.reservationId}`, 'PATCH', { grossAmount: row.guestTotal, financeMode: 'inclusive-v1', ...(row.cleaningFee != null ? { cleaningFee: row.cleaningFee } : {}), ...(row.cohost.amount != null ? { cohostPayout: row.cohost.amount } : {}), ...extra });
+  const apply = (row, extra = {}) => api(`/reservations/${row.reservationId}`, 'PATCH', { grossAmount: row.guestTotal, financeMode: 'inclusive-v1', ...(row.cleaningFee != null ? { cleaningFee: row.cleaningFee } : {}), ...(row.cohost.amount != null ? { cohostPayout: row.cohost.amount } : {}), ...(row.channelFees != null ? { channelFees: row.channelFees } : {}), ...extra });
   const s1 = await apply(by.HMCLEAN001);
   for (const k of ['grossAmount', 'vatAmount', 'channelAmount', 'managementAmount', 'ownerAmount', 'cleaningFee']) assert.equal(Number(s1[k]), by.HMCLEAN001.preview[k], `preview = save: ${k}`);
   assert.equal(s1.cohostPayout, 1302.35); assert.equal(s1.financeMode, 'inclusive-v1');
@@ -118,7 +118,9 @@ try {
   assert.match(pv2.rows.find(r => r.code === 'HMCLEAN001').blocking.join(), /already sent or paid/);
   await api(`/reservations/${clean1.id}`, 'PATCH', { cohostPayout: '1000.00' }, 400);
   // A verified booking needs review before its guest total is replaced.
-  assert.match(pv2.rows.find(r => r.code === 'HMCLEAN002').review.join(), /already verified/);
+  assert.equal(pv2.rows.find(r => r.code === 'HMCLEAN002').action, 'none', 're-running the same file changes nothing');
+  const pv3 = await api('/reservations/airbnb-breakdowns/preview', 'POST', { csv: csv.replace(/1176\.23/g, '1180.00') });
+  assert.match(pv3.rows.find(r => r.code === 'HMCLEAN002').review.join(), /already verified/);
   console.log('PASS: Airbnb breakdowns — blanks stay blank, co-host payout parsed from notes (or entered on review), payout mismatches and missing amounts need one-by-one review, applying is the normal booking edit (audit, month lock), co-host payout not deducted');
 } catch (e) { console.error(e); console.error(logs.slice(-2500)); process.exitCode = 1; }
 finally { child.kill('SIGTERM'); }
