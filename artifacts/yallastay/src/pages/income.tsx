@@ -3,6 +3,7 @@ import { Link, useLocation, useSearch } from "wouter";
 import { AlertTriangle, ChevronRight, Info } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IncomePeriodControls } from "@/components/IncomePeriodControls";
+import { AirbnbSplitSummary } from "@/components/AirbnbSplit";
 import { estimateText, hasFigures, money, periodFromSearch, periodLabel, periodQuery, useIncome, type IncomeProperty, type IncomeRow, type IncomeTotal, type Period } from "@/lib/income";
 
 // Income per property: every property for a month (default: this month) or a calendar year, each in its own
@@ -127,6 +128,7 @@ export default function IncomePage() {
       </header>
       {error ? <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{(error as Error).message}</p> : isLoading || !data ? <div className="space-y-3"><Skeleton className="h-32 rounded-2xl" /><Skeleton className="h-64 rounded-2xl" /></div> : <>
         <div className="grid gap-3 xl:grid-cols-2">{data.totals.length ? data.totals.map(t => <TotalsCard key={t.currency} t={t} />) : <p className="text-sm text-muted-foreground">No bookings checked out in this period.</p>}</div>
+        <AirbnbSplitSummary splits={(data as any).airbnbSplit ?? []} totals={(data as any).airbnbSplitTotals ?? []} hrefOf={id => `/income/${id}?${periodQuery(period)}`} />
         {data.companyOther.length > 0 && <p className="text-xs text-muted-foreground flex gap-1.5"><Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />Company income and costs not tied to a property (not in the rows below): {data.companyOther.map(c => `${money(c.net, c.currency)} net`).join(" · ")}. See the company statement in Reports.</p>}
         {props.length > 0 && <>
           <div className="lg:hidden space-y-3">{props.map(p => <PropertyCard key={p.propertyId} p={p} href={hrefOf(p)} />)}</div>

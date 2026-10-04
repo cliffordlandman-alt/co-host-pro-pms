@@ -3,6 +3,7 @@ import { Link, useLocation, useParams, useSearch } from "wouter";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IncomePeriodControls } from "@/components/IncomePeriodControls";
+import { AirbnbSplitDetail } from "@/components/AirbnbSplit";
 import { EstimateChip, statementChip } from "@/pages/income";
 import { platformLabel } from "@/lib/channel-colors";
 import { estimateText, hasFigures, money, monthLabel, periodFromSearch, periodLabel, periodQuery, useIncomeDetail, type IncomeRow, type Period } from "@/lib/income";
@@ -85,6 +86,7 @@ export default function IncomePropertyPage() {
         {!s.rows.some(hasFigures) && <p className="text-sm text-muted-foreground">No verified income in this period.</p>}
         {s.estimate && <p className="text-sm text-amber-900">{s.unverified.count} booking{s.unverified.count === 1 ? "" : "s"} not verified{s.unverified.estimates.length ? `: Airbnb host payouts ${estimateText(s.unverified)}` : ""}. Estimates only; they aren't counted until verified.</p>}
 
+        <AirbnbSplitDetail split={data.airbnbSplit} />
         {data.months && <section className="space-y-2"><h2 className="font-semibold text-lg">Month by month</h2>
           {data.months.map((m: any) => { const rows = m.rows.filter(hasFigures); return (
             <Link key={m.month} href={`/income/${id}?month=${m.month}`}><div data-testid="income-month" className="flex items-center gap-3 rounded-xl border bg-card p-3 cursor-pointer hover:bg-muted/40">

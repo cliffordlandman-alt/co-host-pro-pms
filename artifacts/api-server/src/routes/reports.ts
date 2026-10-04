@@ -3,8 +3,10 @@ import { bookingCurrency } from "../../../../lib/booking-currency.mjs";
 import { dubaiToday, addDays, addMonths } from "../lib/dubai-date";
 import { earningsDate } from "../../../../lib/company-statement.mjs";
 import { Router } from "express";
-import { db, reservationsTable, propertiesTable, maintenanceTicketsTable, airbnbEarningsTable, accountingTransactionsTable, propertySettingsTable, ownerStatementsTable, ownersTable } from "@workspace/db";
-import { incomeReport, incomePropertyDetail } from "../../../../lib/income-report.mjs";
+import { db, reservationsTable, propertiesTable, maintenanceTicketsTable, airbnbEarningsTable, accountingTransactionsTable, propertySettingsTable, ownerStatementsTable, ownersTable, airbnbPayoutLinesTable } from "@workspace/db";
+import { incomeReport, incomePropertyDetail, periodOf } from "../../../../lib/income-report.mjs";
+import { airbnbSplit, addSplitTotals } from "../../../../lib/airbnb-split.mjs";
+import { reconcilePayouts } from "../../../../lib/payout-recon.mjs";
 import { asyncHandler } from "../lib/asyncHandler";
 import { eq, ne, and, gte, lte, sql } from "drizzle-orm";
 
@@ -92,18 +94,37 @@ async function incomeData() {
     db.select().from(accountingTransactionsTable), db.select().from(maintenanceTicketsTable), db.select().from(airbnbEarningsTable), db.select().from(ownerStatementsTable), db.select({ id: ownersTable.id, name: ownersTable.name }).from(ownersTable)]);
   return { properties: properties.sort((a, b) => a.name.localeCompare(b.name)), settings, bookings, transactions, tickets, earnings, statements, owners };
 }
+/** Full Airbnb earnings (total, co-host payout to the owner, company's share) for co-host-payout properties. */
+async function splitsFor(data: Awaited<ReturnType<typeof incomeData>>, period: { month?: string; year?: string }, ids: number[]) {
+  const lines = (await db.select().from(airbnbPayoutLinesTable)).map(l => ({ ...l, amount: Number(l.amount), cohostPayout: l.cohostPayout == null ? null : Number(l.cohostPayout) }));
+  const p = periodOf(period);
+  // Which account each payout reached (from the transfer it was tied to in the payout check).
+  const paidTo: Record<string, string> = {};
+  if (lines.length) for (const r of reconcilePayouts({ lines, bookings: data.bookings, properties: data.properties, today: dubaiToday() }).rows) if (r.transfer?.destination) paidTo[r.code] = r.transfer.destination;
+  const out = new Map<number, ReturnType<typeof airbnbSplit>>();
+  for (const property of data.properties.filter(x => ids.includes(x.id))) {
+    const split = airbnbSplit({ property, rules: data.settings.find(x => x.propertyId === property.id), bookings: data.bookings, lines, period: { start: p.start, end: p.end }, paidTo });
+    if (split) out.set(property.id, split);
+  }
+  return out;
+}
 router.get("/reports/income", asyncHandler(async (req, res) => {
   const period = incomePeriod(req.query);
   if ("error" in period) return res.status(400).json(period);
-  res.json(incomeReport(await incomeData(), period));
+  const data = await incomeData();
+  const report = incomeReport(data, period);
+  const splits = await splitsFor(data, period, report.properties.map((x: any) => x.propertyId));
+  res.json({ ...report, airbnbSplit: report.properties.filter((x: any) => splits.has(x.propertyId)).map((x: any) => ({ propertyId: x.propertyId, name: x.name, ...splits.get(x.propertyId)!, rows: undefined })),
+    airbnbSplitTotals: addSplitTotals([...splits.values()]) });
 }));
 router.get("/reports/income/:propertyId", asyncHandler(async (req, res) => {
   const period = incomePeriod(req.query);
   if ("error" in period) return res.status(400).json(period);
   const id = Number(req.params.propertyId);
-  const detail = Number.isInteger(id) && id > 0 ? incomePropertyDetail(await incomeData(), id, period) : null;
+  const data = await incomeData();
+  const detail = Number.isInteger(id) && id > 0 ? incomePropertyDetail(data, id, period) : null;
   if (!detail) return res.status(404).json({ error: "Property not found" });
-  res.json(detail);
+  res.json({ ...detail, airbnbSplit: (await splitsFor(data, period, [id])).get(id) ?? null });
 }));
 
 export default router;
