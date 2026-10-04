@@ -28,7 +28,9 @@ for (const f of files) {
     assert.ok(!/import=1|Import from Airbnb|BulkImportWizard|Import a New Listing|Paste an Airbnb URL/.test(src), `${path.relative(root, f)} still offers the Airbnb link import`);
   }
 }
-await assert.rejects(stat(path.join(root, 'artifacts/yallastay/src/components/properties/BulkImportWizard.tsx')), 'the import wizard is gone');
+// The wizard file is an empty module (the Mac deploy can't delete files, so it overwrites the old one): no code left.
+{ const wiz = await readFile(path.join(root, 'artifacts/yallastay/src/components/properties/BulkImportWizard.tsx'), 'utf8').catch(() => '');
+  assert.equal(wiz.replace(/\/\/.*$/gm, '').trim(), wiz ? 'export {};' : '', 'the import wizard is gone (empty module at most)'); }
 
 // ── API ──
 const data = await mkdtemp(path.join(tmpdir(), 'yallapms-abnboff-'));
