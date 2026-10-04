@@ -1,5 +1,6 @@
 import { ContactEditor } from "@/components/ContactEditor";
 import { SuggestedOwners } from "@/components/SuggestedOwners";
+import { AutoStatementsSettings } from "@/components/AutoStatementsSettings";
 import { apiFetch } from "@/lib/api-fetch";
 import { useState, useEffect } from "react";
 import { useGetOwners, useGetProperties } from "@workspace/api-client-react";
@@ -262,6 +263,8 @@ export default function Owners() {
           </TableBody>
         </Table>
       </div>
+
+      <AutoStatementsSettings />
 
       <ContactEditor kind="owners" open={editorOpen} onOpenChange={setEditorOpen} record={editingOwner}/>
       <ResetAccessDialog

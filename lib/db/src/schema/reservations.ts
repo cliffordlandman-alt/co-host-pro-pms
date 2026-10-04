@@ -29,10 +29,13 @@ export const reservationsTable = pgTable("reservations", {
   cohostPayout: numeric("cohost_payout", { precision: 10, scale: 2 }),
   /** The channel's actual fees for this booking (guest service fee + host service fee, from the booking breakdown). */
   channelFees: numeric("channel_fees", { precision: 10, scale: 2 }),
+  /** The exact amount Airbnb paid out for this booking (its host payout), from Airbnb's files; null = not known.
+   *  On the "airbnb-payout" fee basis the booking is calculated from it (the guest-paid total isn't needed). */
+  airbnbPayout: numeric("airbnb_payout", { precision: 10, scale: 2 }),
   /** Currency of this booking's amounts; null = the property's currency. Stamped with the old currency when the
    *  property's currency is changed (lib/property-currency.ts), so existing amounts are never relabelled. */
   currency: text("currency"),
-  /** Fee basis the booking was calculated on: "net-payout", or null for the standard calculation. Set by the server. */
+  /** Fee basis the booking was calculated on: "net-payout", "airbnb-payout", or null for the standard calculation. Set by the server. */
   feeBasis: text("fee_basis"),
   managementPercent: numeric("management_percent", { precision: 5, scale: 2 }),
   managementAmount: numeric("management_amount", { precision: 10, scale: 2 }),

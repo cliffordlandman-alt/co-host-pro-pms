@@ -79,6 +79,37 @@ export function payoutComparison(filePayout, storedPayout) {
   return diff === 0 ? 'match' : diff <= PAYOUT_ROUNDING * 100 ? 'rounding' : 'differs';
 }
 
+const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v) && new Date(v + 'T00:00:00Z').toISOString().slice(0, 10) === v;
+const num = v => (Math.round(Number(String(v).replace(/,/g, '')) * 100) / 100).toFixed(2);
+const tidyText = v => String(v ?? '').replace(/\u2024/g, '.').replace(/\s+/g, ' ').trim();
+
+/**
+ * How Airbnb paid a booking, from the row's payout_date (several dates joined by ";" when Airbnb paid it in parts)
+ * and its notes: per part the date, the amount in the booking's currency, the account and, for a transfer sent in
+ * another currency (e.g. a USD PayPal payout), that amount for reference. Amounts are kept only when the parts add
+ * up exactly to the host payout; otherwise only the dates are kept. Never converts or adds currencies.
+ */
+export function payoutParts({ payoutDate, notes, hostPayout, currency }) {
+  const dates = String(payoutDate ?? '').split(';').map(d => d.trim()).filter(Boolean);
+  const text = tidyText(notes);
+  const paidVia = (text.match(/Paid via '(?:Transfer to )?([^']+)'/i) || [])[1] || null;
+  const sent = new Map();
+  for (const m of text.matchAll(/Payout on (\d{4}-\d{2}-\d{2}) was sent as ([\d,]+\.\d{2}) ([A-Z]{3}) \((?:Transfer to )?(.+?\([A-Z]{3}\)), ref ([A-Za-z0-9]+)\) for reservation amount ([\d,]+\.\d{2}) ([A-Z]{3})/g))
+    sent.set(m[1], { sentAmount: num(m[2]), sentCurrency: m[3], paidTo: m[4], reference: m[5], amount: m[7] === currency ? num(m[6]) : null });
+  const split = new Map();
+  const seg = text.split(/split payouts\), summed:/i)[1];
+  if (seg) for (const m of seg.split(/\. Export:/)[0].matchAll(/(\d{4}-\d{2}-\d{2}): amount ([\d,]+\.\d{2})/g)) split.set(m[1], num(m[2]));
+  const parts = dates.map((d, i) => {
+    const t = sent.get(d);
+    const amount = split.get(d) ?? t?.amount ?? (dates.length === 1 ? hostPayout : null);
+    return { part: i + 1, paidOn: isDate(d) ? d : null, amount: amount ?? null, currency, paidTo: t?.paidTo ?? paidVia, sentAmount: t?.sentAmount ?? null, sentCurrency: t?.sentCurrency ?? null, reference: t?.reference ?? null };
+  });
+  const sum = parts.reduce((n, p) => n + (p.amount == null ? NaN : Math.round(Number(p.amount) * 100)), 0);
+  const adds = hostPayout != null && Number.isFinite(sum) && sum === Math.round(Number(hostPayout) * 100);
+  if (!adds) for (const p of parts) p.amount = null;
+  return { parts, amountsKnown: adds, badDates: dates.filter(d => !isDate(d)) };
+}
+
 export function parseBreakdowns(text) {
   const rows = parseCsv(String(text ?? ''));
   if (!rows.length) throw new Error('The file has no rows');
@@ -101,7 +132,17 @@ export function parseBreakdowns(text) {
     const channelFees = channelFeesOf(guestServiceFee, hostServiceFee);
     if (channelFees != null && Number(channelFees) < 0) errors.push('Channel fees cannot be negative');
     const cohost = cohostFor(r, errors);
-    return { line: i + 2, code, listing: r.listing_name ?? null, guestName: r.guest_name ?? null, checkIn: date('check_in'), checkOut: date('checkout'), currency,
+    // Airbnb's host figures: accommodation + cleaning fee = gross earnings (what the host side shows before Airbnb's
+    // host service fee). Null unless both are given.
+    const accommodationTotal = money(r.accommodation_total, 'Accommodation total', errors);
+    const hostGross = accommodationTotal != null && cleaningFee != null ? ((Math.round(Number(accommodationTotal) * 100) + Math.round(Number(cleaningFee) * 100)) / 100).toFixed(2) : null;
+    const source = String(r.source ?? '').trim() || null;
+    // A row taken from a co-host payout line: its host_payout is the co-host's share, not what Airbnb paid the host.
+    const cohostLineOnly = /co-?host payout line/i.test(source || '');
+    const payout = payoutParts({ payoutDate: r.payout_date, notes: r.notes, hostPayout, currency });
+    if (payout.badDates.length) errors.push(`payout_date is not a date ("${payout.badDates.join('; ')}")`);
+    return { line: i + 2, code, listing: r.listing_name ?? null, guestName: String(r.guest_name ?? '').trim() || null, checkIn: date('check_in'), checkOut: date('checkout'), currency,
+      accommodationTotal, hostGross, source, cohostLineOnly, payoutParts: payout.parts, payoutAmountsKnown: payout.amountsKnown,
       guestTotal, cleaningFee, hostPayout, guestServiceFee, hostServiceFee, channelFees,
       otherFees: String(r.other_fees ?? '').trim() || null, notes: String(r.notes ?? '').trim() || null, cohost,
       net: netPayoutCheck({ guestTotal, channelFees, hostPayout, cohostAmount: cohost.amount }), errors };

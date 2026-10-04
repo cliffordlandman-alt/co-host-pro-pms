@@ -24,6 +24,7 @@ import Payments from "@/pages/payments";
 import Reports from "@/pages/reports";
 import IncomePage from "@/pages/income";
 import IncomePropertyPage from "@/pages/income-property";
+import OwnerHistoryPage from "@/pages/owner-history";
 import CalendarSyncPage from "@/pages/calendar-sync";
 import CompliancePage from "@/pages/compliance";
 import PayoutCheckPage from "@/pages/payout-check";
@@ -161,6 +162,7 @@ function Router() {
               <Route path="/inbox" component={Inbox} />
               <Route path="/airbnb-import" component={AirbnbImport} />
               <Route path="/accounting" component={Accounting} />
+              <Route path="/owner-history" component={OwnerHistoryPage} />
               <Route path="/verify-bookings" component={VerifyBookings} />
               <Route path="/platforms" component={Platforms} />
               <Route path="/automations" component={Automations} />

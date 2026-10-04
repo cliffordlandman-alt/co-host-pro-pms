@@ -1,5 +1,5 @@
 import { CommandSearch } from "@/components/today/CommandSearch";
-import { CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
+import { CheckCircle2, RefreshCw, ShieldCheck, History } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { Link, useLocation, useSearch } from "wouter";
 import logoPath from "../../assets/yallastay-logo.png";
@@ -38,6 +38,7 @@ const navGroups: { label: string; collapsible?: boolean; items: NavItem[] }[] = 
     items: [
       { href: "/income",                    icon: PieChart,     label: "Income per property" },
       { href: "/accounting",                icon: FileBarChart, label: "Owner statements" },
+      { href: "/owner-history",             icon: History,      label: "Statement history" },
       { href: "/accounting?tab=transactions", icon: Receipt,    label: "Income & expenses" },
       { href: "/payments",                  icon: DollarSign,   label: "Payments" },
       { href: "/payout-check",              icon: Scale,          label: "Airbnb payout check", role: ["admin", "super_admin", "manager", "accountant"] },

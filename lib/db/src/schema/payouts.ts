@@ -55,3 +55,23 @@ export const airbnbPayoutLinesTable = pgTable("airbnb_payout_lines", {
   fileName: text("file_name"),
   importedAt: timestamp("imported_at").defaultNow().notNull(),
 });
+
+/** How Airbnb paid one booking: one row per payout part (date, account, amount in the booking's currency). A
+ *  transfer Airbnb sent in another currency (e.g. a USD PayPal payout) keeps that amount in sentAmount/sentCurrency
+ *  for reference only; it is never added to the booking's currency. Written by the Airbnb breakdowns import. */
+export const airbnbBookingPayoutsTable = pgTable("airbnb_booking_payouts", {
+  id: serial("id").primaryKey(),
+  reservationId: integer("reservation_id").notNull(),
+  confirmationCode: text("confirmation_code").notNull(),
+  part: integer("part").notNull(),
+  paidOn: text("paid_on"),
+  /** In the booking's currency; null when the file gives only the date of this part. */
+  amount: numeric("amount", { precision: 12, scale: 2 }),
+  currency: text("currency").notNull(),
+  paidTo: text("paid_to"),
+  sentAmount: numeric("sent_amount", { precision: 12, scale: 2 }),
+  sentCurrency: text("sent_currency"),
+  reference: text("reference"),
+  fileName: text("file_name"),
+  importedAt: timestamp("imported_at").defaultNow().notNull(),
+});

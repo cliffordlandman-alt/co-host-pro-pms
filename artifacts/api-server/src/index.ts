@@ -1,3 +1,4 @@
+import { startAutoStatements } from "./lib/auto-statements";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startSyncScheduler } from "./lib/sync-scheduler";
@@ -50,5 +51,7 @@ initializeDatabase().then(runMigrations).then(() => {
     // SYNC_SCHEDULER=off: no scheduled channel (iCal) sync, for restore tests and throwaway copies of real data.
     if (process.env.SYNC_SCHEDULER === "off") logger.info("Scheduled channel sync is off (SYNC_SCHEDULER=off)");
     else startSyncScheduler();
+    // Monthly automatic owner statements: only owners with the setting on (off by default); AUTO_STATEMENTS=off stops the check.
+    if (process.env.AUTO_STATEMENTS !== "off" && process.env.SYNC_SCHEDULER !== "off") startAutoStatements();
   });
 });

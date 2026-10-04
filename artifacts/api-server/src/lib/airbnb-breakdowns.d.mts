@@ -1,4 +1,7 @@
+export type PayoutPart = { part: number; paidOn: string | null; amount: string | null; currency: string | null; paidTo: string | null; sentAmount: string | null; sentCurrency: string | null; reference: string | null };
+export function payoutParts(x: { payoutDate: unknown; notes: unknown; hostPayout: string | null; currency: string | null }): { parts: PayoutPart[]; amountsKnown: boolean; badDates: string[] };
 export type BreakdownRow = { line: number; code: string; listing: string | null; guestName: string | null; checkIn: string | null; checkOut: string | null; currency: string | null;
+  accommodationTotal: string | null; hostGross: string | null; source: string | null; cohostLineOnly: boolean; payoutParts: PayoutPart[]; payoutAmountsKnown: boolean;
   guestTotal: string | null; cleaningFee: string | null; hostPayout: string | null; guestServiceFee: string | null; hostServiceFee: string | null; channelFees: string | null;
   otherFees: string | null; notes: string | null; cohost: Cohost; net: NetCheck; errors: string[] };
 export type Cohost = { mentioned: boolean; amount: string | null; suggested: string | null; source: 'column' | 'notes' | null; to: string | null };

@@ -105,7 +105,7 @@ try {
   assert.equal(row('HMGREY0001').bulkOk, true, 'verified co-host column: clean even though the notes have no amount');
   assert.equal(row('HMGREY0001').cohost.source, 'column'); assert.equal(row('HMGREY0001').channelFees, '444.31');
   assert.equal(row('HMGREY0001').preview.feeBasis, 'net-payout'); assert.equal(row('HMGREY0001').preview.channelAmount, 444.31); assert.equal(row('HMGREY0001').preview.managementAmount, 342.85);
-  assert.ok(row('HMNOFEES01').blocking.some(m => /No Airbnb fees/.test(m)), 'net basis without fees is blocked');
+  assert.ok(row('HMNOFEES01').blocking.some(m => /no Airbnb fees/i.test(m)), 'net basis without fees is blocked');
   assert.ok(row('HMNETBAD01').review.some(m => /doesn't equal the co-host \+ host payout/.test(m)));
   assert.ok(!row('HMSTD00002').review.some(m => /doesn't equal/.test(m)), 'the net cross-check never flags standard-basis properties (they import as before)');
   assert.equal(row('HMSTD00001').bulkOk, true); assert.equal(row('HMSTD00001').preview.feeBasis, 'gross'); assert.equal(row('HMSTD00001').preview.channelAmount, 30, 'standard property keeps its % setting');

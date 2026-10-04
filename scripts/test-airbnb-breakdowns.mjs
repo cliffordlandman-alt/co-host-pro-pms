@@ -79,7 +79,7 @@ try {
   await api('/reservations/airbnb-breakdowns/preview', 'POST', { csv: 'nope' }, 400);
   const pv = await api('/reservations/airbnb-breakdowns/preview', 'POST', { csv });
   const by = Object.fromEntries(pv.rows.map(r => [r.code, r]));
-  assert.deepEqual(pv.summary, { rows: 10, matched: 9, unmatched: 1, clean: 3, review: 3, blocked: 3 });
+  assert.deepEqual(pv.summary, { rows: 10, matched: 9, unmatched: 0, toCreate: 0, toLink: 0, needsProperty: 1, upToDate: 0, clean: 3, review: 3, blocked: 3 });
   assert.equal(by.HMCLEAN001.bulkOk, true); assert.equal(by.HMCLEAN001.cohost.amount, '1302.35'); assert.equal(by.HMCLEAN001.storedPayout, 229.82);
   assert.equal(by.HMCLEAN002.bulkOk, true); assert.equal(by.HMCLEAN002.preview.cleaningFee, 500);
   assert.equal(by.HMMISMAT01.bulkOk, true, '0.01 apart is rounding: clean'); assert.equal(by.HMMISMAT01.payoutCheck, 'rounding');
@@ -92,7 +92,7 @@ try {
   assert.match(by.HMBLANK001.blocking.join(), /blank is not 0/);
   assert.match(by.HMCURR0001.blocking.join(), /currency AED differs/);
   assert.match(by.HMCANCEL01.blocking.join(), /cancelled/);
-  assert.equal(by.HMNOTHERE1.matched, false);
+  assert.equal(by.HMNOTHERE1.matched, false); assert.equal(by.HMNOTHERE1.needsProperty, true, 'no booking and no property named like the listing: choose one');
   assert.equal((await api(`/reservations/${clean1.id}`)).financeMode !== 'inclusive-v1', true, 'preview saves nothing');
   // Apply = the normal booking edit (what the screen sends for a ticked row).
   const apply = (row, extra = {}) => api(`/reservations/${row.reservationId}`, 'PATCH', { grossAmount: row.guestTotal, financeMode: 'inclusive-v1', ...(row.cleaningFee != null ? { cleaningFee: row.cleaningFee } : {}), ...(row.cohost.amount != null ? { cohostPayout: row.cohost.amount } : {}), ...extra });

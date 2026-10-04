@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, real, timestamp, json } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, real, timestamp, json, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -8,6 +8,10 @@ export const ownersTable = pgTable("owners", {
   email: text("email"),
   phone: text("phone"),
   address: text("address"),
+  /** Monthly automatic owner statements (generated on the 6th for the previous month). Off by default. */
+  autoStatements: boolean("auto_statements").notNull().default(false),
+  /** Email the automatic statement once approved months exist; needs an email and OUTBOUND_DELIVERY=on. Off by default. */
+  autoSend: boolean("auto_send").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -19,9 +19,9 @@ export function statementHtml(stmt: any, ownerLines: any[], company = "YallaStay
   const fl = feeLabels(stmt);
   const row = (label: string, value: number, minus = true, cls = "") => `<tr class="${cls}"><td>${esc(label)}</td><td class="r">${minus ? "− " : ""}${esc(money(value, c))}</td></tr>`;
   const lines = [
-    row("Gross revenue (guest totals)", stmt.grossRevenue, false),
+    row(fl.gross, stmt.grossRevenue, false),
     stmt.platformFees > 0 ? row(fl.platform, stmt.platformFees) : "",
-    fl.netBasis ? `<tr class="share"><td>Net payout (guest total − channel fees)</td><td class="r">${esc(money(stmt.grossRevenue - stmt.platformFees, c))}</td></tr>` : "",
+    fl.net ? `<tr class="share"><td>${esc(fl.net)}</td><td class="r">${esc(money(stmt.grossRevenue - stmt.platformFees, c))}</td></tr>` : "",
     row(fl.management, stmt.managementFee),
     stmt.cleaningCosts > 0 ? row("Cleaning", stmt.cleaningCosts) : "",
     stmt.maintenanceCosts > 0 ? row("Maintenance", stmt.maintenanceCosts) : "",
@@ -30,11 +30,14 @@ export function statementHtml(stmt: any, ownerLines: any[], company = "YallaStay
     stmt.tourismFee > 0 ? row("Tourism fee", stmt.tourismFee) : "",
     stmt.vatAmount > 0 ? row("VAT", stmt.vatAmount) : "",
     bal.hasCohost ? `<tr class="share"><td>Owner share</td><td class="r">${esc(money(bal.ownerShare, c))}</td></tr>` : "",
-    bal.hasCohost ? row("Already paid to owner by Airbnb (co-host payout)", bal.paidByAirbnb) : "",
-    bal.settled ? `<tr class="total"><td>${esc(bal.label)}</td><td class="r">Nothing owed</td></tr><tr class="sub"><td>Rounding difference, not paid either way</td><td class="r">${esc(money(bal.amount, c))}</td></tr>`
+    bal.hasCohost ? row(fl.paidByAirbnb, bal.paidByAirbnb) : "",
+    bal.settled ? `<tr class="total"><td>${esc(bal.label)}</td><td class="r">Nothing owed</td></tr>${bal.rounding ? `<tr class="sub"><td>Rounding difference, not paid either way</td><td class="r">${esc(money(bal.amount, c))}</td></tr>` : ""}`
       : `<tr class="total"><td>${esc(bal.label)}</td><td class="r">${esc(money(bal.amount, c))}</td></tr>`,
   ].join("");
-  const bookingRows = bookings.map(b => `<tr><td>${esc(b.guestName)}</td><td>${esc(b.checkIn)} → ${esc(b.checkOut)}</td><td>${esc(b.platform)}</td><td class="r">${esc(money(Number(b.grossAmount), c))}</td><td class="r">${esc(money(Number(b.ownerAmount), c))}</td>${bal.hasCohost ? `<td class="r">${b.cohostPayout == null ? "–" : esc(money(Number(b.cohostPayout), c))}</td>` : ""}</tr>`).join("");
+  // What Airbnb paid the owner per stay: the co-host payout, or the whole payout (with dates, account, a USD transfer's own amount).
+  const paidOf = (b: any) => b.paidToOwnerByAirbnb ? b.airbnbPayout : fl.wholePayout ? null : b.cohostPayout;
+  const paidInfo = (b: any) => (Array.isArray(b.payouts) ? b.payouts : []).map((p: any) => `${esc(p.paidOn ?? "")}${p.paidTo ? ` · ${esc(p.paidTo)}` : ""}${p.sentAmount != null ? ` · sent as ${esc(p.sentCurrency)} ${esc(Number(p.sentAmount).toFixed(2))}` : ""}`).join("<br>");
+  const bookingRows = bookings.map(b => `<tr><td>${esc(b.guestName)}${b.code ? `<div class="muted">${esc(b.code)}</div>` : ""}</td><td>${esc(b.checkIn)} → ${esc(b.checkOut)}</td><td>${esc(b.platform)}</td><td class="r">${esc(money(Number(b.grossAmount), c))}</td><td class="r">${esc(money(Number(b.ownerAmount), c))}</td>${bal.hasCohost ? `<td class="r">${paidOf(b) == null ? "–" : esc(money(Number(paidOf(b)), c))}${paidInfo(b) ? `<div class="muted" style="font-size:11px">${paidInfo(b)}</div>` : ""}</td>` : ""}</tr>`).join("");
   return `<!doctype html><html><head><meta charset="utf-8"><title>Owner statement · ${esc(stmt.propertyName)} · ${esc(monthLabel)}</title>
 <style>body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827;margin:32px;font-size:13px}h1{font-size:20px;margin:0}h2{font-size:14px;margin:24px 0 8px}
 .muted{color:#4b5563}table{width:100%;border-collapse:collapse}td,th{padding:6px 4px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}.r{text-align:right;white-space:nowrap}
@@ -43,8 +46,8 @@ tr.share td{font-weight:600;border-top:1px solid #9ca3af}tr.sub td{font-size:11p
 <div class="head"><div><h1>Owner statement</h1><div class="muted">${esc(company)}</div></div><div class="r"><strong>${esc(monthLabel)}</strong><div class="muted">Status: ${esc(stmt.status)}</div></div></div>
 <p><strong>Property:</strong> ${esc(stmt.propertyName)}<br><strong>Owner:</strong> ${esc(stmt.ownerName || "—")}<br><strong>Bookings:</strong> ${esc(stmt.bookingsCount)} · ${esc(stmt.nightsOccupied)} nights</p>
 <table>${lines}</table>
-${bookingRows ? `<h2>Bookings recognised in this month (by checkout date)</h2><table><thead><tr><th>Guest</th><th>Dates</th><th>Channel</th><th class="r">Guest total</th><th class="r">Owner share</th>${bal.hasCohost ? `<th class="r">Paid by Airbnb</th>` : ""}</tr></thead><tbody>${bookingRows}</tbody></table>` : ""}
-<p class="muted" style="margin-top:24px">Revenue is recognised in the checkout month. VAT and tourism fees are included in guest totals and shown as deductions.</p>
+${bookingRows ? `<h2>Bookings recognised in this month (by checkout date)</h2><table><thead><tr><th>Guest</th><th>Dates</th><th>Channel</th><th class="r">${fl.payoutBasis ? "Gross earnings" : "Guest total"}</th><th class="r">Owner share</th>${bal.hasCohost ? `<th class="r">Paid by Airbnb</th>` : ""}</tr></thead><tbody>${bookingRows}</tbody></table>` : ""}
+<p class="muted" style="margin-top:24px">${fl.payoutBasis ? "Revenue is recognised in the checkout month. Figures are Airbnb's host figures; Airbnb pays the payout directly to the owner. A payout sent in another currency (e.g. USD to PayPal) is shown for reference only and is not added to the totals." : "Revenue is recognised in the checkout month. VAT and tourism fees are included in guest totals and shown as deductions."}</p>
 </body></html>`;
 }
 

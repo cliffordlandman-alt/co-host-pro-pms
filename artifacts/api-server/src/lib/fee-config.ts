@@ -26,6 +26,7 @@ export function defaultFeeSettings(p: PropertyLike) {
     includeCleaning: true, includeMaintenance: true,
     feeBasis: "gross",
     cohostPaidToOwner: false,
+    payoutToOwner: false,
     currency: p.currency || "AED",
     cleaningCostOverride: null as string | null,
     // The cleaning-company rate card is for Dubai units; elsewhere the property starts with "no rate set".

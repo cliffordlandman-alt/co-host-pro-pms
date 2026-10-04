@@ -12,6 +12,9 @@ export type OwnerSuggestion = {
   /** Currency to set on these properties, pre-ticked (Clifford's decision, 3 Oct 2026). Applied through Fee Settings,
    *  so recorded amounts keep their currency (lib/property-currency.ts). */
   currencyOption?: { currency: string; label: string };
+  /** Airbnb pays the whole host payout to the owner and the fee is 0% (Clifford's decision, 4 Oct 2026): the property
+   *  is calculated from Airbnb's payout (fee basis "airbnb-payout") and statements show it as already paid by Airbnb. */
+  payoutOption?: { label: string; settings: { feeBasis: "airbnb-payout"; managementFeePercent: number; payoutToOwner: true; includeCleaning: boolean; cleaningFee: number } };
 };
 
 export const SUGGESTED_OWNERS: OwnerSuggestion[] = [
@@ -24,6 +27,12 @@ export const SUGGESTED_OWNERS: OwnerSuggestion[] = [
   { key: "bonnita", name: "Bonnita", phone: "+27 83 981 2633", note: "Clifford's mother.",
     properties: [{ label: "Garden Retreat", expectedCurrency: "ZAR" }], cohostOption: false,
     currencyOption: { currency: "ZAR", label: "Set Garden Retreat currency to ZAR" } },
+  // Lakeside 3BR (Clifford, 4 Oct 2026): 0% fee; Airbnb pays the whole host payout to the owner's bank account
+  // ("Atj Fourie"), so there is no company income and nothing for the company to pay out. Email comes later.
+  { key: "anton-fourie", name: "Anton Fourie", phone: "",
+    note: "Lakeside 3BR. 0% fee; Airbnb pays the whole payout directly to him (bank account \"Atj Fourie\"). Email and contact details later.",
+    properties: [{ label: "Lakeside", expectedCurrency: "ZAR" }], cohostOption: false,
+    payoutOption: { label: "0% fee; Airbnb pays the whole payout to the owner", settings: { feeBasis: "airbnb-payout", managementFeePercent: 0, payoutToOwner: true, includeCleaning: false, cleaningFee: 0 } } },
 ];
 
 /** Last 9 digits, so +27 83 981 2633 and 083 981 2633 compare equal. */

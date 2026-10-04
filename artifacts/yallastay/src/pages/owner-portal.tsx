@@ -297,7 +297,7 @@ function OwnerStatements({ ownerId }: { ownerId: number }) {
                   {/* Breakdown table */}
                   <div className="bg-muted/30 rounded-lg px-4 py-3 space-y-1.5 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Gross Revenue</span>
+                      <span className="text-muted-foreground">{feeLabels(stmt, "owner").gross}</span>
                       <span className="font-medium text-emerald-600">{aed(stmt.grossRevenue,stmt.currency || "AED")}</span>
                     </div>
                     {stmt.platformFees > 0 && (
@@ -306,6 +306,7 @@ function OwnerStatements({ ownerId }: { ownerId: number }) {
                         <span className="text-red-400">− {aed(stmt.platformFees,stmt.currency || "AED")}</span>
                       </div>
                     )}
+                    {feeLabels(stmt, "owner").net && <div className="flex justify-between text-muted-foreground"><span>{feeLabels(stmt, "owner").net}</span><span>{aed(stmt.grossRevenue - stmt.platformFees,stmt.currency || "AED")}</span></div>}
                     <div className="flex justify-between text-muted-foreground">
                       <span>{feeLabels(stmt).management}</span>
                       <span className="text-red-400">− {aed(stmt.managementFee,stmt.currency || "AED")}</span>
@@ -332,13 +333,14 @@ function OwnerStatements({ ownerId }: { ownerId: number }) {
                     {(() => { const bal = statementBalance(stmt, "owner"); return <>
                       {bal.hasCohost && <>
                         <div className="flex justify-between border-t pt-2"><span>Your share</span><span className="font-medium">{aed(bal.ownerShare,stmt.currency || "AED")}</span></div>
-                        <div className="flex justify-between text-muted-foreground"><span>Already paid to you by Airbnb (co-host payout)</span><span className="text-red-400">− {aed(bal.paidByAirbnb,stmt.currency || "AED")}</span></div>
+                        <div className="flex justify-between text-muted-foreground"><span>{feeLabels(stmt, "owner").paidByAirbnb}</span><span className="text-red-400">− {aed(bal.paidByAirbnb,stmt.currency || "AED")}</span></div>
                       </>}
                       <div className="flex justify-between font-semibold border-t pt-2 text-base mt-1">
                         <span>{bal.label}</span>
                         <span className={bal.owes ? "text-red-600" : "text-emerald-600"}>{bal.settled ? "Nothing owed" : aed(bal.amount,stmt.currency || "AED")}</span>
                       </div>
-                      {bal.settled && <p className="text-xs text-muted-foreground">Airbnb already paid you your share; the {aed(bal.amount,stmt.currency || "AED")} difference is rounding.</p>}
+                      {bal.rounding && <p className="text-xs text-muted-foreground">Airbnb already paid you your share; the {aed(bal.amount,stmt.currency || "AED")} difference is rounding.</p>}
+                      {bal.settled && !bal.rounding && <p className="text-xs text-muted-foreground">Airbnb paid you directly, so nothing is owed either way.</p>}
                     </>; })()}
                   </div>
 

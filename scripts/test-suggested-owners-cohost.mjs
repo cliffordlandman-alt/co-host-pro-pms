@@ -34,7 +34,8 @@ try {
 
   // ── Suggestions ──
   let sug = await api('/owners/suggestions');
-  assert.deepEqual(sug.map(s => s.key), ['dylan-matthysen', 'bonnita']);
+  assert.deepEqual(sug.map(s => s.key), ['dylan-matthysen', 'bonnita', 'anton-fourie']);
+  assert.match(sug[2].properties[0].problem, /No active property matches "Lakeside"/, 'Lakeside not in this test database');
   const dylan = sug[0], bon = sug[1];
   assert.equal(dylan.phone, '+27 83 434 9734'); assert.equal(bon.phone, '+27 83 981 2633'); assert.equal(dylan.cohostOption, true); assert.equal(bon.cohostOption, false);
   assert.deepEqual(dylan.properties.map(p => p.match?.id), [GL.id, GH.id]);
@@ -51,12 +52,13 @@ try {
   const settings = await api('/accounting/settings');
   assert.equal(settings.find(s => s.propertyId === GH.id).cohostPaidToOwner, true); assert.equal(settings.find(s => s.propertyId === GR.id).cohostPaidToOwner, false);
   sug = await api('/owners/suggestions');
-  assert.deepEqual(sug.map(s => s.key), ['bonnita'], 'created suggestion is gone');
+  assert.deepEqual(sug.map(s => s.key), ['bonnita', 'anton-fourie'], 'created suggestion is gone');
   // Bonnita exists by phone (local format) -> "assign" state, not a second owner.
   const b = await api('/owners', 'POST', { name: 'Bonnita L', phone: '083 981 2633' }, 201);
   sug = await api('/owners/suggestions'); assert.equal(sug[0].existingOwner.id, b.id);
   await api('/owners/suggestions/nope/dismiss', 'POST', undefined, 404);
   await api('/owners/suggestions/bonnita/dismiss', 'POST');
+  await api('/owners/suggestions/anton-fourie/dismiss', 'POST');
   assert.deepEqual(await api('/owners/suggestions'), [], 'dismissed suggestion is gone');
   assert.equal((await api(`/properties/${GR.id}`)).ownerId, other.id, 'Garden Retreat not reassigned');
   await api(`/owners/${b.id}`, 'PATCH', { phone: '+27 83 981 2633' });
