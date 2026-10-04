@@ -116,7 +116,7 @@ export default function Signup() {
 
               <div className="space-y-3 max-w-xs">
                 {[
-                  { icon: "🏠", text: "Import Airbnb listings instantly" },
+                  { icon: "🏠", text: "Sync Airbnb calendars by iCal" },
                   { icon: "📅", text: "Sync bookings from all platforms" },
                   { icon: "💰", text: "Auto-generate owner statements" },
                   { icon: "🧹", text: "Assign and track cleaning tasks" },

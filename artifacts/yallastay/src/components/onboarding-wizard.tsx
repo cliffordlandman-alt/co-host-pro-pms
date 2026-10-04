@@ -37,7 +37,7 @@ const STEPS = [
     id: 2,
     icon: Building2,
     title: "Add your first property",
-    subtitle: "Import from Airbnb or add manually.",
+    subtitle: "Add it by hand, then connect its calendars.",
     color: "text-blue-400",
     bg: "bg-blue-500/15",
     action: "Add Property",
@@ -46,7 +46,7 @@ const STEPS = [
       <div className="space-y-3 text-sm text-muted-foreground">
         <p>Once you add a property, it appears in your calendar, cleaning schedule, maintenance board, and owner reports automatically.</p>
         <div className="bg-muted/40 rounded-xl p-4 text-xs space-y-1.5">
-          <div className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" /> Paste an Airbnb URL to import instantly</div>
+          <div className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" /> Name, unit and owner on the Properties page</div>
           <div className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" /> Add unit number, DTCM license, owner info</div>
           <div className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" /> Set check-in instructions and WiFi details</div>
         </div>

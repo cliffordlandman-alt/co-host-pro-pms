@@ -8,7 +8,6 @@ import { Building2, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { DirectBookingDialog } from "@/components/DirectBookingDialog";
 import { PropertyEditDrawer } from "@/components/properties/PropertyEditDrawer";
-import { BulkImportWizard } from "@/components/properties/BulkImportWizard";
 import { PropertyCard, type PropertyItem } from "@/components/properties/PropertyCard";
 
 export default function Properties() {
@@ -16,7 +15,6 @@ export default function Properties() {
   const apiProperties = propertyResponse as PropertyItem[] | undefined;
   const queryClient = useQueryClient();
   const [showAdd,setShowAdd]=useState(false);
-  const [showImport, setShowImport] = useState(false);
   const [filterArea, setFilterArea] = useState("all");
   const [filterStatus, setFilterStatus] = useState<"active" | "archived" | "all">("active");
   const [editPropertyId, setEditPropertyId] = useState<number | null>(()=>Number(new URLSearchParams(window.location.search).get("property")) || null);
@@ -50,18 +48,9 @@ export default function Properties() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            onClick={() => setShowImport(true)}
-            className="font-semibold gap-2"
-            style={{ background: "linear-gradient(135deg, #0d9488, #0891b2)", border: "none", boxShadow: "0 2px 12px rgba(13,148,136,0.3)" }}
-          >
-            <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 2.4c5.302 0 9.6 4.298 9.6 9.6s-4.298 9.6-9.6 9.6S2.4 17.302 2.4 12 6.698 2.4 12 2.4zm0 3.6c-1.325 0-2.4 1.075-2.4 2.4S10.675 10.8 12 10.8s2.4-1.075 2.4-2.4S13.325 6 12 6zm-4.2 6.6c-.497 0-.9.403-.9.9v.3c0 2.487 2.238 4.5 4.8 4.5s4.8-2.013 4.8-4.5v-.3c0-.497-.403-.9-.9-.9H7.8z"/>
-            </svg>
-            Connect Airbnb / Import
-          </Button>
-          <Button variant="outline" size="icon" aria-label="Add property" onClick={()=>setShowAdd(true)}>
+          <Button onClick={() => setShowAdd(true)} className="font-semibold gap-2" style={{ background: "linear-gradient(135deg, #0d9488, #0891b2)", border: "none", boxShadow: "0 2px 12px rgba(13,148,136,0.3)" }}>
             <Plus className="h-4 w-4" />
+            Add property
           </Button>
         </div>
       </div>
@@ -121,10 +110,10 @@ export default function Properties() {
             </svg>
           </div>
           <div className="font-semibold text-muted-foreground text-lg">No properties yet</div>
-          <div className="text-sm text-muted-foreground/60">Import your first listing from Airbnb to get started</div>
-          <Button onClick={() => setShowImport(true)} size="sm" className="mt-1"
+          <div className="text-sm text-muted-foreground/60">Add your first property, then connect its Airbnb calendar on Platforms</div>
+          <Button onClick={() => setShowAdd(true)} size="sm" className="mt-1"
             style={{ background: "linear-gradient(135deg, #0d9488, #0891b2)", border: "none" }}>
-            Import from Airbnb
+            Add property
           </Button>
         </div>
       ) : filtered.length === 0 ? (
@@ -203,12 +192,6 @@ export default function Properties() {
 
       {/* Import Wizard */}
       <AnimatePresence>
-        {showImport && (
-          <BulkImportWizard
-            onClose={() => setShowImport(false)}
-            onDone={() => invalidateProperties()}
-          />
-        )}
       </AnimatePresence>
 
       {/* Edit Drawer */}

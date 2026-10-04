@@ -203,7 +203,7 @@ router.get("/system-health", requireAdmin, async (_req, res) => {
         issues.push({ severity: "warning", rule: "NO_DESCRIPTION", propertyId: p.id, propertyName: p.name, detail: "Description missing or too short" });
       }
       if (hasHtmlEntities) {
-        issues.push({ severity: "critical", rule: "HTML_ENTITIES", propertyId: p.id, propertyName: p.name, detail: "Property data contains raw HTML entities (&amp; etc.) — data was imported with a bug; re-import to fix" });
+        issues.push({ severity: "critical", rule: "HTML_ENTITIES", propertyId: p.id, propertyName: p.name, detail: "Property data contains raw HTML entities (&amp; etc.) — it came from the old Airbnb link import; correct the text in the property's details" });
       }
       if (unitIsPlaceholder) {
         issues.push({ severity: "warning", rule: "PLACEHOLDER_UNIT", propertyId: p.id, propertyName: p.name, detail: `Unit number is "${p.unitNumber || "empty"}" — needs real unit number` });
@@ -236,7 +236,7 @@ router.get("/system-health", requireAdmin, async (_req, res) => {
     });
 
     if (properties.length === 0) {
-      issues.push({ severity: "critical", rule: "NO_PROPERTIES", detail: "No properties in the system — import from Airbnb or create manually" });
+      issues.push({ severity: "critical", rule: "NO_PROPERTIES", detail: "No properties in the system — add one on the Properties page" });
     }
     if (reservationCount === 0 && properties.length > 0) {
       issues.push({ severity: "info", rule: "NO_RESERVATIONS", detail: "No reservations found — add iCal URLs to sync existing bookings" });

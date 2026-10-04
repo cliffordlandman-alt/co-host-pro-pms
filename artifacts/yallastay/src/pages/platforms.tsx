@@ -224,16 +224,16 @@ function ConnectAirbnbModal({ open, onClose }: { open: boolean; onClose: () => v
           <div className="rounded-xl border p-4 space-y-1.5">
             <div className="flex items-center gap-2 font-semibold text-sm">
               <div className="w-6 h-6 rounded-full bg-[#DC2626] flex items-center justify-center text-white text-xs font-bold">1</div>
-              Import a New Listing
+              Add the property
             </div>
-            <p className="text-xs text-muted-foreground ml-8">Paste any Airbnb listing URL. YallaPMS will import photos, description, amenities, and property details automatically.</p>
+            <p className="text-xs text-muted-foreground ml-8">Create it on the Properties page (name, unit, owner). YallaPMS doesn't read Airbnb listing pages.</p>
             <div className="ml-8 mt-2">
               <Button
                 className="h-8 text-xs"
                 style={{ background: "linear-gradient(135deg, #0d9488, #0891b2)", border: "none" }}
-                onClick={() => { onClose(); window.location.href = window.location.origin + window.location.pathname.split("/platforms")[0] + "/properties?import=1"; }}
+                onClick={() => { onClose(); window.location.href = window.location.origin + window.location.pathname.split("/platforms")[0] + "/properties"; }}
               >
-                Import from Airbnb URL
+                Go to Properties
                 <ChevronRight className="ml-1 h-3 w-3" />
               </Button>
             </div>
@@ -278,10 +278,13 @@ function SystemHealthTab() {
   });
 
   const resyncMutation = useMutation({
-    mutationFn: (propertyId: number) => fj(`/api/airbnb/resync/${propertyId}`, { method: "POST" }),
-    onSuccess: (_, pid) => {
+    // The property's calendar sync (Airbnb, Booking.com, Vrbo iCal links), the same as Sync now on Calendar sync.
+    mutationFn: (propertyId: number) => fj(`/api/properties/${propertyId}/sync-ical`, { method: "POST" }),
+    onSuccess: (r: any) => {
       queryClient.invalidateQueries({ queryKey: ["channels-health"] });
-      toast({ title: "iCal synced successfully" });
+      const failed = Object.values(r ?? {}).map((x: any) => x?.error).filter((e: any) => e && !/No .* iCal URL configured/.test(e));
+      if (failed.length) toast({ title: "Sync failed", description: String(failed[0]), variant: "destructive" });
+      else toast({ title: "iCal synced successfully" });
     },
     onError: (err: any) => {
       toast({ title: "Sync failed", description: err?.message ?? "No iCal URL configured", variant: "destructive" });
@@ -480,7 +483,7 @@ function ImportLogTab() {
       <div className="rounded-xl border bg-card py-16 text-center text-muted-foreground">
         <Activity className="h-8 w-8 mx-auto mb-3 opacity-30" />
         <div className="font-medium">No import attempts yet</div>
-        <div className="text-sm mt-1">Import a property from Airbnb to see logs here.</div>
+        <div className="text-sm mt-1">Airbnb link imports are switched off. Past imports would be listed here.</div>
       </div>
     );
   }
@@ -593,7 +596,7 @@ export default function Platforms() {
           <div className="text-xs text-muted-foreground mt-0.5">
             {airbnbConnectedCount > 0
               ? `${airbnbConnectedCount} ${airbnbConnectedCount === 1 ? "property" : "properties"} connected · iCal sync active · every 15 minutes`
-              : "No properties connected yet — import a listing or add an iCal URL"}
+              : "No properties connected yet — add the property, then its Airbnb iCal URL"}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">

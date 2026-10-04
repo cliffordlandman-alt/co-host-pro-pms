@@ -1,13 +1,12 @@
 import { apiFetch } from "@/lib/api-fetch";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
-  AlertTriangle, CheckCircle2, XCircle, Info, RefreshCw, Trash2,
+  AlertTriangle, CheckCircle2, XCircle, Info, RefreshCw,
   Building, Image, Link2, DollarSign, FileText, Calendar,
   Database, Wifi, WifiOff, Clock, ArrowRight, Zap,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
 import { format, parseISO } from "date-fns";
 
 interface Issue {
@@ -111,8 +110,6 @@ function ScoreBadge({ score }: { score: number }) {
 }
 
 export default function SystemHealth() {
-  const { toast } = useToast();
-  const qc = useQueryClient();
 
   const { data, isLoading, refetch, isFetching } = useQuery<HealthData>({
     queryKey: ["system-health"],
@@ -122,18 +119,6 @@ export default function SystemHealth() {
       return r.json();
     },
     refetchInterval: 30_000,
-  });
-
-  const deleteProperty = useMutation({
-    mutationFn: async (id: number) => {
-      const r = await apiFetch(`/api/properties/${id}`, { method: "DELETE" });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Delete failed");
-    },
-    onSuccess: () => {
-      toast({ title: "Property deleted" });
-      qc.invalidateQueries({ queryKey: ["system-health"] });
-    },
-    onError: (e: Error) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
   });
 
   if (isLoading) {
@@ -218,21 +203,6 @@ export default function SystemHealth() {
                     </div>
                     <p className="text-sm mt-1">{issue.detail}</p>
                   </div>
-                  {issue.propertyId && issue.severity === "critical" && issue.rule === "HTML_ENTITIES" && (
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="shrink-0 text-xs h-7"
-                      onClick={() => {
-                        if (confirm("Delete this property and re-import it fresh?")) {
-                          deleteProperty.mutate(issue.propertyId!);
-                        }
-                      }}
-                    >
-                      <Trash2 className="w-3 h-3 mr-1" />
-                      Delete & Re-import
-                    </Button>
-                  )}
                 </div>
               );
             })}
@@ -324,20 +294,6 @@ export default function SystemHealth() {
                               <ArrowRight className="w-3 h-3" />
                             </Button>
                           </a>
-                          {hasBug && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => {
-                                if (confirm(`Delete "${p.name.slice(0, 40)}…" and re-import it?\n\nThis removes the corrupt data so you can re-import with the fixed scraper.`)) {
-                                  deleteProperty.mutate(p.id);
-                                }
-                              }}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -365,7 +321,7 @@ export default function SystemHealth() {
             No import logs recorded yet.
             {data.db.propertyCount > 0 && (
               <span className="ml-1">
-                The existing {data.db.propertyCount > 1 ? "properties were" : "property was"} imported before the audit log table was created — re-import to start tracking.
+                Airbnb link imports are switched off, so no new entries will be added.
               </span>
             )}
           </div>
@@ -436,7 +392,7 @@ export default function SystemHealth() {
             { rule: "NO_ICAL", label: "iCal URL required for reservation sync", desc: "Without an iCal feed, new bookings won't appear in the calendar." },
             { rule: "NO_PHOTOS", label: "At least 1 photo per property", desc: "Properties without photos will display as blank in all listings." },
             { rule: "NO_PRICE", label: "Base nightly price must be set", desc: "Dynamic Pricing requires a base rate to generate suggestions." },
-            { rule: "HTML_ENTITIES", label: "No HTML entities in stored data", desc: "&amp; in descriptions or photo URLs means the scraper decoded incorrectly. Re-import." },
+            { rule: "HTML_ENTITIES", label: "No HTML entities in stored data", desc: "&amp; in descriptions or photo URLs came from the old Airbnb link import. Correct the text in the property's details." },
             { rule: "PLACEHOLDER_UNIT", label: "Real unit number required", desc: "Unit number 'TBC' is a placeholder — update before assigning to cleaning staff." },
           ].map(r => (
             <div key={r.rule} className="flex gap-3 p-3 rounded-lg border bg-muted/20">

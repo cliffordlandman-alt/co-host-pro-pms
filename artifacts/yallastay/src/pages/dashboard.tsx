@@ -196,7 +196,7 @@ export default function Dashboard() {
             <p className="text-xs text-muted-foreground font-medium mb-2">Or go directly to a module:</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { icon: Building2, label: "Add a Property", desc: "Import from Airbnb or manually", href: "/properties", color: "text-teal-600", bg: "bg-teal-50 dark:bg-teal-950/40", border: "border-teal-200 dark:border-teal-800" },
+                { icon: Building2, label: "Add a Property", desc: "Add it, then connect its calendars", href: "/properties", color: "text-teal-600", bg: "bg-teal-50 dark:bg-teal-950/40", border: "border-teal-200 dark:border-teal-800" },
                 { icon: PlusCircle, label: "Add a Reservation", desc: "Log a booking or block a date", href: "/reservations", color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/40", border: "border-blue-200 dark:border-blue-800" },
                 { icon: Users, label: "Invite Your Team", desc: "Add cleaners, managers and staff", href: "/staff", color: "text-violet-600", bg: "bg-violet-50 dark:bg-violet-950/40", border: "border-violet-200 dark:border-violet-800" },
                 { icon: Link2, label: "Connect Channels", desc: "Sync Airbnb & Booking.com", href: "/platforms", color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-950/40", border: "border-amber-200 dark:border-amber-800" },
