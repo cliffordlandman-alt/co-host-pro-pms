@@ -530,14 +530,14 @@ function DocumentsSection({ settings, onSave }: { settings: any; onSave: (v: any
 
 // ─── PMS Plans ────────────────────────────────────────────────────────────────
 function PlansSection({ settings, onSave }: { settings: any; onSave: (v: any) => void }) {
-  const defs = { starter: { name: "Starter", price: 299, properties: 5, users: 3, trial: 14 }, growth: { name: "Growth", price: 499, properties: 15, users: 10, trial: 14 }, pro: { name: "Pro", price: 999, properties: 999, users: 999, trial: 30 } };
+  const defs = { starter: { name: "Standard", price: 49, properties: 999, users: 999, trial: 14 }, growth: { name: "Standard (legacy)", price: 49, properties: 999, users: 999, trial: 14 }, pro: { name: "Standard (legacy)", price: 49, properties: 999, users: 999, trial: 14 } };
   const [form, setForm] = useState({ ...defs, ...settings?.plans });
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
   function setNested(plan: string, k: string, v: any) { setForm((f: any) => ({ ...f, [plan]: { ...f[plan], [k]: v } })); }
   async function save() { setSaving(true); await onSave(form); setSaving(false); toast({ title: "Plan settings saved" }); }
   return (
-    <SectionCard title="PMS Subscription Plans" desc="Configure plans for external clients" onSave={save} saving={saving}>
+    <SectionCard title="PMS Subscription Plans" desc="Default is AED 49 per property / month. Edit below if you need overrides." onSave={save} saving={saving}>
       <div className="grid sm:grid-cols-3 gap-4">
         {(["starter","growth","pro"] as const).map((plan, i) => {
           const colors = ["border-blue-200 bg-blue-50","border-purple-200 bg-purple-50","border-amber-200 bg-amber-50"];

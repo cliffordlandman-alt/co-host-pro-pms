@@ -1,5 +1,6 @@
 # YallaPMS changes (30 September 2026, Dubai time)
 
+- **PMS subscription pricing: AED 49 per property / month (5 Oct 2026).** Subscriptions page no longer uses Starter/Growth/Pro tiers (299/499/999). One Standard plan at AED 49 × property count. Settings → PMS Subscription Plans defaults updated to 49. Schema defaults plan=`standard`, monthlyAmount=49.
 One entry per commit, oldest first. Every change was checked with the full build, all automated tests,
 the smoke test and the end-to-end booking to owner statement check (guest total AED 3,300 gives an owner
 payout of AED 1,805.71).

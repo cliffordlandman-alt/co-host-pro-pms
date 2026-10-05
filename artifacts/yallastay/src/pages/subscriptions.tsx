@@ -2,7 +2,7 @@ import { apiFetch } from "@/lib/api-fetch";
 import { BRAND } from "../../../../lib/brand.mjs";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CreditCard, Plus, Loader2, Building2, Crown, Zap, Rocket, CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
+import { CreditCard, Plus, Loader2, Building2, Zap, CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -13,10 +13,10 @@ import { useToast } from "@/hooks/use-toast";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+const PRICE_PER_PROPERTY = 49;
+
 const PLANS = [
-  { id: "starter", label: "Starter", price: 299, icon: Zap, color: "text-blue-600 bg-blue-50", desc: "Up to 5 properties" },
-  { id: "growth",  label: "Growth",  price: 499, icon: Rocket, color: "text-purple-600 bg-purple-50", desc: "Up to 15 properties" },
-  { id: "pro",     label: "Pro",     price: 999, icon: Crown, color: "text-amber-600 bg-amber-50", desc: "Unlimited properties" },
+  { id: "standard", label: "Standard", price: PRICE_PER_PROPERTY, icon: Zap, color: "text-teal-600 bg-teal-50", desc: "AED 49 per property / month" },
 ];
 
 const STATUS_CONFIG: Record<string, { color: string; icon: any; label: string }> = {
@@ -34,18 +34,18 @@ export default function Subscriptions() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ clientName: "", contactEmail: "", contactPhone: "", plan: "starter", propertyCount: "1", billingDate: "", notes: "" });
+  const [form, setForm] = useState({ clientName: "", contactEmail: "", contactPhone: "", plan: "standard", propertyCount: "1", billingDate: "", notes: "" });
 
   const { data: subs = [], isLoading } = useQuery({ queryKey: ["subscriptions"], queryFn: fetchSubs });
 
-  const planMap: Record<string, number> = { starter: 299, growth: 499, pro: 999 };
-
   const addMutation = useMutation({
     mutationFn: async () => {
+      const propertyCount = Math.max(1, parseInt(form.propertyCount) || 1);
+      const monthlyAmount = PRICE_PER_PROPERTY * propertyCount;
       const r = await apiFetch(`${API}/api/subscriptions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, propertyCount: parseInt(form.propertyCount), monthlyAmount: planMap[form.plan] }),
+        body: JSON.stringify({ ...form, plan: "standard", propertyCount, monthlyAmount }),
       });
       return r.json();
     },
@@ -96,7 +96,7 @@ export default function Subscriptions() {
               <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${color}`}><Icon className="h-6 w-6" /></div>
               <div>
                 <div className="font-bold">{label}</div>
-                <div className="text-sm text-muted-foreground">AED {price}/mo · {desc}</div>
+                <div className="text-sm text-muted-foreground">AED {price} / property / month</div>
                 <div className="text-xs text-muted-foreground mt-0.5">{count} client{count !== 1 ? "s" : ""}</div>
               </div>
             </div>
@@ -174,13 +174,14 @@ export default function Subscriptions() {
             <div><Label>Plan</Label>
               <Select value={form.plan} onValueChange={v => setForm({ ...form, plan: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{PLANS.map(p => <SelectItem key={p.id} value={p.id}>{p.label} — AED {p.price}/mo</SelectItem>)}</SelectContent>
+                <SelectContent>{PLANS.map(p => <SelectItem key={p.id} value={p.id}>{p.label} — AED {p.price} / property / month</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Properties</Label><Input type="number" min="1" value={form.propertyCount} onChange={e => setForm({ ...form, propertyCount: e.target.value })} /></div>
               <div><Label>Billing Date</Label><Input type="date" value={form.billingDate} onChange={e => setForm({ ...form, billingDate: e.target.value })} /></div>
             </div>
+            <p className="text-sm text-muted-foreground">Monthly total: <span className="font-semibold text-foreground">AED {(PRICE_PER_PROPERTY * Math.max(1, parseInt(form.propertyCount) || 1)).toLocaleString()}</span> ({PRICE_PER_PROPERTY} × {Math.max(1, parseInt(form.propertyCount) || 1)} properties)</p>
             <Button className="w-full" onClick={() => addMutation.mutate()} disabled={!form.clientName || addMutation.isPending}>
               {addMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} Add Client
             </Button>
