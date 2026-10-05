@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "YallaStay PMS"
+version = "1.0.0"
+id = "artifacts/yallastay"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19281
+
+[services.development]
+run = "pnpm --filter @workspace/yallastay run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/yallastay", "run", "build" ]
+publicDir = "artifacts/yallastay/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19281"
+BASE_PATH = "/"

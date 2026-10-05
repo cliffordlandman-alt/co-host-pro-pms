@@ -1,0 +1,12 @@
+export declare const EXPORT_TARGETS: string[];
+export declare const TARGET_LABEL: Record<string, string>;
+export declare const FAILING_ALERT_MS: number;
+export declare const TOKEN_RE: RegExp;
+export declare function isOwnEvent(r: any): boolean;
+export declare function exportRows<T extends { id: number; checkIn: string; checkOut: string; status: string; platform: string }>(reservations: T[], opts: { includeChannelBookings?: boolean; target?: string; today: string }): T[];
+export declare function eventKind(r: any): "block" | "direct" | "channel";
+export declare function summarizeRows(rows: any[]): { total: number; blocks: number; direct: number; channel: number; byChannel: Record<string, number> };
+export declare function buildIcal(rows: any[], opts?: { now?: Date; calendarName?: string }): string;
+export declare function exportPath(token: string, target: string): string;
+export declare function feedState(row: any, configured: boolean, now?: Date): "not_connected" | "never" | "ok" | "failing" | "alert" | "stale";
+export declare function needsFailingAlert(row: any, now?: Date): boolean;

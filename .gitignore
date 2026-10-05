@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.local-data/
+.env
+*.tsbuildinfo
+
+imports/airbnb/
+imported-media/
+artifacts/yallastay/public/imported-media/
+
+.local-backups/
+
+# Private channel data (iCal links, reservation exports) must never be committed
+airbnb/
+*.ics
