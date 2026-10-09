@@ -168,8 +168,17 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
     earnings: [{ payoutId: 'Q', propertyId: 1, currency: 'AED', amount: '0.12' }, { payoutId: 'Q', propertyId: 2, currency: 'AED', amount: '0.13' }, { payoutId: 'Q', propertyId: 3, currency: 'AED', amount: '0.12' }] }, '2026-09', { propertyReportYtdRows: false });
   assert.deepEqual(split.income.filter(x => x.kind === 'airbnb-property').map(x => [x.property, x.usd]), [['P1', 0.03], ['P2', 0.04], ['P3', 0.03]]);
   // M4 Checks: the master's checks with their values; PASS when everything ties.
-  assert.deepEqual(r.checks.checks.map(c => c.key), ['airbnb-monthly', 'airbnb-property', 'income-check', 'summary-tie', 'ranking', 'opex-tie']);
-  assert.equal(r.checks.checks.find(c => c.key === 'income-check').status, 'REVIEW', 'no Villa 7 income in August here');
+  assert.deepEqual(r.checks.checks.map(c => c.key), ['airbnb-monthly', 'airbnb-property', 'summary-tie', 'ranking', 'opex-tie'], 'no Villa 7 check since 9 Oct');
+  { const rc = buildWorkbookRows(base, '2026-09', { incomeChecks: [{ property: 'Villa 7', month: '2026-08', expected: 8000, item: 'Villa 7 income', label: 'Villa 7 current month AED' }] });
+    assert.equal(rc.checks.checks.find(c => c.key === 'income-check').status, 'REVIEW', 'an income check still works when configured'); }
+  { // Villa 7 removed (9 Oct): an archived property is not listed and has no Apartment Performance row; its income,
+    // moved to company income as 'Accommodation' (no property), stays in the totals.
+    const ra = buildWorkbookRows({ ...base, properties: base.properties.map(p => p.reportName === 'Villa 7' ? { ...p, status: 'archived' } : p),
+      transactions: [...(base.transactions ?? []), { id: 900, type: 'income', allocation: 'company', date: '2026-08-31', category: 'Accommodation', amount: '8000', currency: 'AED', propertyId: null, reportProperty: 'Company', payer: 'Nguyen', description: 'Current month income' }] }, '2026-09');
+    assert.ok(!ra.lists.properties.some(p => p.name === 'Villa 7') && !ra.m3.apartments.some(a => a.property === 'Villa 7'));
+    const acc = ra.income.find(x => x.description === 'Current month income');
+    assert.deepEqual([acc.category, acc.property, acc.gross, acc.date], ['Accommodation', 'Company', 8000, '2026-08-31']);
+    assert.ok(!ra.excluded.some(x => x.description === 'Current month income')); }
   assert.equal(r.checks.checks.find(c => c.key === 'airbnb-property').status, 'OK');
   assert.equal(buildWorkbookRows(base, '2026-09', { incomeChecks: [] }).checks.status, 'PASS');
   // The .xlsx: master sheet order, Dashboard J5 = the ADIB balance, the master's formulas.
@@ -187,9 +196,9 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
   assert.ok(dash.includes('BANK BALANCE - ADIB - 30 SEP 2026'));
   assert.ok(dash.includes('<f>SUMIFS(&apos;Monthly Summary&apos;!$B$4:$B$12') || dash.includes("<f>SUMIFS('Monthly Summary'!$B$4:$B$12"), 'D5 formula');
   assert.ok(dash.includes('<mergeCell ref="J5:L6"/>'));
-  assert.ok(dash.includes('<f>Checks!B10</f><v>REVIEW</v>'), 'H2 = Checks MODEL STATUS');
+  assert.ok(dash.includes('<f>Checks!B9</f><v>PASS</v>'), 'H2 = Checks MODEL STATUS (PASS: no Villa 7 check since 9 Oct)');
   const ck = parts['xl/worksheets/sheet9.xml'];
-  assert.ok(ck.includes('<f>IF(COUNTIF(F4:F9,&quot;REVIEW&quot;)=0,&quot;PASS&quot;,&quot;REVIEW&quot;)</f>') && ck.includes('<conditionalFormatting sqref="F4:F9">'));
+  assert.ok(ck.includes('<f>IF(COUNTIF(F4:F8,&quot;REVIEW&quot;)=0,&quot;PASS&quot;,&quot;REVIEW&quot;)</f>') && ck.includes('<conditionalFormatting sqref="F4:F8">'));
   assert.ok(ck.includes("<f>SUMIFS('Income Input'!$H$7:$H$507,'Income Input'!$L$7:$L$507,&quot;Airbnb Monthly Report&quot;)/'Income Input'!$D$2</f>"), 'check 4 formula');
   assert.ok(parts['xl/worksheets/sheet2.xml'].includes('RANK(G5,$G$5:$G$8,0)+COUNTIF($G$5:G5,G5)-1'));
   // Master template: 4 properties here vs the master's 12 -> rows, totals, chart ranges and drawing anchors move.

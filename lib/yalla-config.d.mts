@@ -1,4 +1,5 @@
 export declare const MASTER_INCOME_CATEGORIES: string[];
+export declare const EXPORT_INCOME_CATEGORIES: string[];
 export declare const MASTER_EXPENSE_CATEGORIES: string[];
 export declare const MASTER_PAYMENT_STATUSES: string[];
 export declare const MASTER_TREATMENTS: string[];
