@@ -76,6 +76,10 @@ export const accountingTransactionsTable = pgTable("accounting_transactions", {
   reportCategory: text("report_category"),
   /** Migration 0027: Income Input "Source" text for this row (default: the Co-Host Pro entry reference). */
   reportSource: text("report_source"),
+  /** Migration 0028: Income Input Property text for a row with no property (e.g. "Company"); null = "Various". Income only. */
+  reportProperty: text("report_property"),
+  /** Migration 0028: Forecast one-off label (A18) when this pending income is the one-off; null = the description. Income only. */
+  forecastLabel: text("forecast_label"),
   vendorId: integer("vendor_id").references(() => vendorsTable.id),
   /** Set on the automatic cleaning expense; unique, so a task can never be expensed twice. */
   cleaningTaskId: integer("cleaning_task_id").unique("accounting_transactions_cleaning_task_uq").references(() => cleaningTasksTable.id),
