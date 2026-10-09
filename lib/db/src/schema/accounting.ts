@@ -68,6 +68,12 @@ export const accountingTransactionsTable = pgTable("accounting_transactions", {
   fxRate: numeric("fx_rate", { precision: 12, scale: 6 }),
   /** paid | pending | unpaid. Null = paid (behaviour before 0025). */
   paymentStatus: text("payment_status"),
+  /** Migration 0026 (workbook rows mirror the master): Direct Cost (AED) on an income row; null = 0. Income only. */
+  directCost: numeric("direct_cost", { precision: 10, scale: 2 }),
+  /** Owner / Payer shown on the Income Input row; null = the property's owner. Income only. */
+  payer: text("payer"),
+  /** The master workbook's category for this row; null = the default mapping from category. */
+  reportCategory: text("report_category"),
   vendorId: integer("vendor_id").references(() => vendorsTable.id),
   /** Set on the automatic cleaning expense; unique, so a task can never be expensed twice. */
   cleaningTaskId: integer("cleaning_task_id").unique("accounting_transactions_cleaning_task_uq").references(() => cleaningTasksTable.id),

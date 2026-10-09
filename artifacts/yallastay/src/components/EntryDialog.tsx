@@ -19,6 +19,9 @@ export const EXPENSE_CATEGORIES = ['Maintenance', 'Cleaning', 'Supplies', 'Utili
 export const TREATMENTS = [['', 'Follow "Charge to"'], ['company', 'Operating expense (company P&L)'], ['owner_paid', 'Owner paid (not company P&L)'], ['pass_through', 'Pass-through, e.g. DEWA (not company P&L)']] as const;
 export const USD_AED = 3.6725;
 export const INCOME_CATEGORIES = ['Additional income', 'Other'];
+/** The master finance workbook's lists (Lists & Sources); see lib/yalla-config.mjs. */
+export const WORKBOOK_INCOME_CATEGORIES = ['Airbnb', 'Booking', 'Cleaning', 'Cleaning Profit', 'Cleaning/Viewing', 'Commission', 'DTCM', 'Lock', 'Photography', 'Photos', 'Referral', 'Management Fee', 'Maintenance', 'Other'];
+export const WORKBOOK_EXPENSE_CATEGORIES = ['Salary', 'Rent', 'Security Deposit', 'Agent Commission', 'Cleaning', 'DEWA Deposit', 'Cooling Deposit', 'Fuel', 'Noon', 'Car', 'Cleaner', 'Marketing', 'Photography', 'Software', 'DTCM', 'Supplies', 'DEWA', 'Refund'];
 const CURRENCIES = ['AED', 'ZAR', 'USD', 'EUR', 'GBP'];
 
 async function read(url: string) { const r = await apiFetch(url); if (!r.ok) throw new Error('Could not load'); return r.json(); }
@@ -29,7 +32,7 @@ export const isAutomaticEntry = (t: any) => t?.cleaningTaskId != null || /^(clea
 
 export function EntryDialog({ open, onOpenChange, defaultDate, entry }: { open: boolean; onOpenChange: (v: boolean) => void; defaultDate?: string; entry?: any }) {
   const today = dubaiToday();
-  const empty = { date: defaultDate || today, type: 'expense', category: '', description: '', amount: '', currency: 'AED', propertyId: '', reservationId: '', allocation: 'company', revenueStream: '', reference: '', notes: '', treatment: '', paymentStatus: '', fxRate: '' };
+  const empty = { date: defaultDate || today, type: 'expense', category: '', description: '', amount: '', currency: 'AED', propertyId: '', reservationId: '', allocation: 'company', revenueStream: '', reference: '', notes: '', treatment: '', paymentStatus: '', fxRate: '', directCost: '', payer: '', reportCategory: '' };
   const [form, setForm] = useState(empty);
   const [error, setError] = useState(''), [saving, setSaving] = useState(false);
   const qc = useQueryClient();
@@ -37,7 +40,7 @@ export function EntryDialog({ open, onOpenChange, defaultDate, entry }: { open: 
   const { data: properties = [] } = useQuery({ queryKey: ['company-properties'], queryFn: () => read('/api/properties'), enabled: open });
   const fromEntry = (t: any) => ({ date: t.date, type: t.type, category: t.category || '', description: t.description || '', amount: String(t.amount ?? ''), currency: t.currency || 'AED', propertyId: t.propertyId != null ? String(t.propertyId) : '',
     reservationId: t.reservationId != null ? String(t.reservationId) : '', allocation: t.allocation || 'company', revenueStream: t.revenueStream == null ? '' : t.revenueStream ? 'yes' : 'no', reference: t.reference || '', notes: t.notes || '',
-    treatment: t.treatment || '', paymentStatus: t.paymentStatus || '', fxRate: t.fxRate != null ? String(t.fxRate) : '' });
+    treatment: t.treatment || '', paymentStatus: t.paymentStatus || '', fxRate: t.fxRate != null ? String(t.fxRate) : '' , directCost: t.directCost != null ? String(t.directCost) : '', payer: t.payer || '', reportCategory: t.reportCategory || '' });
   useEffect(() => { if (open) { setForm(entry ? fromEntry(entry) : { ...empty, date: defaultDate || today }); setError(''); } }, [open, entry?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const property = properties.find((p: any) => String(p.id) === form.propertyId);
   const propertyCurrency = property?.currency || 'AED';
@@ -60,7 +63,8 @@ export function EntryDialog({ open, onOpenChange, defaultDate, entry }: { open: 
     try {
       const body = { ...form, propertyId: form.propertyId ? Number(form.propertyId) : null, reservationId: form.reservationId ? Number(form.reservationId) : null,
         revenueStream: form.type === 'expense' && form.revenueStream ? form.revenueStream === 'yes' : null, reference: form.reference || null, notes: form.notes || null,
-        treatment: form.type === 'expense' && form.treatment ? form.treatment : null, paymentStatus: form.paymentStatus || null, fxRate: ['AED', 'ZAR'].includes(form.currency) || !form.fxRate ? null : Number(form.fxRate) };
+        treatment: form.type === 'expense' && form.treatment ? form.treatment : null, paymentStatus: form.paymentStatus || null, fxRate: ['AED', 'ZAR'].includes(form.currency) || !form.fxRate ? null : Number(form.fxRate),
+        directCost: form.type === 'income' && form.directCost !== '' ? form.directCost : null, payer: form.type === 'income' && form.payer.trim() ? form.payer.trim() : null, reportCategory: form.reportCategory || null };
       const r = await apiFetch(entry ? `/api/accounting/transactions/${entry.id}` : '/api/accounting/transactions', { method: entry ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'Could not save entry'); }
       await qc.invalidateQueries(); onOpenChange(false);
@@ -101,6 +105,14 @@ export function EntryDialog({ open, onOpenChange, defaultDate, entry }: { open: 
                 <span className="block text-xs text-muted-foreground mt-1">{form.currency === 'USD' ? 'USD is fixed at 3.6725.' : form.currency === 'ZAR' ? 'Never converted to AED.' : 'Optional.'}</span></label>
             )}
           </div>
+          {form.type === 'income' && (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-sm">Direct cost (optional)<Input aria-label="Direct cost" type="number" min="0" step="0.01" inputMode="decimal" value={form.directCost} onChange={e => edit('directCost', e.target.value)} placeholder="0.00" /></label>
+              <label className="text-sm">Owner / payer (optional)<Input aria-label="Payer" maxLength={80} value={form.payer} onChange={e => edit('payer', e.target.value)} placeholder="Defaults to the property's owner" /></label>
+            </div>
+          )}
+          <label className="block text-sm">Workbook category (optional)<select aria-label="Workbook category" className={sel} value={form.reportCategory} onChange={e => edit('reportCategory', e.target.value)}><option value="">Default for the category</option>{(form.type === 'income' ? WORKBOOK_INCOME_CATEGORIES : WORKBOOK_EXPENSE_CATEGORIES).map(v => <option key={v}>{v}</option>)}</select>
+            <span className="block text-xs text-muted-foreground mt-1">The master finance workbook's category for this row (Lists &amp; Sources).</span></label>
           <label className="block text-sm">Booking (optional)<select aria-label="Booking" className={sel} value={form.reservationId} onChange={e => { const b = bookings.find((b: any) => b.id === Number(e.target.value)); setForm(f => ({ ...f, reservationId: e.target.value, propertyId: b ? String(b.propertyId) : f.propertyId, currency: b ? (b.currency || properties.find((p: any) => p.id === b.propertyId)?.currency || f.currency) : f.currency })); }}><option value="">No specific booking</option>{bookings.filter((b: any) => !form.propertyId || b.propertyId === Number(form.propertyId)).map((b: any) => <option key={b.id} value={b.id}>{b.guestName} · {b.checkIn}</option>)}</select></label>
           <label className="block text-sm">Reference (optional)<Input value={form.reference} onChange={e => edit('reference', e.target.value)} placeholder="Invoice or receipt number" /></label>
           <label className="block text-sm">Notes (optional)<Input value={form.notes} onChange={e => edit('notes', e.target.value)} /></label>

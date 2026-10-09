@@ -207,6 +207,9 @@ router.get("/accounting/transactions", asyncHandler(async (req, res) => {
       treatment: accountingTransactionsTable.treatment,
       fxRate: accountingTransactionsTable.fxRate,
       paymentStatus: accountingTransactionsTable.paymentStatus,
+      directCost: accountingTransactionsTable.directCost,
+      payer: accountingTransactionsTable.payer,
+      reportCategory: accountingTransactionsTable.reportCategory,
       createdAt: accountingTransactionsTable.createdAt,
     })
     .from(accountingTransactionsTable)
@@ -215,7 +218,7 @@ router.get("/accounting/transactions", asyncHandler(async (req, res) => {
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(sql`${accountingTransactionsTable.date} DESC`);
 
-  res.json(rows.map(r => ({ ...r, amount: parseFloat(r.amount || "0"), fxRate: r.fxRate == null ? null : Number(r.fxRate), createdAt: r.createdAt.toISOString() })));
+  res.json(rows.map(r => ({ ...r, amount: parseFloat(r.amount || "0"), fxRate: r.fxRate == null ? null : Number(r.fxRate), directCost: r.directCost == null ? null : Number(r.directCost), createdAt: r.createdAt.toISOString() })));
 }));
 
 // Sent or paid owner statement covering this property and month (owner entries there can't change).
@@ -230,8 +233,8 @@ const lockedMessage = (st: { status: string; month: string; propertyName: string
   `This entry is on the ${st.month} owner statement for ${st.propertyName ?? "this property"}, which has been ${st.status === "paid" ? "paid" : "sent"}, so it can't be changed. Record a correction in an open month instead.`;
 // Entries written by the system (cleaning costs, maintenance charges) are changed at their source, not here.
 const automaticEntry = (e: { cleaningTaskId?: number | null; reference?: string | null }) => e.cleaningTaskId != null || /^(cleaning|maintenance):/.test(e.reference ?? "");
-const EDITABLE_ENTRY_FIELDS = ["type", "amount", "date", "category", "propertyId", "allocation", "revenueStream", "notes", "description", "reference", "currency", "reservationId", "treatment", "fxRate", "paymentStatus"] as const;
-const money = (r: any) => ({ ...r, amount: parseFloat(r.amount || "0"), fxRate: r.fxRate == null ? null : Number(r.fxRate), createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt });
+const EDITABLE_ENTRY_FIELDS = ["type", "amount", "date", "category", "propertyId", "allocation", "revenueStream", "notes", "description", "reference", "currency", "reservationId", "treatment", "fxRate", "paymentStatus", "directCost", "payer", "reportCategory"] as const;
+const money = (r: any) => ({ ...r, amount: parseFloat(r.amount || "0"), fxRate: r.fxRate == null ? null : Number(r.fxRate), directCost: r.directCost == null ? null : Number(r.directCost), createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt });
 /** USD/AED is fixed (YALLA rule 7). */
 export const USD_AED_RATE = 3.6725;
 export const SALARY_CATEGORY = "Salary";
@@ -255,6 +258,17 @@ function applyFinanceFields(input: any): string | null {
     input.allocation = "company"; input.treatment = "company"; input.propertyId = null; input.reservationId = null;
   }
   if (input.paymentStatus != null && !["paid", "pending", "unpaid"].includes(input.paymentStatus)) return "Payment status must be paid, pending or unpaid";
+  // Migration 0026: Income Input direct cost and payer (income only), and the master workbook category override.
+  for (const k of ["directCost", "payer", "reportCategory"]) { if (typeof input[k] === "string") input[k] = input[k].trim(); if (input[k] === "" || input[k] === undefined) input[k] = null; }
+  if (input.type !== "income" && (input.directCost != null || input.payer != null)) return "Direct cost and payer apply to income only";
+  if (input.directCost != null) {
+    const n = Number(input.directCost);
+    if (!Number.isFinite(n) || n < 0 || !/^\d+(\.\d{1,2})?$/.test(String(input.directCost))) return "Direct cost must be zero or more, with at most 2 decimals";
+    if (n > Number(input.amount)) return "Direct cost can't be more than the amount";
+    input.directCost = n.toFixed(2);
+  }
+  if (input.payer != null && String(input.payer).length > 80) return "Payer is at most 80 characters";
+  if (input.reportCategory != null && String(input.reportCategory).length > 40) return "Workbook category is at most 40 characters";
   return null;
 }
 /** Runs once the entry's currency is known. */

@@ -47,6 +47,9 @@ export const reservationsTable = pgTable("reservations", {
   tourismNights: integer("tourism_nights"),
   financeMode: text("finance_mode"),
   paymentStatus: text("payment_status").notNull().default("pending"),
+  /** Migration 0026: date this booking's management fee was received (e.g. netted from an owner payout that left the
+   *  bank). The YALLA Income Input row then shows Received. Null = the statement / booking payment rule. */
+  feeReceivedOn: text("fee_received_on"),
   notes: text("notes"),
   status: text("status").notNull().default("confirmed"),
   /** DTCM guest registration set by hand: not_needed, airbnb_verified, pending or registered. Null = worked out
