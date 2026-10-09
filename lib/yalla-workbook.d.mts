@@ -8,6 +8,8 @@ export function effectiveTreatment(t: { treatment?: string | null; allocation?: 
 export function monthEnd(month: string): string;
 export function mapExpenseCategory(t: any, treatment: string, cfg?: Record<string, any>): string;
 export function mapIncomeCategory(t: any, cfg?: Record<string, any>): string;
-export function buildWorkbookRows(data: any, month: string, overrides?: Record<string, any>, opts?: { from?: string; today?: string; companyName?: string }): any;
+export function buildWorkbookRows(data: any, month: string, overrides?: Record<string, any>, opts?: { from?: string; through?: string; today?: string; companyName?: string }): any;
 export function m3Values(result: any): any;
+export function checkValues(result: any): { checks: any[]; status: 'PASS' | 'REVIEW' };
+export function summaryWindow(config: Record<string, any>, month: string): string[];
 export function workbookXlsx(result: any): Buffer;

@@ -3,7 +3,8 @@
 // Salary, FX (USD fixed 3.6725, ZAR kept separate), monthly bank balance, and the Income/Expense Input .xlsx export
 // with the master's sheet names and column order. Pass-through entries stay out of the company statement.
 // M3: Monthly Summary, Apartment Performance (owner paid flagged), Dashboard (bank balance J5) and Lists & Sources with
-// the master's formulas and cached values; Raju's answers (9 Oct) as settings in lib/yalla-config.mjs.
+// the master's formulas and cached values; Raju's answers (9 Oct) as settings in lib/yalla-config.mjs. M4: Checks
+// sheet; round 2: Show in report flag, latest bank balance, off-list categories excluded, remainder on the largest row.
 import { spawn } from 'node:child_process';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -46,7 +47,7 @@ const pure = buildWorkbookRows({
   properties: [{ id: 1, name: 'Garden', currency: 'AED' }, { id: 2, name: 'Grey', reportName: '2 Bedroom Mount Pleasant', currency: 'ZAR' }],
   payouts: [{ id: 'P1', currency: 'USD', amount: '84.00', sourceDate: '4 September' }, { id: 'P2', currency: 'USD', amount: '10.00', sourceDate: '4 August' }],
   earnings: [{ payoutId: 'P1', propertyId: 2, currency: 'ZAR', amount: '-1942.83', checkIn: '2026-09-01' }, { payoutId: 'P1', propertyId: 2, currency: 'ZAR', amount: '2285.69', checkIn: '2026-09-01' }, { payoutId: 'P1', propertyId: 1, currency: 'AED', amount: '229.74', checkIn: '2026-09-01' }],
-}, '2026-09', { propertyReportYtdRows: false, propertyReportZeroRows: 'none', extraListProperties: [] });
+}, '2026-09', { propertyReportYtdRows: false, propertyReportZeroRows: 'none', inputFrom: 'month', inputThrough: 'month_end' });
 assert.deepEqual(pure.income.map(r => [r.view, r.property, r.usd]), [['Airbnb Monthly Report', 'Various', 84], ['Airbnb Property Report', '2 Bedroom Mount Pleasant', 21.44], ['Airbnb Property Report', 'Garden', 62.56]]);
 assert.equal(pure.totals.income, 308.49, 'only the monthly total counts (84 × 3.6725)');
 console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly vs property rows');
@@ -56,7 +57,7 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
   assert.equal(mapExpenseCategory({ category: 'Cleaning', reportCategory: 'Cleaner' }, 'company'), 'Cleaner', 'Q4: the row\'s workbook category wins');
   assert.equal(mapExpenseCategory({ category: 'Transport' }, 'company'), 'Car');
   assert.equal(mapIncomeCategory({ category: 'Booking', reportCategory: 'Airbnb' }), 'Airbnb');
-  const props = [{ id: 1, name: 'L', reportName: 'Lofts West 603', ownerId: 7, currency: 'AED' }, { id: 2, name: 'S', reportName: 'Sunrise Bay 2106', currency: 'AED' }, { id: 3, name: 'Serenity', currency: 'AED' }, { id: 4, name: 'P', reportName: 'Sunrise Bay 1406', currency: 'AED', status: 'planned' }];
+  const props = [{ id: 1, name: 'L', reportName: 'Lofts West 603', ownerId: 7, currency: 'AED' }, { id: 2, name: 'S', reportName: 'Sunrise Bay 2106', currency: 'AED' }, { id: 3, name: 'Serenity', currency: 'AED' }, { id: 4, name: 'P', reportName: 'Sunrise Bay 1406', currency: 'AED', status: 'planned' }, { id: 5, name: 'Villa 7', reportName: 'Villa 7', ownerId: 8, currency: 'AED', showInReport: false }];
   const base = {
     properties: props, owners: [{ id: 7, name: 'Prajyoth' }],
     payouts: [{ id: 'A', currency: 'USD', amount: '100.00', sourceDate: '2026-08-10' }, { id: 'B', currency: 'USD', amount: '50.00', sourceDate: '2026-09-10' }, { id: 'C', currency: 'USD', amount: '5.00', sourceDate: '3 September' }],
@@ -77,7 +78,7 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
   const r = buildWorkbookRows(base, '2026-09', {}, { today: '2026-10-09', companyName: 'Co-Host Pro' });
   const codes = r.warnings.map(w => w.code);
   // Q8: a cumulative row per active property dated the 1st (through 1 Sep) and the month's rows, zero rows for every
-  // active PMS property; Villa 7 (from the settings) is listed but gets no Airbnb rows.
+  // active property with "Show in report" on; Villa 7 (show off) is listed but gets no zero Airbnb rows.
   const ytd = r.income.filter(x => x.kind === 'airbnb-ytd'), mon = r.income.filter(x => x.kind === 'airbnb-property');
   assert.deepEqual(ytd.map(x => [x.date, x.property, x.usd]), [['2026-09-01', 'Sunrise Bay 2106', 100], ['2026-09-01', 'Lofts West 603', 0], ['2026-09-01', 'Sunrise Bay 1406', 0]]);
   assert.equal(ytd[0].description, 'Property allocation through 1 Sep 2026 - excluded from dashboard total');
@@ -106,7 +107,11 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
   assert.ok(buildWorkbookRows(base, '2026-09', { salaryOverrides: { '2026-08': 15000 } }, { from: '2026-08' }).warnings.some(w => w.code === 'salary' && w.month === '2026-08'));
   // Q10: Serenity has no workbook name: flagged, not listed. Q4: Insurance has no master category: flagged.
   assert.ok(codes.includes('unmapped-property') && !r.lists.properties.some(p => p.name === 'Serenity'));
-  assert.ok(r.warnings.some(w => w.code === 'category' && w.category === 'Insurance'));
+  // Round 2: a category with no master equivalent stays out of the export, warned with its amount.
+  assert.ok(r.warnings.some(w => w.code === 'category' && w.category === 'Insurance' && w.amount === '10'));
+  assert.ok(r.excluded.some(x => x.description === 'Policy' && /no master equivalent/.test(x.reason)) && !r.expense.some(x => x.description === 'Policy'));
+  assert.ok(buildWorkbookRows(base, '2026-09', { unmappedCategoryRows: 'keep' }).expense.some(x => x.description === 'Policy'));
+  assert.ok(!buildWorkbookRows({ ...base, transactions: [...base.transactions, { id: 9, type: 'expense', allocation: 'company', date: '2026-09-30', amount: '0', category: 'Gifts', description: 'zero', currency: 'AED' }] }, '2026-09').warnings.some(w => w.category === 'Gifts'), 'no warning without a value');
   // Direct cost and payer on Income Input.
   assert.deepEqual((({ category, payer, gross, cost }) => [category, payer, gross, cost])(r.income.find(x => x.kind === 'manual-income')), ['Airbnb', 'direct', 2250, 100]);
   // M3 values (as the master's formulas compute them).
@@ -114,20 +119,54 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
   assert.deepEqual(m.months[0], '2026-04'); assert.equal(m.months.length, 9);
   const usd55 = 55 * 3.6725;
   assert.ok(Math.abs(sep.income - (usd55 + 2150 + 1400)) < 1e-6, 'B: Income Input net (Pending counts too), property rows excluded');
-  assert.equal(sep.opex, 4774 + 260 + 10 + 500); assert.equal(sep.deposits, 0); assert.equal(sep.status, 'Loss');
+  assert.equal(sep.opex, 4774 + 260 + 500); assert.equal(sep.deposits, 0); assert.equal(sep.status, 'Loss');
   const lofts = m.apartments.find(a => a.property === 'Lofts West 603');
   assert.deepEqual([lofts.gross, lofts.directCosts, lofts.allocated, lofts.ownerPaid], [3650, 100, 0, 200], 'owner paid is flagged in its own column, outside the net');
   assert.deepEqual(m.apartments.map(a => a.rank).sort(), [1, 2, 3, 4]);
   assert.equal(m.apartments.find(a => a.property === 'Villa 7').rank, 2, 'zero ties broken by list order (Villa 7 before Sunrise Bay 1406)');
   assert.deepEqual([m.dashboard.propertiesManaged, m.dashboard.depositsHeld, m.dashboard.bankBalance], [4, 1000, 7259.22]);
+  // Round 2: "Show in report" off = no zero rows (1406 off here); on = zero rows.
+  const off1406 = buildWorkbookRows({ ...base, properties: props.map(p => (p.id === 4 ? { ...p, showInReport: false } : p)) }, '2026-09');
+  assert.deepEqual(off1406.income.filter(x => x.kind === 'airbnb-property').map(x => x.property), ['Sunrise Bay 2106', 'Lofts West 603']);
+  // Round 2: J5 = the latest dated balance up to the export's last day; month ends stay as history.
+  const withLatest = { ...base, bankBalances: [...base.bankBalances, { account: 'ADIB 19589605', kind: 'latest', month: '2026-10', balanceDate: '2026-10-09', balance: '11126.24', currency: 'AED' }] };
+  const rl = buildWorkbookRows(withLatest, '2026-09', {}, { today: '2026-10-09' });
+  assert.deepEqual([rl.lists.bank.balance, rl.lists.bank.balanceDate, rl.lists.bankHistory.map(b => b.balance)], [11126.24, '2026-10-09', [7259.22]]);
+  assert.ok(unzip(workbookXlsx(rl))['xl/worksheets/sheet1.xml'].includes('BANK BALANCE - ADIB - 9 OCT 2026'));
+  assert.equal(buildWorkbookRows(withLatest, '2026-09', {}, { today: '2026-10-09', through: '2026-09-30' }).lists.bank.balance, 7259.22, 'a month-end export shows the month end');
+  assert.equal(buildWorkbookRows(withLatest, '2026-09', { bankBalanceShows: 'month_end' }, { today: '2026-10-09' }).lists.bank.balance, 7259.22);
+  // Input range: from the summary's first month to today; entered rows after the month end come in (e.g. October
+  // rent, as the master), generated rows (Airbnb payouts) stop at the month end.
+  assert.deepEqual([r.from, r.through], ['2026-04', '2026-10-09']);
+  const oct = { ...base, transactions: [...base.transactions, { id: 10, type: 'income', allocation: 'company', date: '2026-10-06', amount: '7000', category: 'Commission', description: 'Oct commission', currency: 'AED', paymentStatus: 'pending' }], payouts: [...base.payouts, { id: 'D', currency: 'USD', amount: '9.00', sourceDate: '2026-10-02' }] };
+  const ro = buildWorkbookRows(oct, '2026-09', {}, { today: '2026-10-09' });
+  assert.ok(ro.income.some(x => x.description === 'Oct commission') && !ro.income.some(x => x.date > '2026-09-30' && x.kind.startsWith('airbnb')));
+  assert.equal(ro.m3.summary.find(x => x.month === '2026-10').income, 7000);
+  assert.equal(ro.m3.dashboard.incomeYtd, rl.m3.dashboard.incomeYtd, 'YTD stops at the reporting month end');
+  assert.ok(!buildWorkbookRows(oct, '2026-09', { inputThrough: 'month_end' }, { today: '2026-10-09' }).income.some(x => x.description === 'Oct commission'));
+  // Blank status (payment_status none), as on some master rows.
+  assert.equal(buildWorkbookRows({ ...base, transactions: [{ ...base.transactions[0], paymentStatus: 'none' }] }, '2026-09').income.find(x => x.kind === 'manual-income').status, '');
+  // Round 2: a payout's rounding remainder goes on its largest row, so the rows sum exactly to the payout.
+  const split = buildWorkbookRows({ properties: [1, 2, 3].map(id => ({ id, name: `P${id}`, reportName: `P${id}`, currency: 'AED' })), payouts: [{ id: 'Q', currency: 'USD', amount: '0.10', sourceDate: '2026-09-05' }],
+    earnings: [{ payoutId: 'Q', propertyId: 1, currency: 'AED', amount: '0.12' }, { payoutId: 'Q', propertyId: 2, currency: 'AED', amount: '0.13' }, { payoutId: 'Q', propertyId: 3, currency: 'AED', amount: '0.12' }] }, '2026-09', { propertyReportYtdRows: false });
+  assert.deepEqual(split.income.filter(x => x.kind === 'airbnb-property').map(x => [x.property, x.usd]), [['P1', 0.03], ['P2', 0.04], ['P3', 0.03]]);
+  // M4 Checks: the master's checks with their values; PASS when everything ties.
+  assert.deepEqual(r.checks.checks.map(c => c.key), ['airbnb-monthly', 'airbnb-property', 'income-check', 'summary-tie', 'ranking', 'opex-tie']);
+  assert.equal(r.checks.checks.find(c => c.key === 'income-check').status, 'REVIEW', 'no Villa 7 income in August here');
+  assert.equal(r.checks.checks.find(c => c.key === 'airbnb-property').status, 'OK');
+  assert.equal(buildWorkbookRows(base, '2026-09', { incomeChecks: [] }).checks.status, 'PASS');
   // The .xlsx: master sheet order, Dashboard J5 = the ADIB balance, the master's formulas.
   const parts = unzip(workbookXlsx(r));
-  assert.deepEqual([...parts['xl/workbook.xml'].matchAll(/<sheet name="([^"]+)"/g)].map(x => x[1].replace(/&amp;/g, '&')), ['Dashboard', 'Apartment Performance', 'Monthly Summary', 'Income Input', 'Expense Input', 'Lists & Sources']);
+  assert.deepEqual([...parts['xl/workbook.xml'].matchAll(/<sheet name="([^"]+)"/g)].map(x => x[1].replace(/&amp;/g, '&')), ['Dashboard', 'Apartment Performance', 'Monthly Summary', 'Income Input', 'Expense Input', 'Lists & Sources', 'Checks']);
   const dash = parts['xl/worksheets/sheet1.xml'];
   assert.ok(dash.includes('<c r="J5" s="16"><v>7259.22</v></c>'), 'J5 bank balance');
   assert.ok(dash.includes('BANK BALANCE - ADIB - 30 SEP 2026'));
   assert.ok(dash.includes('<f>SUMIFS(&apos;Monthly Summary&apos;!$B$4:$B$12') || dash.includes("<f>SUMIFS('Monthly Summary'!$B$4:$B$12"), 'D5 formula');
   assert.ok(dash.includes('<mergeCell ref="J5:L6"/>'));
+  assert.ok(dash.includes('<f>Checks!B10</f><v>REVIEW</v>'), 'H2 = Checks MODEL STATUS');
+  const ck = parts['xl/worksheets/sheet7.xml'];
+  assert.ok(ck.includes('<f>IF(COUNTIF(F4:F9,&quot;REVIEW&quot;)=0,&quot;PASS&quot;,&quot;REVIEW&quot;)</f>') && ck.includes('<conditionalFormatting sqref="F4:F9">'));
+  assert.ok(ck.includes("<f>SUMIFS('Income Input'!$H$7:$H$507,'Income Input'!$L$7:$L$507,&quot;Airbnb Monthly Report&quot;)/'Income Input'!$D$2</f>"), 'check 4 formula');
   assert.ok(parts['xl/worksheets/sheet2.xml'].includes('RANK(G5,$G$5:$G$8,0)+COUNTIF($G$5:G5,G5)-1'));
   assert.ok(parts['xl/worksheets/sheet3.xml'].includes('IF(AND(B9=0,C9=0,D9=0),&quot;No activity&quot;,IF(E9&gt;=0,&quot;Profit&quot;,&quot;Loss&quot;))'));
   assert.equal(Object.keys(WORKBOOK_DEFAULTS).length >= 18, true);
@@ -211,6 +250,17 @@ try {
   await api('/accounting/bank-balances/2026-09', 'PUT', { balance: 100 });
   assert.equal((await api('/accounting/bank-balances')).length, 1, 'one balance per account and month (upsert)');
   await api('/accounting/bank-balances/2026-13', 'PUT', { balance: 1 }, 400);
+  // Migration 0027: one dated latest balance per account, next to the month ends.
+  const lt = await api('/accounting/bank-balances/latest', 'PUT', { balanceDate: '2026-10-01', balance: 50 });
+  assert.deepEqual([lt.kind, lt.month, lt.balanceDate], ['latest', '2026-10', '2026-10-01']);
+  await api('/accounting/bank-balances/latest', 'PUT', { balanceDate: '2026-10-02', balance: 55.5 });
+  assert.deepEqual((await api('/accounting/bank-balances')).map(b => [b.kind, b.balance]), [['month_end', 100], ['latest', 55.5]], 'the latest replaces the latest');
+  await api('/accounting/bank-balances/latest', 'PUT', { balanceDate: '2999-01-01', balance: 1 }, 400);
+  await api('/accounting/bank-balances/latest', 'PUT', { balanceDate: '2026-10-02', balance: 1.234 }, 400);
+  // Show in report flag (and names untouched when only the flag is sent).
+  await api('/accounting/report-names', 'PUT', [{ id: SB.id, showInReport: false }]);
+  assert.deepEqual((({ reportName, showInReport }) => [reportName, showInReport])((await api('/accounting/report-names')).find(p => p.id === SB.id)), ['Sunrise Bay 2106', false]);
+  await api('/accounting/report-names', 'PUT', [{ id: SB.id, showInReport: true }]);
 
   // Migration 0026: direct cost and payer (income only), workbook category.
   const dir = await api('/accounting/transactions', 'POST', { type: 'income', date: '2026-09-01', amount: '2250', directCost: '100', payer: 'direct', propertyId: LW.id, allocation: 'company', category: 'Booking', reportCategory: 'Airbnb', description: 'Direct booking Lofts West 603', currency: 'AED' }, 201);
@@ -219,11 +269,18 @@ try {
   assert.match((await api('/accounting/transactions', 'POST', { type: 'income', date: '2026-09-01', amount: '5', directCost: '6', category: 'Other', description: 'x', allocation: 'company' }, 400)).error, /more than the amount/);
   assert.equal((await api(`/accounting/transactions/${plain.id}`, 'PATCH', { reportCategory: 'Software' })).reportCategory, 'Software');
   assert.equal((await api('/accounting/transactions?month=2026-09')).find(t => t.id === dir.id).directCost, 100);
+  // Migration 0027: workbook source text and the blank status.
+  const src = await api('/accounting/transactions', 'POST', { type: 'income', date: '2026-08-31', amount: '8000', payer: 'Nguyen', category: 'Commission', description: 'Current month income', allocation: 'company', currency: 'AED', reportSource: 'User instruction', paymentStatus: 'none' }, 201);
+  assert.deepEqual([src.reportSource, src.paymentStatus], ['User instruction', 'none']);
 
-  // M2 export
+  // M2 export (default range: the summary's first month to today; one month with from/through)
   const wb = await api('/accounting/workbook/2026-09');
+  assert.equal(wb.from, '2026-04');
+  const one = m => api(`/accounting/workbook/${m}?from=${m}&through=${new Date(Date.UTC(+m.slice(0, 4), +m.slice(5), 0)).toISOString().slice(0, 10)}`);
+  assert.deepEqual((({ source, status }) => [source, status])(wb.income.find(r => r.transactionId === src.id)), ['User instruction', '']);
   assert.deepEqual((({ category, payer, gross, cost }) => [category, payer, gross, cost])(wb.income.find(r => r.transactionId === dir.id)), ['Airbnb', 'direct', 2250, 100]);
-  assert.equal(wb.m3.dashboard.bankBalance, 100, 'Dashboard J5 = the month\'s ADIB balance');
+  assert.equal(wb.m3.dashboard.bankBalance, 55.5, 'Dashboard J5 = the latest ADIB balance');
+  assert.equal((await one('2026-09')).m3.dashboard.bankBalance, 100, 'a month-end export shows the month end');
   const exp = d => wb.expense.filter(r => r.description === d);
   assert.equal(exp('DEWA Sunrise Bay 2106')[0].treatment, 'Pass-through (excluded)'); assert.equal(exp('DEWA Sunrise Bay 2106')[0].category, 'DEWA');
   assert.deepEqual([exp('Cleaning Lofts West 603')[0].treatment, exp('Cleaning Lofts West 603')[0].paidBy, exp('Cleaning Lofts West 603')[0].property], ['Owner Paid (excluded)', 'Owner (Prajyoth)', 'Lofts West 603']);
@@ -233,14 +290,15 @@ try {
   assert.ok(wb.excluded.some(x => x.currency === 'ZAR' && x.description === 'Green Lawn clean'), 'ZAR is listed, never converted');
   assert.ok(!wb.expense.some(r => /Tonye/.test(r.description)) && !wb.income.some(r => /Tonye/.test(r.payer || '')), 'a held liability deposit is not P&L');
   assert.equal(wb.totals.passThrough, 60); assert.equal(wb.totals.ownerPaid, 200);
-  const jul = await api('/accounting/workbook/2026-07');
+  const jul = await one('2026-07');
   assert.deepEqual(jul.expense.map(r => [r.category, r.amount, r.treatment]), [['Security Deposit', 11500, 'Refundable Deposit']]);
-  const aug = await api('/accounting/workbook/2026-08');
+  const aug = await one('2026-08');
   assert.ok(aug.expense.some(r => r.category === 'Agent Commission' && r.amount === 6037.5 && r.date === '2026-08-17'));
   // A deposit kept against damage becomes income (damage recovery) in the month it was kept.
   await api(`/accounting/deposits/${dep.id}`, 'PATCH', { status: 'kept', settledOn: '2026-10-03', keptAmount: 400, keptReason: 'broken lamp' });
-  const oct = await api('/accounting/workbook/2026-10');
-  assert.deepEqual(oct.income.filter(r => r.kind === 'deposit-kept').map(r => [r.category, r.gross, r.payer]), [['Damage recovery', 400, 'Tonye']]);
+  // "Damage recovery" has no master category: out of the export, warned (round 2).
+  const oct = await one('2026-10');
+  assert.ok(!oct.income.some(r => r.kind === 'deposit-kept') && oct.excluded.some(x => /Damage recovery/.test(x.reason) && x.amount === 400) && oct.warnings.some(w => w.code === 'category' && w.category === 'Damage recovery'));
   regs = await api('/accounting/deposits'); assert.equal(regs.items.find(d => d.id === dep.id).refundedAmount, 600);
   // Q5: the management fee received date (audited).
   const bk = await api('/reservations', 'POST', { propertyId: LW.id, platform: 'direct', guestName: 'Sept income', checkIn: '2026-09-28', checkOut: '2026-09-30', status: 'checked_out', financeMode: 'inclusive-v1', grossAmount: '14000.00', cleaningFee: '0', channelFees: '0' }, 201);
@@ -252,16 +310,17 @@ try {
   assert.ok((await api('/audit-log')).some(a => a.entity === 'reservation_fee_received'));
   assert.equal((await api('/accounting/workbook/2026-09?from=2026-07')).from, '2026-07');
   await api('/accounting/workbook/2026-09?from=2026-10', 'GET', null, 400);
+  await api('/accounting/workbook/2026-09?through=2026-09-15', 'GET', null, 400);
   // The .xlsx: master sheet names, header rows and column order.
   const r = await raw('/accounting/workbook/2026-09.xlsx'); assert.equal(r.status, 200);
   assert.match(r.headers.get('content-disposition'), /YALLA_Workbook_2026-09\.xlsx/);
   const parts = unzip(Buffer.from(await r.arrayBuffer()));
-  assert.match(parts['xl/workbook.xml'], /<sheet name="Dashboard" sheetId="1"[^>]*\/><sheet name="Apartment Performance" sheetId="2"[^>]*\/><sheet name="Monthly Summary" sheetId="3"[^>]*\/><sheet name="Income Input" sheetId="4"[^>]*\/><sheet name="Expense Input" sheetId="5"[^>]*\/><sheet name="Lists &amp; Sources" sheetId="6"/);
+  assert.match(parts['xl/workbook.xml'], /<sheet name="Dashboard" sheetId="1"[^>]*\/><sheet name="Apartment Performance" sheetId="2"[^>]*\/><sheet name="Monthly Summary" sheetId="3"[^>]*\/><sheet name="Income Input" sheetId="4"[^>]*\/><sheet name="Expense Input" sheetId="5"[^>]*\/><sheet name="Lists &amp; Sources" sheetId="6"[^>]*\/><sheet name="Checks" sheetId="7"/);
   const texts = xml => [...xml.matchAll(/<t xml:space="preserve">([^<]*)<\/t>/g)].map(m => m[1].replace(/&amp;/g, '&'));
   const row = (xml, n) => texts((xml.match(new RegExp(`<row r="${n}">(.*?)</row>`)) || [])[1] || '');
   assert.deepEqual(row(parts['xl/worksheets/sheet4.xml'], 6), INCOME_HEADERS);
   assert.deepEqual(row(parts['xl/worksheets/sheet5.xml'], 4), EXPENSE_HEADERS);
-  assert.ok(parts['xl/worksheets/sheet5.xml'].includes('<f>IF(A5=&quot;&quot;,&quot;&quot;,TEXT(A5,&quot;mmm yyyy&quot;))</f><v>Sep 2026</v>'), 'Month formula as in the master, with its value');
+  assert.ok(parts['xl/worksheets/sheet5.xml'].includes('<f>IF(A5=&quot;&quot;,&quot;&quot;,TEXT(A5,&quot;mmm yyyy&quot;))</f><v>Jul 2026</v>'), 'Month formula as in the master, with its value');
   assert.ok((await api('/audit-log')).some(a => a.entity === 'yalla_workbook_export'));
   console.log('OK YALLA M1 inputs (deposits, leases, treatment, salary, FX, bank balance), M2 Income/Expense Input and M3 sheets export');
 } catch (e) { console.error(logs.slice(-3000)); throw e; } finally { child.kill('SIGTERM'); }
