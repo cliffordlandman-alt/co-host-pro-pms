@@ -9,6 +9,7 @@ export function monthEnd(month: string): string;
 export function mapExpenseCategory(t: any, treatment: string, cfg?: Record<string, any>): string;
 export function mapIncomeCategory(t: any, cfg?: Record<string, any>): string;
 export function buildWorkbookRows(data: any, month: string, overrides?: Record<string, any>, opts?: { from?: string; through?: string; today?: string; companyName?: string; reportTitle?: string }): any;
+export function companyMonthSummary(data: any, month: string, overrides?: Record<string, any>, opts?: { today?: string; companyName?: string }): { month: string; currency: string; usdAed: number; revenue: { total: number; airbnb: number; managementFeesAndCommissions: number; other: number }; expenses: { total: number; ownerPaid: number; passThrough: number; refundableDeposits: number }; profit: number; otherCurrencies: { currency: string; airbnbInAedRevenue: number; usdPayouts: number; separate: { airbnb: number; income: number; expenses: number; net: number } }[]; tags: Record<string, string> };
 export function m3Values(result: any): any;
 export function checkValues(result: any): { checks: any[]; status: 'PASS' | 'REVIEW' };
 export function summaryWindow(config: Record<string, any>, month: string): string[];

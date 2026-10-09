@@ -12,7 +12,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { inflateRawSync } from 'node:zlib';
 import { leaseAccruals, equalCheques } from '../lib/lease-schedule.mjs';
-import { buildWorkbookRows, workbookXlsx, INCOME_HEADERS, EXPENSE_HEADERS, mapExpenseCategory, mapIncomeCategory } from '../lib/yalla-workbook.mjs';
+import { buildWorkbookRows, companyMonthSummary, workbookXlsx, INCOME_HEADERS, EXPENSE_HEADERS, mapExpenseCategory, mapIncomeCategory } from '../lib/yalla-workbook.mjs';
 import { WORKBOOK_DEFAULTS } from '../lib/yalla-config.mjs';
 import { companyStatement } from '../lib/company-statement.mjs';
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -169,6 +169,21 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
   assert.ok(ck.includes("<f>SUMIFS('Income Input'!$H$7:$H$507,'Income Input'!$L$7:$L$507,&quot;Airbnb Monthly Report&quot;)/'Income Input'!$D$2</f>"), 'check 4 formula');
   assert.ok(parts['xl/worksheets/sheet2.xml'].includes('RANK(G5,$G$5:$G$8,0)+COUNTIF($G$5:G5,G5)-1'));
   assert.ok(parts['xl/worksheets/sheet3.xml'].includes('IF(AND(B9=0,C9=0,D9=0),&quot;No activity&quot;,IF(E9&gt;=0,&quot;Profit&quot;,&quot;Loss&quot;))'));
+  // Accounting > Transactions month cards = the export's Monthly Summary row for the month (same rows, no drift).
+  {
+    const zData = { ...base, payouts: [...base.payouts, { id: 'Z', currency: 'USD', amount: '19.46', sourceDate: '12 September' }],
+      earnings: [...base.earnings, { payoutId: 'Z', propertyId: 2, currency: 'ZAR', amount: '313.56', kind: 'cohost', status: 'paid', checkIn: '2026-09-11', confirmationCode: 'HMZ' }],
+      transactions: [...base.transactions, { id: 9, type: 'income', allocation: 'company', date: '2026-09-20', amount: '500', category: 'Booking', description: 'ZAR clean', currency: 'ZAR' }] };
+    const cm = companyMonthSummary(zData, '2026-09', {}, { today: '2026-10-09' }), wr = buildWorkbookRows(zData, '2026-09', {}, { today: '2026-10-09' });
+    const msRow = wr.m3.summary.find(x => x.month === '2026-09');
+    assert.equal(cm.revenue.total, Math.round(msRow.income * 100) / 100, 'revenue = Monthly Summary B');
+    assert.equal(cm.expenses.total, msRow.opex, 'expenses = Monthly Summary C');
+    assert.equal(cm.profit, Math.round(msRow.net * 100) / 100, 'profit = Monthly Summary E');
+    assert.equal(cm.expenses.ownerPaid, 200); assert.equal(cm.revenue.managementFeesAndCommissions, 1400);
+    assert.ok(Math.abs(cm.revenue.airbnb - Math.round((50 + 5 + 19.46) * 3.6725 * 100) / 100) < 0.011, 'ZAR listing paid in USD: in Airbnb revenue at the USD paid');
+    assert.deepEqual(cm.otherCurrencies, [{ currency: 'ZAR', airbnbInAedRevenue: 313.56, usdPayouts: 1, separate: { airbnb: 0, income: 500, expenses: 0, net: 500 } }], 'ZAR never converted, not added twice');
+    assert.equal(cm.tags[3], 'Owner paid'); assert.equal(cm.tags[9], 'ZAR (separate)'); assert.equal(cm.tags[5], 'Not in company totals'); assert.equal(cm.tags[2], undefined);
+  }
   // Raju's fix: Expense Line Items (every PMS expense line, the left-out ones with the reason) and Confirmed Booking.
   assert.equal(r.expenseLines.filter(x => x.inInput === 'Yes').length, r.expense.length);
   assert.ok(r.expenseLines.some(x => x.inInput === 'No' && x.description === 'Policy' && /no master equivalent/.test(x.note)));
@@ -342,6 +357,11 @@ try {
   assert.ok(!parts['xl/worksheets/sheet7.xml'].includes('Sept income'), 'no guest names');
   assert.ok(parts['xl/worksheets/sheet7.xml'].includes('<t xml:space="preserve">checked_out</t>'));
   assert.ok(parts['xl/worksheets/sheet10.xml'].includes('<f>Dashboard!J5</f>'));
+  // Company month cards: the API returns the export's figures for the month (owner/pass-through tagged, not counted).
+  { const cm = await api('/accounting/company-month/2026-09'); const w = await api('/accounting/workbook/2026-09');
+    assert.equal(cm.revenue.total, w.totals.income); assert.equal(cm.expenses.total, w.totals.operatingExpenses); assert.equal(cm.expenses.passThrough, w.totals.passThrough);
+    assert.equal(cm.profit, Math.round((w.totals.income - w.totals.operatingExpenses) * 100) / 100);
+    await api('/accounting/company-month/2026-9', 'GET', null, 400); }
   // Round 3: the report title is a setting, used only in the export (audited).
   assert.equal((await api('/accounting/workbook-settings')).reportTitle, null, 'unset = WORKBOOK_DEFAULTS.reportTitle');
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('YallaStay - Finance Dashboard'));

@@ -12,7 +12,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { parseId } from "../lib/parseId";
 import { insertAuditLog } from "../lib/audit";
 import { leaseAccruals } from "../../../../lib/lease-schedule.mjs";
-import { buildWorkbookRows, workbookXlsx, monthEnd } from "../../../../lib/yalla-workbook.mjs";
+import { buildWorkbookRows, companyMonthSummary, workbookXlsx, monthEnd } from "../../../../lib/yalla-workbook.mjs";
 import { reservationFinancials } from "../../../../lib/reservation-financials.mjs";
 import { dubaiToday } from "../lib/dubai-date";
 import { documentCompanyName } from "./app-settings";
@@ -289,6 +289,13 @@ router.put("/accounting/workbook-settings", asyncHandler(async (req, res) => {
   else await db.insert(appSettingsTable).values({ key: "workbook", value });
   await insertAuditLog({ action: ex ? "update" : "create", entity: "workbook_settings", entityId: 0, details: { before: ex?.value ?? null, after: value }, performedBy: who(req, res) });
   res.json(value);
+}));
+// GET /accounting/company-month/2026-09: Accounting > Transactions month cards. Company revenue / expenses / profit
+// from the same rows as the YALLA export (lib/yalla-workbook.mjs companyMonthSummary), other currencies apart.
+router.get("/accounting/company-month/:month", asyncHandler(async (req, res) => {
+  const month = String(req.params.month);
+  if (!MONTH.test(month)) return res.status(400).json({ error: "Month must look like 2026-09" });
+  res.json(companyMonthSummary(await workbookData(), month, {}, { today: dubaiToday(), companyName: await documentCompanyName() }));
 }));
 // GET /accounting/workbook/2026-09 (JSON) or .xlsx.
 router.get(/^\/accounting\/workbook\/(\d{4}-\d{2})(\.xlsx)?$/, asyncHandler(async (req, res) => {

@@ -40,7 +40,6 @@ const f = async (path: string, opts?: RequestInit) => {
   return res.json();
 };
 
-function groupedMoney(rows:any[],value:(r:any)=>number){const sums:Record<string,number>={};for(const r of rows||[])sums[r.currency||'AED']=(sums[r.currency||'AED']||0)+value(r);return Object.entries(sums).map(([c,n])=>aed(n,c)).join(' · ')||'No entries';}
 function aed(n: number,currency="AED") {
   return `${currency} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -422,6 +421,9 @@ function TransactionsTab() {
   const queryKey = ["transactions", filterMonth, filterProp];
   const url = `/api/accounting/transactions?month=${filterMonth}${filterProp !== "all" ? `&propertyId=${filterProp}` : ""}`;
   const { data: transactions, isLoading } = useQuery({ queryKey, queryFn: () => f(url) });
+  // Company month (same rows as the YALLA export's Monthly Summary): revenue, company expenses, profit; tags.
+  const { data: company } = useQuery({ queryKey: ["company-month", filterMonth], queryFn: () => f(`/api/accounting/company-month/${filterMonth}`) });
+  const tags: Record<string, string> = company?.tags ?? {};
 
 
   const deleteMutation = useMutation({
@@ -430,8 +432,6 @@ function TransactionsTab() {
     onError: (e: any) => toast({ title: "Not deleted", description: e.message, variant: "destructive" }),
   });
 
-  const totalIn = transactions?.filter((t: any) => t.type === "income").reduce((s: number, t: any) => s + t.amount, 0) ?? 0;
-  const totalOut = transactions?.filter((t: any) => t.type === "expense").reduce((s: number, t: any) => s + t.amount, 0) ?? 0;
 
   return (
     <div className="space-y-4">
@@ -452,21 +452,34 @@ function TransactionsTab() {
         <Button onClick={() => setAddOpen(true)}><Plus className="h-4 w-4 mr-1" />Add income / expense</Button>
       </div>
 
-      {/* Summary */}
-      {!isLoading && transactions?.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
-          <Card><CardContent className="pt-3 pb-3">
-            <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><ArrowUpRight className="h-3 w-3 text-emerald-500" />Income</div>
-            <div className="text-lg font-bold text-emerald-600">{groupedMoney(transactions,(r:any)=>r.type==="income"?r.amount:0)}</div>
-          </CardContent></Card>
-          <Card><CardContent className="pt-3 pb-3">
-            <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><ArrowDownRight className="h-3 w-3 text-red-500" />Expenses</div>
-            <div className="text-lg font-bold text-red-500">{groupedMoney(transactions,(r:any)=>r.type==="expense"?r.amount:0)}</div>
-          </CardContent></Card>
-          <Card><CardContent className="pt-3 pb-3">
-            <div className="text-xs text-muted-foreground mb-1">Net</div>
-            <div className={`text-lg font-bold ${totalIn - totalOut >= 0 ? "text-emerald-600" : "text-red-500"}`}>{groupedMoney(transactions,(r:any)=>r.type==="income"?r.amount:-r.amount)}</div>
-          </CardContent></Card>
+      {/* Company month: the YALLA export's Monthly Summary figures for this month (lib/yalla-workbook.mjs) */}
+      {company && (
+        <div className="space-y-2" data-testid="company-month">
+          <div className="grid grid-cols-3 gap-3">
+            <Card><CardContent className="pt-3 pb-3">
+              <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><ArrowUpRight className="h-3 w-3 text-emerald-500" />Company revenue</div>
+              <div className="text-lg font-bold text-emerald-600" data-testid="company-revenue">{aed(company.revenue.total, "AED")}</div>
+              <div className="text-[11px] text-muted-foreground"><Link href="/accounting?tab=airbnb" className="underline" title="Airbnb payouts: earnings detail and import">Airbnb</Link> {aed(company.revenue.airbnb, "AED")} · Fees &amp; commissions {aed(company.revenue.managementFeesAndCommissions, "AED")} · Other {aed(company.revenue.other, "AED")}</div>
+            </CardContent></Card>
+            <Card><CardContent className="pt-3 pb-3">
+              <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><ArrowDownRight className="h-3 w-3 text-red-500" />Company expenses</div>
+              <div className="text-lg font-bold text-red-500" data-testid="company-expenses">{aed(company.expenses.total, "AED")}</div>
+              <div className="text-[11px] text-muted-foreground">Not included: owner paid {aed(company.expenses.ownerPaid, "AED")} · pass-through {aed(company.expenses.passThrough, "AED")}{company.expenses.refundableDeposits ? ` · refundable deposits ${aed(company.expenses.refundableDeposits, "AED")}` : ""}</div>
+            </CardContent></Card>
+            <Card><CardContent className="pt-3 pb-3">
+              <div className="text-xs text-muted-foreground mb-1">Profit</div>
+              <div className={`text-lg font-bold ${company.profit >= 0 ? "text-emerald-600" : "text-red-500"}`} data-testid="company-profit">{aed(company.profit, "AED")}</div>
+              <div className="text-[11px] text-muted-foreground">Revenue minus company expenses, as in the YALLA workbook's Monthly Summary</div>
+            </CardContent></Card>
+          </div>
+          {company.otherCurrencies.map((o: any) => (
+            <p key={o.currency} className="text-xs text-muted-foreground" data-testid={`company-${o.currency}`}>
+              <span className="font-medium text-foreground">{o.currency} (not converted):</span>{" "}
+              {o.airbnbInAedRevenue ? <>company Airbnb fees {aed(o.airbnbInAedRevenue, o.currency)}, paid through {o.usdPayouts} USD payout{o.usdPayouts === 1 ? "" : "s"} and already in Airbnb revenue at the USD paid (not added again)</> : null}
+              {o.separate.income || o.separate.expenses ? <>{o.airbnbInAedRevenue ? "; " : ""}separate from the AED totals: income {aed(o.separate.income, o.currency)}, expenses {aed(o.separate.expenses, o.currency)}, net {aed(o.separate.net, o.currency)}</> : null}
+            </p>
+          ))}
+          {filterProp !== "all" && <p className="text-xs text-muted-foreground">These cards are for the whole company; the list below is filtered to one property.</p>}
         </div>
       )}
 
@@ -495,10 +508,10 @@ function TransactionsTab() {
               <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">No transactions for this period</td></tr>
             ) : (
               transactions.map((tx: any) => (
-                <tr key={tx.id} className="border-b last:border-0 hover:bg-muted/20">
+                <tr key={tx.id} className={`border-b last:border-0 hover:bg-muted/20 ${tags[tx.id] ? "opacity-60" : ""}`} data-tag={tags[tx.id] ?? undefined}>
                   <td className="px-4 py-3 text-muted-foreground whitespace-nowrap hidden sm:table-cell">{tx.date}</td>
                   <td className="px-4 py-3">
-                    <div className="font-medium">{tx.description}</div>
+                    <div className="font-medium">{tx.description}{tags[tx.id] && <Badge variant="secondary" className="ml-2 text-[10px] align-middle" title="Not in the company totals above">{tags[tx.id]}</Badge>}</div>
                     {tx.reference && <div className="text-xs text-muted-foreground">Ref: {tx.reference}</div>}
                     <div className="text-xs text-muted-foreground sm:hidden">{[tx.date, tx.propertyName, tx.category, tx.allocation === "owner" ? "Charged to owner" : "Company"].filter(Boolean).join(" · ")}</div>
                     {tx.revenueStream != null && <div className="text-xs text-muted-foreground">Revenue stream: {tx.revenueStream ? "Yes" : "No"}</div>}
@@ -508,7 +521,7 @@ function TransactionsTab() {
                     <Badge variant="outline" className="text-xs">{tx.category}</Badge>
                   </td>
                   <td className="px-4 py-3 text-xs whitespace-nowrap hidden sm:table-cell">{tx.allocation === "owner" ? "Owner" : "Company"}</td>
-                  <td className={`px-4 py-3 text-right font-semibold whitespace-nowrap ${tx.type === "income" ? "text-emerald-600" : "text-red-500"}`}>
+                  <td className={`px-4 py-3 text-right font-semibold whitespace-nowrap ${tags[tx.id] ? "text-muted-foreground" : tx.type === "income" ? "text-emerald-600" : "text-red-500"}`}>
                     {tx.type === "income" ? "+" : "−"} {aed(tx.amount,tx.currency || "AED")}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -690,9 +703,9 @@ function SettingsTab() {
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Accounting() {
-  // ?tab=company|transactions|settings opens that tab (menu links); keyed so a menu click switches tabs in place.
+  // ?tab=company|transactions|settings|airbnb opens that tab (menu links); keyed so a menu click switches tabs in place.
   const tabParam = new URLSearchParams(useSearch()).get("tab") || "statements";
-  const tab = ["statements", "company", "transactions", "settings"].includes(tabParam) ? tabParam : "statements";
+  const tab = ["statements", "company", "transactions", "settings", "airbnb"].includes(tabParam) ? tabParam : "statements";
   return (
     <div className="space-y-6">
       <div>
@@ -700,18 +713,20 @@ export default function Accounting() {
         <p className="text-muted-foreground text-sm mt-1">Owner statements, transaction ledger, and fee configuration</p>
       </div>
 
-      <AirbnbIncome/>
+      {/* Airbnb income flows into company revenue (Transactions); its earnings detail and the import live in the Airbnb payouts tab. */}
       <Tabs key={tab} defaultValue={tab}>
         <TabsList className="mb-4 flex h-auto flex-wrap justify-start gap-1">
           <TabsTrigger value="statements" className="gap-1.5"><FileText className="h-4 w-4" />Owner Statements</TabsTrigger>
           <TabsTrigger value="company">Company statement</TabsTrigger>
           <TabsTrigger value="transactions" className="gap-1.5"><DollarSign className="h-4 w-4" />Transactions</TabsTrigger>
           <TabsTrigger value="settings" className="gap-1.5"><Settings2 className="h-4 w-4" />Fee Settings</TabsTrigger>
+          <TabsTrigger value="airbnb" data-testid="tab-airbnb-payouts">Airbnb payouts</TabsTrigger>
         </TabsList>
         <TabsContent value="statements"><StatementsTab /></TabsContent>
         <TabsContent value="company"><CompanyFinance /></TabsContent>
         <TabsContent value="transactions"><TransactionsTab /></TabsContent>
         <TabsContent value="settings"><SettingsTab /></TabsContent>
+        <TabsContent value="airbnb"><AirbnbIncome /></TabsContent>
       </Tabs>
     </div>
   );

@@ -29,4 +29,9 @@ assert.deepEqual(jobs.map(j => j[1]), ['Calendar', 'Bookings', 'Verify bookings'
 for (const j of jobs) if (j[3]) assert.ok(routed(j[3]), `tile ${j[1]} -> ${j[3]}`); else assert.match(today, /onClick:\(\)=>setEntryOpen\(true\)/, 'Add income or expense opens the entry form');
 assert.match(today, /<EntryDialog open=\{entryOpen\}/);
 for (const h of ['/verify-bookings', '/accounting', '/income']) assert.ok(today.includes(h) && routed(h));
+// Accounting: no Airbnb income headline card above the tabs; earnings detail + import live in the Airbnb payouts tab.
+{ const main = accounting.slice(accounting.indexOf('export default function Accounting'));
+  assert.ok(!/<AirbnbIncome\s*\/>\s*<Tabs/.test(main) && main.indexOf('<AirbnbIncome') > main.indexOf('<Tabs'), 'Airbnb income card only inside a tab');
+  assert.match(main, /<TabsContent value="airbnb"><AirbnbIncome \/><\/TabsContent>/); assert.match(main, /"airbnb"\]\.includes\(tabParam\)/);
+  assert.match(accounting, /href="\/accounting\?tab=airbnb"/); assert.match(accounting, /company-month/); }
 console.log(`PASS: ${menu.length} menu entries, the bottom bar and the 7 dashboard tiles all open real pages; every page keeps a menu entry`);
