@@ -61,6 +61,13 @@ export const accountingTransactionsTable = pgTable("accounting_transactions", {
   revenueStream: boolean("revenue_stream"),
   reference: text("reference"),
   notes: text("notes"),
+  /** Accounting treatment (migration 0025): company | owner_paid | pass_through. Null = follow allocation
+   *  (owner → owner_paid, company → company), the behaviour before 0025. pass_through stays out of company P&L. */
+  treatment: text("treatment"),
+  /** Rate to AED for a non-AED entry (USD fixed at 3.6725). Null for AED, and always null for ZAR (kept separate). */
+  fxRate: numeric("fx_rate", { precision: 12, scale: 6 }),
+  /** paid | pending | unpaid. Null = paid (behaviour before 0025). */
+  paymentStatus: text("payment_status"),
   vendorId: integer("vendor_id").references(() => vendorsTable.id),
   /** Set on the automatic cleaning expense; unique, so a task can never be expensed twice. */
   cleaningTaskId: integer("cleaning_task_id").unique("accounting_transactions_cleaning_task_uq").references(() => cleaningTasksTable.id),

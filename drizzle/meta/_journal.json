@@ -176,6 +176,13 @@
       "when": 1790900024000,
       "tag": "0024_airbnb_history",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790900025000,
+      "tag": "0025_yalla_finance_inputs",
+      "breakpoints": true
     }
   ]
 }

@@ -24,3 +24,4 @@ export * from "./airbnb-earnings";
 export * from "./calendar-sync";
 export * from "./compliance";
 export * from "./payouts";
+export * from "./finance";
