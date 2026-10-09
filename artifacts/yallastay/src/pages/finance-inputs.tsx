@@ -134,20 +134,39 @@ function ReportNames() {
 
 function Export() {
   const [month, setMonth] = useState(prevMonth());
-  const { data, isFetching, error } = useQuery<any>({ queryKey: ["workbook", month], queryFn: () => apiJson(`/api/accounting/workbook/${month}`), enabled: /^\d{4}-\d{2}$/.test(month) });
+  const [from, setFrom] = useState("");
+  const qs = from ? `?from=${from}` : "";
+  const { data, isFetching, error, refetch } = useQuery<any>({ queryKey: ["workbook", month, from], queryFn: () => apiJson(`/api/accounting/workbook/${month}${qs}`), enabled: /^\d{4}-\d{2}$/.test(month) });
   const { toast } = useToast();
+  const [feeDates, setFeeDates] = useState<Record<number, string>>({});
   async function download() {
-    const r = await apiFetch(`/api/accounting/workbook/${month}.xlsx`);
+    const r = await apiFetch(`/api/accounting/workbook/${month}.xlsx${qs}`);
     if (!r.ok) { toast({ title: "Download failed", variant: "destructive" }); return; }
-    const url = URL.createObjectURL(await r.blob()); const a = document.createElement("a"); a.href = url; a.download = `YALLA_Income_Expense_${month}.xlsx`; a.click(); URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(await r.blob()); const a = document.createElement("a"); a.href = url; a.download = `YALLA_Workbook_${month}.xlsx`; a.click(); URL.revokeObjectURL(url);
   }
+  async function saveFee(bookingId: number) {
+    try { await apiJson(`/api/accounting/workbook/fee-received/${bookingId}`, "PUT", { receivedOn: feeDates[bookingId] || null }); toast({ title: "Saved" }); refetch(); }
+    catch (e) { toast({ title: (e as Error).message, variant: "destructive" }); }
+  }
+  const pendingFees = (data?.income ?? []).filter((r: any) => r.kind === "management-fee" && r.status === "Pending");
+  const d = data?.m3?.dashboard;
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2 items-end"><label className="text-sm">Month<Input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label><Button onClick={download}><Download className="w-4 h-4 mr-1" />Download Income &amp; Expense Input (.xlsx)</Button></div>
-      <p className="text-sm text-muted-foreground">Same sheet names and columns as the master finance workbook, ready to paste. Airbnb counts by payout date; property-report rows are view-only. ZAR rows are listed below, never converted.</p>
+      <div className="flex flex-wrap gap-2 items-end">
+        <label className="text-sm">Month<Input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label>
+        <label className="text-sm">Input rows from (optional)<Input type="month" value={from} onChange={e => setFrom(e.target.value)} /></label>
+        <Button onClick={download}><Download className="w-4 h-4 mr-1" />Download workbook (.xlsx)</Button>
+      </div>
+      <p className="text-sm text-muted-foreground">Sheets as in the master finance workbook: Dashboard, Apartment Performance, Monthly Summary, Income Input, Expense Input and Lists &amp; Sources, with the master's formulas. Airbnb counts by payout date; property-report rows are view-only. ZAR rows are listed below, never converted. Leave "rows from" empty to export the month only.</p>
       {isFetching && <p className="text-sm">Loading…</p>}{error && <p className="text-sm text-red-600">{(error as Error).message}</p>}
       {data && <div className="text-sm space-y-2">
         <p>Income rows {data.income.length} · Expense rows {data.expense.length} · Income (counted) {fmt(data.totals.income)} · Operating expenses {fmt(data.totals.operatingExpenses)} · Owner paid {fmt(data.totals.ownerPaid)} · Pass-through {fmt(data.totals.passThrough)} · Refundable deposits {fmt(data.totals.refundableDeposits)}</p>
+        {d && <p>Dashboard: properties {d.propertiesManaged} · income this month {fmt(d.incomeMonth)} · deposits held {fmt(d.depositsHeld)} · bank {d.bankBalance == null ? "not entered" : fmt(d.bankBalance)} · net operating profit {fmt(d.netProfit)}</p>}
+        {data.warnings?.length > 0 && <div><b>To check</b><ul className="list-disc pl-5">{data.warnings.map((w: any, i: number) => <li key={i}>{w.message}</li>)}</ul></div>}
+        {pendingFees.length > 0 && <div><b>Management fees still Pending</b> (enter the date the fee was received, e.g. netted from the owner payout)
+          <ul>{pendingFees.map((r: any) => <li key={r.bookingId} className="flex gap-2 items-center">{r.property} · {fmt(r.gross)}
+            <Input type="date" className="w-40" value={feeDates[r.bookingId] ?? ""} onChange={e => setFeeDates({ ...feeDates, [r.bookingId]: e.target.value })} />
+            <Button size="sm" variant="outline" onClick={() => saveFee(r.bookingId)} disabled={!feeDates[r.bookingId]}>Mark received</Button></li>)}</ul></div>}
         {data.excluded.length > 0 && <div><b>Not in the AED sheets</b><ul>{data.excluded.map((x: any, i: number) => <li key={i}>{x.date} · {x.description} · {fmt(x.amount, x.currency)} · {x.reason}</li>)}</ul></div>}
       </div>}
     </div>

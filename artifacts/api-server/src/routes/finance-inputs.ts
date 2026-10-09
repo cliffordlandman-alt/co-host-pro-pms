@@ -1,11 +1,12 @@
-// YALLA monthly workbook inputs (M1) and the Income/Expense Input export (M2). Approved by Clifford on 9 Oct 2026
+// YALLA monthly workbook inputs (M1), the Income/Expense Input export (M2) and the M3 sheets (Monthly Summary,
+// Apartment Performance, Dashboard). Approved by Clifford on 9 Oct 2026
 // (via Raju). Rules: /workspace/finance/yalla_export_spec.md. Mounted under /accounting so the accounting roles apply.
 import { Router } from "express";
 import { z } from "zod";
 import { eq, asc } from "drizzle-orm";
 import {
   db, depositsTable, leaseSchedulesTable, leaseChequesTable, bankBalancesTable, propertiesTable, ownersTable,
-  accountingTransactionsTable, reservationsTable, airbnbEarningsTable, airbnbPayoutsTable, ownerStatementsTable, maintenanceTicketsTable,
+  accountingTransactionsTable, reservationsTable, airbnbEarningsTable, airbnbPayoutsTable, ownerStatementsTable, maintenanceTicketsTable, ownerPayoutsTable,
 } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { parseId } from "../lib/parseId";
@@ -13,6 +14,8 @@ import { insertAuditLog } from "../lib/audit";
 import { leaseAccruals } from "../../../../lib/lease-schedule.mjs";
 import { buildWorkbookRows, workbookXlsx, monthEnd } from "../../../../lib/yalla-workbook.mjs";
 import { reservationFinancials } from "../../../../lib/reservation-financials.mjs";
+import { dubaiToday } from "../lib/dubai-date";
+import { documentCompanyName } from "./app-settings";
 
 const router = Router();
 const realDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(d + "T00:00:00Z").toISOString().slice(0, 10) === d;
@@ -217,29 +220,47 @@ router.put("/accounting/report-names", asyncHandler(async (req, res) => {
   res.json({ changed: changed.length });
 }));
 
-// ── M2: Income Input + Expense Input export ──
+// ── Q5: a booking's management fee received (e.g. netted from an owner payout that left the bank) ──
+const feeSchema = z.object({ receivedOn: z.union([z.null(), z.literal("").transform(() => null), date]), note: optText(300) }).strict();
+router.put("/accounting/workbook/fee-received/:reservationId", asyncHandler(async (req, res) => {
+  const id = parseId(req.params.reservationId);
+  if (id === null) return res.status(400).json({ error: "Invalid id" });
+  const p = feeSchema.safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: firstIssue(p.error) });
+  if (p.data.receivedOn && p.data.receivedOn > dubaiToday()) return res.status(400).json({ error: "The date can't be in the future" });
+  const [before] = await db.select({ id: reservationsTable.id, feeReceivedOn: reservationsTable.feeReceivedOn }).from(reservationsTable).where(eq(reservationsTable.id, id));
+  if (!before) return res.status(404).json({ error: "Booking not found" });
+  await db.update(reservationsTable).set({ feeReceivedOn: p.data.receivedOn }).where(eq(reservationsTable.id, id));
+  await insertAuditLog({ action: "update", entity: "reservation_fee_received", entityId: id, details: { from: before.feeReceivedOn, to: p.data.receivedOn, note: p.data.note ?? null }, performedBy: who(req, res) });
+  res.json({ id, feeReceivedOn: p.data.receivedOn });
+}));
+
+// ── M2 + M3: the workbook export ──
 async function workbookData() {
-  const [properties, owners, transactions, bookings, earnings, payouts, statements, leases, cheques, deposits, maintenance] = await Promise.all([
+  const [properties, owners, transactions, bookings, earnings, payouts, statements, leases, cheques, deposits, maintenance, ownerPayouts, bankBalances] = await Promise.all([
     db.select().from(propertiesTable), db.select().from(ownersTable), db.select().from(accountingTransactionsTable), db.select().from(reservationsTable),
     db.select().from(airbnbEarningsTable), db.select().from(airbnbPayoutsTable), db.select().from(ownerStatementsTable), db.select().from(leaseSchedulesTable),
-    db.select().from(leaseChequesTable), db.select().from(depositsTable), db.select().from(maintenanceTicketsTable)]);
+    db.select().from(leaseChequesTable), db.select().from(depositsTable), db.select().from(maintenanceTicketsTable), db.select().from(ownerPayoutsTable), db.select().from(bankBalancesTable)]);
   const prop = (id: number) => properties.find(p => p.id === id);
   return {
-    properties, owners, transactions, earnings, payouts, statements, deposits, maintenance,
+    properties, owners, transactions, earnings, payouts, statements, deposits, maintenance, ownerPayouts, bankBalances,
     // Management amount exactly as the owner statement and company statement compute it.
     bookings: bookings.map(b => b.financeMode === "inclusive-v1" ? { ...b, managementAmount: reservationFinancials(b, earnings, prop(b.propertyId)).managementAmount } : b),
     leases: leases.map(l => ({ ...l, cheques: cheques.filter(c => c.leaseId === l.id) })),
   };
 }
+// GET /accounting/workbook/2026-09 (JSON) or .xlsx; ?from=2026-04 puts every month from April on the Input sheets.
 router.get(/^\/accounting\/workbook\/(\d{4}-\d{2})(\.xlsx)?$/, asyncHandler(async (req, res) => {
   const month = (req.params as any)[0] as string, xlsx = !!(req.params as any)[1];
   if (!MONTH.test(month)) return res.status(400).json({ error: "Month must look like 2026-09" });
-  const result = buildWorkbookRows(await workbookData(), month);
+  const from = req.query.from == null || req.query.from === "" ? undefined : String(req.query.from);
+  if (from !== undefined && (!MONTH.test(from) || from > month)) return res.status(400).json({ error: "From must be a month like 2026-04, not after the reporting month" });
+  const result = buildWorkbookRows(await workbookData(), month, {}, { from, today: dubaiToday(), companyName: await documentCompanyName() });
   if (!xlsx) return res.json(result);
   const buf = workbookXlsx(result);
-  await insertAuditLog({ action: "create", entity: "yalla_workbook_export", entityId: 0, details: { month, incomeRows: result.income.length, expenseRows: result.expense.length, excluded: result.excluded.length }, performedBy: who(req, res) });
+  await insertAuditLog({ action: "create", entity: "yalla_workbook_export", entityId: 0, details: { month, from: result.from, incomeRows: result.income.length, expenseRows: result.expense.length, excluded: result.excluded.length, warnings: result.warnings.length }, performedBy: who(req, res) });
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  res.setHeader("Content-Disposition", `attachment; filename="YALLA_Income_Expense_${month}.xlsx"`);
+  res.setHeader("Content-Disposition", `attachment; filename="YALLA_Workbook_${month}.xlsx"`);
   res.send(buf);
 }));
 
