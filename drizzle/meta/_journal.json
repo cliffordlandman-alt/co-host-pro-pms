@@ -204,6 +204,13 @@
       "when": 1790900028000,
       "tag": "0028_yalla_report_property_label",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790900029000,
+      "tag": "0029_yalla_report_description_order",
+      "breakpoints": true
     }
   ]
 }

@@ -213,6 +213,8 @@ router.get("/accounting/transactions", asyncHandler(async (req, res) => {
       reportSource: accountingTransactionsTable.reportSource,
       reportProperty: accountingTransactionsTable.reportProperty,
       forecastLabel: accountingTransactionsTable.forecastLabel,
+      reportDescription: accountingTransactionsTable.reportDescription,
+      reportOrder: accountingTransactionsTable.reportOrder,
       createdAt: accountingTransactionsTable.createdAt,
     })
     .from(accountingTransactionsTable)
@@ -236,7 +238,7 @@ const lockedMessage = (st: { status: string; month: string; propertyName: string
   `This entry is on the ${st.month} owner statement for ${st.propertyName ?? "this property"}, which has been ${st.status === "paid" ? "paid" : "sent"}, so it can't be changed. Record a correction in an open month instead.`;
 // Entries written by the system (cleaning costs, maintenance charges) are changed at their source, not here.
 const automaticEntry = (e: { cleaningTaskId?: number | null; reference?: string | null }) => e.cleaningTaskId != null || /^(cleaning|maintenance):/.test(e.reference ?? "");
-const EDITABLE_ENTRY_FIELDS = ["type", "amount", "date", "category", "propertyId", "allocation", "revenueStream", "notes", "description", "reference", "currency", "reservationId", "treatment", "fxRate", "paymentStatus", "directCost", "payer", "reportCategory", "reportSource", "reportProperty", "forecastLabel"] as const;
+const EDITABLE_ENTRY_FIELDS = ["type", "amount", "date", "category", "propertyId", "allocation", "revenueStream", "notes", "description", "reference", "currency", "reservationId", "treatment", "fxRate", "paymentStatus", "directCost", "payer", "reportCategory", "reportSource", "reportProperty", "forecastLabel", "reportDescription", "reportOrder"] as const;
 const money = (r: any) => ({ ...r, amount: parseFloat(r.amount || "0"), fxRate: r.fxRate == null ? null : Number(r.fxRate), directCost: r.directCost == null ? null : Number(r.directCost), createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt });
 /** USD/AED is fixed (YALLA rule 7). */
 export const USD_AED_RATE = 3.6725;
@@ -262,7 +264,7 @@ function applyFinanceFields(input: any): string | null {
   }
   if (input.paymentStatus != null && !["paid", "pending", "unpaid", "none"].includes(input.paymentStatus)) return "Payment status must be paid, pending, unpaid or none";
   // Migration 0026: Income Input direct cost and payer (income only), and the master workbook category override.
-  for (const k of ["directCost", "payer", "reportCategory", "reportSource", "reportProperty", "forecastLabel"]) { if (typeof input[k] === "string") input[k] = input[k].trim(); if (input[k] === "" || input[k] === undefined) input[k] = null; }
+  for (const k of ["directCost", "payer", "reportCategory", "reportSource", "reportProperty", "forecastLabel", "reportDescription"]) { if (typeof input[k] === "string") input[k] = input[k].trim(); if (input[k] === "" || input[k] === undefined) input[k] = null; }
   if (input.type !== "income" && (input.directCost != null || input.payer != null)) return "Direct cost and payer apply to income only";
   if (input.directCost != null) {
     const n = Number(input.directCost);
@@ -277,6 +279,9 @@ function applyFinanceFields(input: any): string | null {
   if (input.reportProperty != null && input.propertyId) return "Workbook property is only for income with no property";
   if (input.reportProperty != null && String(input.reportProperty).length > 60) return "Workbook property is at most 60 characters";
   if (input.forecastLabel != null && String(input.forecastLabel).length > 80) return "Forecast label is at most 80 characters";
+  if (input.reportDescription != null && String(input.reportDescription).length > 120) return "Workbook description is at most 120 characters";
+  if (input.reportOrder === "" || input.reportOrder === undefined) input.reportOrder = null;
+  if (input.reportOrder != null) { const n = Number(input.reportOrder); if (!Number.isInteger(n) || n < 1 || n > 999) return "Workbook order must be a whole number from 1 to 999"; input.reportOrder = n; }
   return null;
 }
 /** Runs once the entry's currency is known. */

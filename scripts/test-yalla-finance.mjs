@@ -283,6 +283,16 @@ try {
     await api('/accounting/transactions', 'POST', { type: 'income', date: '2025-01-15', amount: '10', category: 'Commission', description: 'wp', propertyId: LW.id, reportProperty: 'Company' }, 400);
     await api('/accounting/transactions', 'POST', { type: 'expense', date: '2025-01-15', amount: '10', category: 'Software', description: 'wp', allocation: 'company', forecastLabel: 'x' }, 400);
     assert.equal((await api(`/accounting/transactions/${wp.id}`, 'PATCH', { reportProperty: '' })).reportProperty, null); }
+  // Migration 0029: workbook description (Expense Input wording; full description on Expense Line Items) and fixed order.
+  { const a = await api('/accounting/transactions', 'POST', { type: 'expense', date: '2025-02-10', amount: '20', category: 'Software', description: 'Zeta full, inv 123', allocation: 'company', reportDescription: 'Zeta', reportOrder: 2 }, 201);
+    const b = await api('/accounting/transactions', 'POST', { type: 'expense', date: '2025-02-10', amount: '30', category: 'Software', description: 'Alpha', allocation: 'company', reportOrder: 1 }, 201);
+    const c = await api('/accounting/transactions', 'POST', { type: 'expense', date: '2025-02-10', amount: '40', category: 'Car', description: 'Aardvark', allocation: 'company' }, 201);
+    assert.deepEqual([a.reportDescription, a.reportOrder], ['Zeta', 2]);
+    await api('/accounting/transactions', 'POST', { type: 'expense', date: '2025-02-10', amount: '1', category: 'Software', description: 'x', allocation: 'company', reportOrder: 0 }, 400);
+    const wb = await api('/accounting/workbook/2025-02');
+    assert.deepEqual(wb.expense.filter(x => x.date === '2025-02-10').map(x => x.description), ['Alpha', 'Zeta', 'Aardvark'], 'fixed order first, then the usual order');
+    assert.ok(wb.expenseLines.some(x => x.description === 'Zeta full, inv 123') && !wb.expenseLines.some(x => x.description === 'Zeta'), 'full description on Expense Line Items');
+    for (const t of [a, b, c]) await api(`/accounting/transactions/${t.id}`, 'DELETE', undefined, 204); }
   const moved = await api(`/accounting/transactions/${own.id}`, 'PATCH', { allocation: 'company' });
   assert.deepEqual([moved.allocation, moved.treatment], ['company', 'company'], 'changing charge-to moves the treatment with it');
   await api(`/accounting/transactions/${own.id}`, 'PATCH', { treatment: 'owner_paid' });

@@ -80,6 +80,10 @@ export const accountingTransactionsTable = pgTable("accounting_transactions", {
   reportProperty: text("report_property"),
   /** Migration 0028: Forecast one-off label (A18) when this pending income is the one-off; null = the description. Income only. */
   forecastLabel: text("forecast_label"),
+  /** Migration 0029: Expense / Income Input wording (the master's); null = description. The full description stays in the app and on Expense Line Items. */
+  reportDescription: text("report_description"),
+  /** Migration 0029: fixed position among the same date's workbook rows (1 = first); null = after them, usual order. */
+  reportOrder: integer("report_order"),
   vendorId: integer("vendor_id").references(() => vendorsTable.id),
   /** Set on the automatic cleaning expense; unique, so a task can never be expensed twice. */
   cleaningTaskId: integer("cleaning_task_id").unique("accounting_transactions_cleaning_task_uq").references(() => cleaningTasksTable.id),
