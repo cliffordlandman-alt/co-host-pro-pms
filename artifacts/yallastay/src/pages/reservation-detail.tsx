@@ -1,3 +1,4 @@
+import { paymentLabel } from "../../../../lib/booking-labels.mjs";
 import { BookingFinanceEditor } from "@/components/BookingFinanceEditor";
 import { ReservationMoney, BookingExpenses } from "@/components/ReservationMoney";
 import { guestIdComplete, idVerifiedByChannel, dtcmPassportNeeded } from "../../../../lib/guest-id.mjs";
@@ -45,6 +46,8 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 const PAYMENT_STYLES: Record<string, string> = {
+  channel: "bg-emerald-50 text-emerald-700",
+  unknown: "bg-slate-100 text-slate-600",
   paid:    "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
   partial: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
   pending: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
@@ -307,8 +310,8 @@ export default function ReservationDetail() {
               </Select>
             ) : (
               <div>
-                <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${PAYMENT_STYLES[reservation.paymentStatus] ?? PAYMENT_STYLES.pending}`}>
-                  {PAYMENT_OPTIONS.find(o => o.value === reservation.paymentStatus)?.label ?? reservation.paymentStatus}
+                <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${PAYMENT_STYLES[paymentLabel(reservation).key] ?? PAYMENT_STYLES[reservation.paymentStatus] ?? PAYMENT_STYLES.pending}`}>
+                  {paymentLabel(reservation).label}
                 </span>
               </div>
             )}

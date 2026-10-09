@@ -1,6 +1,7 @@
 import { ReservationMoney, ServerBookingTotals } from "@/components/ReservationMoney";
 import { Pager, usePagedList } from "@/components/Pager";
 import { guestIdComplete, idVerifiedByChannel } from "../../../../lib/guest-id.mjs";
+import { paymentLabel } from "../../../../lib/booking-labels.mjs";
 import { useLocation } from "wouter";
 import { DirectBookingDialog } from "@/components/DirectBookingDialog";
 import { useState, useEffect } from "react";
@@ -25,7 +26,8 @@ const STATUS_STYLES: Record<string, { label: string; cls: string }> = {
 };
 
 const PAYMENT_STYLES: Record<string, { label: string; cls: string }> = {
-  unknown: {label:"Not supplied",cls:"bg-slate-100 text-slate-600"},
+  unknown: {label:"Not supplied by channel",cls:"bg-slate-100 text-slate-600"},
+  channel: {label:"Collected by Airbnb",cls:"bg-emerald-50 text-emerald-700"},
   paid:    { label: "Paid",    cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" },
   partial: { label: "Partial", cls: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" },
   pending: { label: "Pending", cls: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" },
@@ -196,7 +198,8 @@ export default function Reservations() {
                 </tr>
               ) : filtered.map(res => {
                 const st = STATUS_STYLES[res.status] ?? STATUS_STYLES.confirmed;
-                const pay = PAYMENT_STYLES[res.paymentStatus] ?? PAYMENT_STYLES.pending;
+                const payKey = paymentLabel(res).key;
+                const pay = { ...(PAYMENT_STYLES[payKey] ?? PAYMENT_STYLES.pending), label: paymentLabel(res).label };
                 const clean = CLEANING_STYLES[res.cleaningStatus] ?? CLEANING_STYLES.not_started;
                 const isHovered = hoveredId === res.id;
                 return (

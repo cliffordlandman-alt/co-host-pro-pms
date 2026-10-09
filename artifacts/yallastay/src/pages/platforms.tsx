@@ -1,3 +1,4 @@
+import { Link } from "wouter";
 import { apiFetch } from "@/lib/api-fetch";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -679,7 +680,7 @@ export default function Platforms() {
                           <div>
                             <div className="text-xs font-bold">{aed(p.revenue)}</div>
                             <div className="text-[10px] text-muted-foreground uppercase tracking-wide" title="Net accommodation revenue from bookings with a verified breakdown (excludes VAT and Tourism Dirham)">Verified revenue</div>
-                            {(p as any).unverifiedBookings > 0 && <div className="text-[10px] text-amber-600">{(p as any).unverifiedBookings} not verified</div>}
+                            {(p as any).unverifiedBookings > 0 && <Link href="/verify-bookings" title="Bookings without a verified guest total and fee breakdown (not in the revenue figure). Import Airbnb's reservation breakdown or enter the totals under Verify bookings." className="block text-[10px] text-amber-600 underline">{(p as any).unverifiedBookings} not verified</Link>}
                           </div>
                         </div>
                       </CardContent>

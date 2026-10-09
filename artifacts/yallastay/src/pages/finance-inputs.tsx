@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearch } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -196,11 +197,14 @@ function Export() {
   );
 }
 
+const FINANCE_TABS = ["export", "deposits", "leases", "bank", "names"];
 export default function FinanceInputsPage() {
+  const tab = new URLSearchParams(useSearch()).get("tab");
+  const initial = tab && FINANCE_TABS.includes(tab) ? tab : "export";
   return (
     <div className="p-4 md:p-6 space-y-4">
       <h1 className="text-2xl font-bold">Finance inputs (monthly workbook)</h1>
-      <Tabs defaultValue="export">
+      <Tabs key={initial} defaultValue={initial}>
         <TabsList className="flex flex-wrap h-auto"><TabsTrigger value="export">Monthly export</TabsTrigger><TabsTrigger value="deposits">Deposits</TabsTrigger><TabsTrigger value="leases">Leases</TabsTrigger><TabsTrigger value="bank">Bank balance</TabsTrigger><TabsTrigger value="names">Workbook names</TabsTrigger></TabsList>
         <TabsContent value="export"><Export /></TabsContent>
         <TabsContent value="deposits"><Deposits /></TabsContent>

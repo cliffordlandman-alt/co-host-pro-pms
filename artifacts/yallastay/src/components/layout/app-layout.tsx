@@ -1,4 +1,5 @@
 import { CommandSearch } from "@/components/today/CommandSearch";
+import { HelpBubble } from "@/components/HelpBubble";
 import { CheckCircle2, RefreshCw, ShieldCheck, History } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { Link, useLocation, useSearch } from "wouter";
@@ -344,6 +345,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <span className="text-[11px] leading-none">More</span>
         </button>
       </nav>
+
+      <HelpBubble />
 
       {/* Mobile More Menu */}
       {mobileMenuOpen && (

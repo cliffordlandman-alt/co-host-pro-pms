@@ -1,3 +1,4 @@
+import { paymentLabel } from "../../../../lib/booking-labels.mjs";
 import { ReservationMoney } from "@/components/ReservationMoney";
 import { CalendarBookingLabel, calendarBookingName } from "@/components/CalendarBookingLabel";
 import { CalendarBarsOverlay } from "@/components/CalendarBars";
@@ -558,7 +559,7 @@ export default function Calendar() {
                     (detailRes as any).paymentStatus === "paid" ? "default" :
                     (detailRes as any).paymentStatus === "partial" ? "secondary" : "outline"
                   }>
-                    {(detailRes as any).paymentStatus}
+                    {paymentLabel(detailRes).label}
                   </Badge>
                 </div>
                 <div className="flex justify-between">
