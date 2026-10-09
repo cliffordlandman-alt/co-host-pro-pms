@@ -14,6 +14,8 @@ import { inflateRawSync } from 'node:zlib';
 import { leaseAccruals, equalCheques } from '../lib/lease-schedule.mjs';
 import { buildWorkbookRows, companyMonthSummary, workbookXlsx, INCOME_HEADERS, EXPENSE_HEADERS, mapExpenseCategory, mapIncomeCategory } from '../lib/yalla-workbook.mjs';
 import { WORKBOOK_DEFAULTS } from '../lib/yalla-config.mjs';
+import { loadTemplate } from '../lib/xlsx-template.mjs';
+import { TEMPLATE_GZ_B64 } from '../lib/yalla-master-template.mjs';
 import { companyStatement } from '../lib/company-statement.mjs';
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 
@@ -157,9 +159,10 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
   assert.equal(buildWorkbookRows(base, '2026-09', { incomeChecks: [] }).checks.status, 'PASS');
   // The .xlsx: master sheet order, Dashboard J5 = the ADIB balance, the master's formulas.
   const parts = unzip(workbookXlsx(r));
-  assert.deepEqual([...parts['xl/workbook.xml'].matchAll(/<sheet name="([^"]+)"/g)].map(x => x[1].replace(/&amp;/g, '&')), ['Dashboard', 'Apartment Performance', 'Monthly Summary', 'Income Input', 'Expense Input', 'Expense Line Items', 'Confirmed Booking', 'Lists & Sources', 'Checks', 'Forecast']);
+  assert.deepEqual([...parts['xl/workbook.xml'].matchAll(/<sheet [^>]*name="([^"]+)"/g)].map(x => x[1].replace(/&amp;/g, '&')), ['Dashboard', 'Apartment Performance', 'Monthly Summary', 'Income Input', 'Expense Input', 'Expense Line Items', 'Confirmed Booking', 'Lists & Sources', 'Checks', 'Forecast']);
   const dash = parts['xl/worksheets/sheet1.xml'];
-  assert.ok(dash.includes('<c r="J5" s="16"><v>7259.22</v></c>'), 'J5 bank balance');
+  assert.match(dash, /<c r="J5" s="\d+"><v>7259.22<\/v><\/c>/, 'J5 bank balance');
+  assert.ok(dash.includes('AVAILABLE AFTER DEPOSITS HELD') && dash.includes('<f>J5-G5</f><v>6259.22</v>'), 'J13 available after deposits held');
   assert.ok(dash.includes('BANK BALANCE - ADIB - 30 SEP 2026'));
   assert.ok(dash.includes('<f>SUMIFS(&apos;Monthly Summary&apos;!$B$4:$B$12') || dash.includes("<f>SUMIFS('Monthly Summary'!$B$4:$B$12"), 'D5 formula');
   assert.ok(dash.includes('<mergeCell ref="J5:L6"/>'));
@@ -168,6 +171,13 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
   assert.ok(ck.includes('<f>IF(COUNTIF(F4:F9,&quot;REVIEW&quot;)=0,&quot;PASS&quot;,&quot;REVIEW&quot;)</f>') && ck.includes('<conditionalFormatting sqref="F4:F9">'));
   assert.ok(ck.includes("<f>SUMIFS('Income Input'!$H$7:$H$507,'Income Input'!$L$7:$L$507,&quot;Airbnb Monthly Report&quot;)/'Income Input'!$D$2</f>"), 'check 4 formula');
   assert.ok(parts['xl/worksheets/sheet2.xml'].includes('RANK(G5,$G$5:$G$8,0)+COUNTIF($G$5:G5,G5)-1'));
+  // Master template: 4 properties here vs the master's 12 -> rows, totals, chart ranges and drawing anchors move.
+  assert.ok(parts['xl/charts/chart4.xml'].includes("<c:f>'Apartment Performance'!$C$5:$C$8</c:f>") && parts['xl/charts/chart3.xml'].includes("<c:f>'Apartment Performance'!$G$5:$G$8</c:f>"), 'AP chart ranges follow the rows');
+  assert.ok(parts['xl/charts/chart1.xml'].includes('<c:f>Dashboard!$B$20:$B$28</c:f>'), 'Dashboard chart = the 9 summary months');
+  { const apx = parts['xl/worksheets/sheet2.xml'], sOf = (x, ref) => (x.match(new RegExp(`<c r="${ref}" s="(\\d+)"`)) || [])[1];
+    assert.ok(apx.includes('<c r="C11"') && /<c r="C11" s="\d+" t="inlineStr"><is><t xml:space="preserve">TOTAL<\/t>/.test(apx), 'TOTAL row 3 below the last property, as in the master');
+    assert.equal(sOf(apx, 'D11'), (loadTemplate(TEMPLATE_GZ_B64)['xl/worksheets/sheet2.xml'].match(/<c r="D19" s="(\d+)"/) || [])[1], 'total row keeps the master total style (master D19)');
+    assert.match(parts['xl/drawings/drawing2.xml'], /<xdr:row>14<\/xdr:row>/, 'AP charts move up with the rows'); }
   assert.ok(parts['xl/worksheets/sheet3.xml'].includes('IF(AND(B9=0,C9=0,D9=0),&quot;No activity&quot;,IF(E9&gt;=0,&quot;Profit&quot;,&quot;Loss&quot;))'));
   // Accounting > Transactions month cards = the export's Monthly Summary row for the month (same rows, no drift).
   {
@@ -190,16 +200,24 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
   assert.deepEqual(r.confirmedBookings.map(b => [b.id, b.status, b.management]), [[50, 'checked_out', 1400]]);
   // M5 Forecast: the master's inputs and formulas, 9 months from the month after the report, wired to the exported sheets.
   const F = r.forecast;
-  assert.equal(F.inputs.opening, 7259.22); assert.equal(F.inputs.start, '2026-10-01'); assert.equal(F.inputs.windowStart, '2026-07-01');
+  assert.equal(F.inputs.opening, 6259.22, 'bank balance less tenant deposits held (master B5 = Dashboard J13)'); assert.equal(F.inputs.start, '2026-10-01'); assert.equal(F.inputs.windowStart, '2026-07-01');
   assert.equal(F.months.length, 9); assert.equal(F.months[0].month, '2026-10'); assert.equal(F.months[8].month, '2027-06');
   assert.equal(F.inputs.salary, WORKBOOK_DEFAULTS.salaryMonthly);
   for (let i = 1; i < 9; i++) assert.ok(Math.abs(F.months[i].opening - F.months[i - 1].closing) < 1e-9);
-  assert.deepEqual(F.after.map(a => a.months), [3, 6, 9]); assert.equal(F.lowest, Math.min(...F.months.map(m => m.closing)));
+  assert.deepEqual(F.after.map(a => a.months), [1, 3, 6, 9]);
+  // Master since 9 Oct: expected commissions from Nov (own column) and the one-off: pending company income after the month end.
+  assert.deepEqual(F.inputs.expected, { monthly: 15000, from: '2026-11-01' }); assert.deepEqual(F.months.map(m => m.expected).slice(0, 3), [0, 15000, 15000]);
+  assert.equal(F.inputs.oneOff.amount, 0);
+
+  { const oo = ro.forecast.inputs.oneOff; assert.equal(oo.amount, 7000); assert.equal(oo.month, '2026-10-01'); assert.equal(ro.forecast.months[0].oneOff, 7000); assert.equal(ro.forecast.months[1].oneOff, 0);
+    const fx = unzip(workbookXlsx(ro))['xl/worksheets/sheet10.xml']; assert.ok(fx.includes(`<f>'Income Input'!H${oo.rows[0]}</f><v>7000</v>`) && fx.includes('One-off income - Oct commission'));
+    assert.match(fx, /<f>C(\d+)\+D\1\+E\1-F\1-G\1-H\1<\/f>/); assert.match(fx, /<f>IF\(A\d+&gt;=\$B\$\d+,\$B\$\d+,0\)<\/f>/, 'master month-row formulas'); }
+  { const fx = parts['xl/worksheets/sheet10.xml']; } assert.equal(F.lowest, Math.min(...F.months.map(m => m.closing)));
   const fc = parts['xl/worksheets/sheet10.xml'];
-  assert.ok(fc.includes('<f>Dashboard!J5</f><v>7259.22</v>'), 'B5 = Dashboard J5');
+  assert.ok(fc.includes('<f>Dashboard!J13</f><v>6259.22</v>'), 'B5 = Dashboard J13');
   assert.ok(fc.includes('<f>EOMONTH(B6,-1)</f>') || /<f>EOMONTH\(/.test(fc), 'B8 EOMONTH');
   assert.ok(/<f>SUMIFS\(&apos;Income Input&apos;!\$H|<f>SUMIFS\('Income Input'!\$H/.test(fc), 'B9 Airbnb average from Income Input');
-  assert.ok(/<f>MIN\(H\d+:H\d+\)<\/f>/.test(fc), 'lowest balance');
+  assert.ok(/<f>MIN\(J\d+:J\d+\)<\/f>/.test(fc), 'lowest balance');
   assert.ok(fc.includes('Cash Forecast - 9 Months (Oct 2026 to Jun 2027)'));
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('YallaStay - Finance Dashboard'), 'report title (export only)');
   assert.ok(buildWorkbookRows(base, '2026-09', {}, { today: '2026-10-09', companyName: 'Co-Host Pro', reportTitle: 'Other title' }).reportTitle === 'Other title');
@@ -351,12 +369,15 @@ try {
   const r = await raw('/accounting/workbook/2026-09.xlsx'); assert.equal(r.status, 200);
   assert.match(r.headers.get('content-disposition'), /YALLA_Workbook_2026-09\.xlsx/);
   const parts = unzip(Buffer.from(await r.arrayBuffer()));
-  assert.match(parts['xl/workbook.xml'], /<sheet name="Dashboard" sheetId="1"[^>]*\/><sheet name="Apartment Performance" sheetId="2"[^>]*\/><sheet name="Monthly Summary" sheetId="3"[^>]*\/><sheet name="Income Input" sheetId="4"[^>]*\/><sheet name="Expense Input" sheetId="5"[^>]*\/><sheet name="Expense Line Items" sheetId="6"[^>]*\/><sheet name="Confirmed Booking" sheetId="7"[^>]*\/><sheet name="Lists &amp; Sources" sheetId="8"[^>]*\/><sheet name="Checks" sheetId="9"[^>]*\/><sheet name="Forecast" sheetId="10"/);
+  assert.deepEqual([...parts['xl/workbook.xml'].matchAll(/<sheet [^>]*name="([^"]+)"[^>]*sheetId="(\d+)"/g)].map(x => [x[1].replace(/&amp;/g, '&'), x[2]]), ['Dashboard', 'Apartment Performance', 'Monthly Summary', 'Income Input', 'Expense Input', 'Expense Line Items', 'Confirmed Booking', 'Lists & Sources', 'Checks', 'Forecast'].map((n, i) => [n, String(i + 1)]));
+  // Template: the master's styles, charts and drawings are in the export (identical look).
+  for (const k of ['xl/styles.xml', 'xl/theme/theme1.xml', 'xl/charts/chart1.xml', 'xl/charts/chart4.xml', 'xl/drawings/drawing1.xml']) assert.ok(parts[k], k);
+  assert.ok(!/macroEnabled/.test(parts['[Content_Types].xml']), 'plain .xlsx, no macros');
   // Expense Line Items ties to Expense Input; Confirmed Booking lists the confirmed stays (no guest names).
   assert.ok(parts['xl/worksheets/sheet6.xml'].includes('<f>IF(ROUND(F2-H2,2)=0,&quot;OK&quot;,&quot;REVIEW&quot;)</f><v>OK</v>'), 'line items tie');
   assert.ok(!parts['xl/worksheets/sheet7.xml'].includes('Sept income'), 'no guest names');
   assert.ok(parts['xl/worksheets/sheet7.xml'].includes('<t xml:space="preserve">checked_out</t>'));
-  assert.ok(parts['xl/worksheets/sheet10.xml'].includes('<f>Dashboard!J5</f>'));
+  assert.ok(parts['xl/worksheets/sheet10.xml'].includes('<f>Dashboard!J13</f>'));
   // Company month cards: the API returns the export's figures for the month (owner/pass-through tagged, not counted).
   { const cm = await api('/accounting/company-month/2026-09'); const w = await api('/accounting/workbook/2026-09');
     assert.equal(cm.revenue.total, w.totals.income); assert.equal(cm.expenses.total, w.totals.operatingExpenses); assert.equal(cm.expenses.passThrough, w.totals.passThrough);
@@ -372,7 +393,7 @@ try {
   assert.deepEqual(await api('/accounting/workbook-settings', 'PUT', { reportTitle: '' }), { reportTitle: null });
   assert.ok((await api('/audit-log')).some(a => a.entity === 'workbook_settings'));
   const texts = xml => [...xml.matchAll(/<t xml:space="preserve">([^<]*)<\/t>/g)].map(m => m[1].replace(/&amp;/g, '&'));
-  const row = (xml, n) => texts((xml.match(new RegExp(`<row r="${n}">(.*?)</row>`)) || [])[1] || '');
+  const row = (xml, n) => texts((xml.match(new RegExp(`<row r="${n}"[^>]*>(.*?)</row>`)) || [])[1] || '');
   assert.deepEqual(row(parts['xl/worksheets/sheet4.xml'], 6), INCOME_HEADERS);
   assert.deepEqual(row(parts['xl/worksheets/sheet5.xml'], 4), EXPENSE_HEADERS);
   assert.ok(parts['xl/worksheets/sheet5.xml'].includes('<f>IF(A5=&quot;&quot;,&quot;&quot;,TEXT(A5,&quot;mmm yyyy&quot;))</f><v>Jul 2026</v>'), 'Month formula as in the master, with its value');

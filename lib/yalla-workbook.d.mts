@@ -15,3 +15,4 @@ export function checkValues(result: any): { checks: any[]; status: 'PASS' | 'REV
 export function summaryWindow(config: Record<string, any>, month: string): string[];
 export function forecastValues(result: any): any;
 export function workbookXlsx(result: any): Buffer;
+export const MASTER_SHA256: string;
