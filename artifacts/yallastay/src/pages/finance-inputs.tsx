@@ -129,10 +129,14 @@ function BankBalances() {
 
 function ReportNames() {
   const props = useProperties(); const save = useSave();
+  const { data: ws } = useQuery<any>({ queryKey: ["workbook-settings"], queryFn: () => apiJson("/api/accounting/workbook-settings") });
+  const [title, setTitle] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<number, { reportName?: string; showInReport?: boolean }>>({});
   const edit = (id: number, v: { reportName?: string; showInReport?: boolean }) => setEdits({ ...edits, [id]: { ...edits[id], ...v } });
   return (
     <div className="space-y-3">
+      <div className="flex flex-wrap gap-2 items-end"><label className="text-sm">Workbook report title (sheet titles of the export only; empty = the master's)<Input aria-label="Workbook report title" maxLength={80} value={title ?? ws?.reportTitle ?? ""} onChange={e => setTitle(e.target.value)} /></label>
+        <Button variant="outline" disabled={title === null} onClick={() => save(() => apiJson("/api/accounting/workbook-settings", "PUT", { reportTitle: title || null }), "Title saved").then(ok => ok && setTitle(null))}>Save title</Button></div>
       <p className="text-sm text-muted-foreground">The property name used in the finance workbook (Lists &amp; Sources); empty = the listing name. "Show in report": the property gets Airbnb property-report rows even when they are zero (off = only when it has an amount).</p>
       {props.map(p => <div key={p.id} className="grid sm:grid-cols-3 gap-2 items-center text-sm"><span>{p.name}{p.status !== "active" ? ` (${p.status})` : ""}</span><Input aria-label={`Workbook name for ${p.name}`} value={edits[p.id]?.reportName ?? p.reportName ?? ""} onChange={e => edit(p.id, { reportName: e.target.value })} />
         <label className="flex gap-2 items-center"><input type="checkbox" checked={edits[p.id]?.showInReport ?? p.showInReport ?? true} onChange={e => edit(p.id, { showInReport: e.target.checked })} />Show in report</label></div>)}
@@ -145,16 +149,16 @@ const monthEndOf = (m: string) => { const [y, mo] = m.split("-").map(Number); re
 
 function Export() {
   const [month, setMonth] = useState(prevMonth());
-  const [from, setFrom] = useState("");
-  const [monthOnly, setMonthOnly] = useState(false);
-  const qs = monthOnly ? `?from=${month}&through=${monthEndOf(month)}` : from ? `?from=${from}` : "";
-  const { data, isFetching, error, refetch } = useQuery<any>({ queryKey: ["workbook", month, from, monthOnly], queryFn: () => apiJson(`/api/accounting/workbook/${month}${qs}`), enabled: /^\d{4}-\d{2}$/.test(month) });
+  // The preview below shows the full workbook (rows from April to today).
+  const { data, isFetching, error, refetch } = useQuery<any>({ queryKey: ["workbook", month], queryFn: () => apiJson(`/api/accounting/workbook/${month}`), enabled: /^\d{4}-\d{2}$/.test(month) });
   const { toast } = useToast();
   const [feeDates, setFeeDates] = useState<Record<number, string>>({});
-  async function download() {
-    const r = await apiFetch(`/api/accounting/workbook/${month}.xlsx${qs}`);
+  // Download the workbook: the picked month's rows only, or the full workbook (rows from April to today, as the master).
+  async function download(full: boolean) {
+    const q = full ? `?from=${data?.config?.summaryFirstMonth ?? "2026-04"}` : `?from=${month}&through=${monthEndOf(month)}`;
+    const r = await apiFetch(`/api/accounting/workbook/${month}.xlsx${q}`);
     if (!r.ok) { toast({ title: "Download failed", variant: "destructive" }); return; }
-    const url = URL.createObjectURL(await r.blob()); const a = document.createElement("a"); a.href = url; a.download = `YALLA_Workbook_${month}.xlsx`; a.click(); URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(await r.blob()); const a = document.createElement("a"); a.href = url; a.download = `YALLA_Workbook_${month}${full ? "_from-Apr" : ""}.xlsx`; a.click(); URL.revokeObjectURL(url);
   }
   async function saveFee(bookingId: number) {
     try { await apiJson(`/api/accounting/workbook/fee-received/${bookingId}`, "PUT", { receivedOn: feeDates[bookingId] || null }); toast({ title: "Saved" }); refetch(); }
@@ -166,11 +170,10 @@ function Export() {
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2 items-end">
         <label className="text-sm">Month<Input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label>
-        <label className="text-sm">Input rows from (optional)<Input type="month" value={from} disabled={monthOnly} onChange={e => setFrom(e.target.value)} /></label>
-        <label className="text-sm flex gap-2 items-center"><input type="checkbox" checked={monthOnly} onChange={e => setMonthOnly(e.target.checked)} />This month's rows only</label>
-        <Button onClick={download}><Download className="w-4 h-4 mr-1" />Download workbook (.xlsx)</Button>
+        <Button data-testid="download-yalla-workbook" onClick={() => download(false)}><Download className="w-4 h-4 mr-1" />Download YALLA workbook</Button>
+        <Button data-testid="download-yalla-workbook-full" variant="outline" onClick={() => download(true)}><Download className="w-4 h-4 mr-1" />Full export from April</Button>
       </div>
-      <p className="text-sm text-muted-foreground">Sheets as in the master finance workbook: Dashboard, Apartment Performance, Monthly Summary, Income Input, Expense Input, Lists &amp; Sources and Checks, with the master's formulas. By default the input rows run from the Monthly Summary's first month to today, like the master. Airbnb counts by payout date; property-report rows are view-only. ZAR rows and rows with a category the workbook doesn't have are listed below, not exported.</p>
+      <p className="text-sm text-muted-foreground">Sheets as in the master finance workbook: Dashboard, Apartment Performance, Monthly Summary, Income Input, Expense Input, Lists &amp; Sources, Checks and Forecast, with the master's formulas. "Download YALLA workbook" puts the picked month's rows on the Input sheets; "Full export from April" puts every row from April to today, like the master. Airbnb counts by payout date; property-report rows are view-only. ZAR rows and rows with a category the workbook doesn't have are listed below, not exported.</p>
       {isFetching && <p className="text-sm">Loading…</p>}{error && <p className="text-sm text-red-600">{(error as Error).message}</p>}
       {data && <div className="text-sm space-y-2">
         <p>Income rows {data.income.length} · Expense rows {data.expense.length} · Income (counted) {fmt(data.totals.income)} · Operating expenses {fmt(data.totals.operatingExpenses)} · Owner paid {fmt(data.totals.ownerPaid)} · Pass-through {fmt(data.totals.passThrough)} · Refundable deposits {fmt(data.totals.refundableDeposits)}</p>
