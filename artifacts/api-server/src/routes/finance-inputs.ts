@@ -6,7 +6,7 @@ import { z } from "zod";
 import { eq, asc, and } from "drizzle-orm";
 import {
   db, depositsTable, leaseSchedulesTable, leaseChequesTable, bankBalancesTable, propertiesTable, ownersTable,
-  accountingTransactionsTable, reservationsTable, airbnbEarningsTable, airbnbPayoutsTable, ownerStatementsTable, maintenanceTicketsTable, ownerPayoutsTable,
+  accountingTransactionsTable, reservationsTable, airbnbEarningsTable, airbnbPayoutsTable, ownerStatementsTable, maintenanceTicketsTable, ownerPayoutsTable, appSettingsTable,
 } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { parseId } from "../lib/parseId";
@@ -270,6 +270,26 @@ async function workbookData() {
     leases: leases.map(l => ({ ...l, cheques: cheques.filter(c => c.leaseId === l.id) })),
   };
 }
+// Workbook report title (sheet titles of the export only; the app stays Co-Host Pro). Setting "workbook" =
+// { reportTitle }; empty = WORKBOOK_DEFAULTS.reportTitle (the master's text).
+async function workbookReportTitle(): Promise<string | undefined> {
+  try {
+    const [row] = await db.select().from(appSettingsTable).where(eq(appSettingsTable.key, "workbook"));
+    const t = (row?.value as any)?.reportTitle;
+    return typeof t === "string" && t.trim() ? t.trim().slice(0, 80) : undefined;
+  } catch { return undefined; }
+}
+router.get("/accounting/workbook-settings", asyncHandler(async (_req, res) => { res.json({ reportTitle: (await workbookReportTitle()) ?? null }); }));
+router.put("/accounting/workbook-settings", asyncHandler(async (req, res) => {
+  const p = z.object({ reportTitle: z.union([z.null(), z.string().trim().max(80)]) }).strict().safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: firstIssue(p.error) });
+  const value = { reportTitle: p.data.reportTitle || null };
+  const [ex] = await db.select().from(appSettingsTable).where(eq(appSettingsTable.key, "workbook"));
+  if (ex) await db.update(appSettingsTable).set({ value, updatedAt: new Date() }).where(eq(appSettingsTable.key, "workbook"));
+  else await db.insert(appSettingsTable).values({ key: "workbook", value });
+  await insertAuditLog({ action: ex ? "update" : "create", entity: "workbook_settings", entityId: 0, details: { before: ex?.value ?? null, after: value }, performedBy: who(req, res) });
+  res.json(value);
+}));
 // GET /accounting/workbook/2026-09 (JSON) or .xlsx.
 router.get(/^\/accounting\/workbook\/(\d{4}-\d{2})(\.xlsx)?$/, asyncHandler(async (req, res) => {
   const month = (req.params as any)[0] as string, xlsx = !!(req.params as any)[1];
@@ -280,7 +300,7 @@ router.get(/^\/accounting\/workbook\/(\d{4}-\d{2})(\.xlsx)?$/, asyncHandler(asyn
   const through = req.query.through == null || req.query.through === "" ? undefined : String(req.query.through);
   if (from !== undefined && (!MONTH.test(from) || from > month)) return res.status(400).json({ error: "From must be a month like 2026-04, not after the reporting month" });
   if (through !== undefined && (!realDate(through) || through < monthEnd(month))) return res.status(400).json({ error: "Through must be a date (YYYY-MM-DD) on or after the reporting month end" });
-  const result = buildWorkbookRows(await workbookData(), month, {}, { from, through, today: dubaiToday(), companyName: await documentCompanyName() });
+  const result = buildWorkbookRows(await workbookData(), month, {}, { from, through, today: dubaiToday(), companyName: await documentCompanyName(), reportTitle: await workbookReportTitle() });
   if (!xlsx) return res.json(result);
   const buf = workbookXlsx(result);
   await insertAuditLog({ action: "create", entity: "yalla_workbook_export", entityId: 0, details: { month, from: result.from, through: result.through, incomeRows: result.income.length, expenseRows: result.expense.length, excluded: result.excluded.length, warnings: result.warnings.length }, performedBy: who(req, res) });

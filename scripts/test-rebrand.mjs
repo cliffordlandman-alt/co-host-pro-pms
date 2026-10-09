@@ -40,7 +40,7 @@ async function walk(dir, out = []) {
   }
   return out;
 }
-const ALLOWED = /X-YallaPMS-Check|x-yallapms-check|inYallaPMS|PRODID:-\/\/YallaStay\/\/YallaPMS\/\/EN|UID:yallapms-\$\{r\.id\}@yallastay|noreply@yallastay\.ae|yallapms-[a-z-]+'|yallastay-logo/g;
+const ALLOWED = /X-YallaPMS-Check|x-yallapms-check|inYallaPMS|PRODID:-\/\/YallaStay\/\/YallaPMS\/\/EN|UID:yallapms-\$\{r\.id\}@yallastay|noreply@yallastay\.ae|yallapms-[a-z-]+'|yallastay-logo|reportTitle: 'YallaStay'|YALLA workbook/g;
 const offenders = [];
 for (const f of [...await walk(path.join(root, 'artifacts/yallastay/src')), ...await walk(path.join(root, 'artifacts/api-server/src')), ...await walk(path.join(root, 'lib'))]) {
   (await readFile(f, 'utf8')).split('\n').forEach((line, i) => {
@@ -50,6 +50,14 @@ for (const f of [...await walk(path.join(root, 'artifacts/yallastay/src')), ...a
   });
 }
 assert.deepEqual(offenders, [], 'visible old brand');
+// The finance workbook export (only) carries the master's title text (Raju, 9 Oct): one setting, used by the export.
+{
+  const cfgSrc = await read('lib/yalla-config.mjs');
+  assert.equal((cfgSrc.match(/YallaStay/g) || []).length, 1, 'the old name appears once, as the workbook report title');
+  const { WORKBOOK_DEFAULTS } = await import('../lib/yalla-config.mjs');
+  assert.equal(WORKBOOK_DEFAULTS.reportTitle, 'YallaStay');
+  for (const f of ['artifacts/yallastay/src/pages/finance-inputs.tsx', 'artifacts/yallastay/src/components/layout/app-layout.tsx']) assert.doesNotMatch(await read(f), /yalla\s?stay/i, `${f}: the app UI stays Co-Host Pro`);
+}
 for (const f of ['pages/login.tsx', 'pages/signup.tsx', 'pages/forgot-password.tsx']) assert.doesNotMatch(await read(`artifacts/yallastay/src/${f}`), /yallastay-home/, `${f}: no link to the old brand's website`);
 const layout = await read('artifacts/yallastay/src/components/layout/app-layout.tsx');
 assert.match(layout, /data-testid="sidebar-wordmark"[^>]*>\{BRAND\}/); assert.match(layout, /cohost-logo\.svg/);
