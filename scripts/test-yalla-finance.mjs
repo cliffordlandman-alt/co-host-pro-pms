@@ -144,6 +144,13 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
   const ro = buildWorkbookRows(oct, '2026-09', {}, { today: '2026-10-09' });
   assert.ok(ro.income.some(x => x.description === 'Oct commission') && !ro.income.some(x => x.date > '2026-09-30' && x.kind.startsWith('airbnb')));
   assert.equal(ro.m3.summary.find(x => x.month === '2026-10').income, 7000);
+  { // A pending commission dated after today (10 Oct, exported 9 Oct) is listed and is the one-off; a paid one is not; an explicit through stays strict.
+    const tx = (id, paymentStatus) => ({ id, type: 'income', allocation: 'company', date: '2026-10-10', amount: '6750', category: 'Commission', description: `ahead ${id}`, currency: 'AED', payer: 'TBC', paymentStatus });
+    const fa = { ...base, transactions: [...base.transactions, tx(11, 'pending'), tx(12, 'paid')] };
+    const ra = buildWorkbookRows(fa, '2026-09', {}, { today: '2026-10-09' });
+    assert.ok(ra.income.some(x => x.description === 'ahead 11' && x.payer === 'TBC' && x.status === 'Pending') && !ra.income.some(x => x.description === 'ahead 12'));
+    assert.equal(ra.forecast.inputs.oneOff.amount, 6750);
+    assert.ok(!buildWorkbookRows(fa, '2026-09', {}, { today: '2026-10-09', through: '2026-10-09' }).income.some(x => x.description === 'ahead 11')); }
   assert.equal(ro.m3.dashboard.incomeYtd, rl.m3.dashboard.incomeYtd, 'YTD stops at the reporting month end');
   assert.ok(!buildWorkbookRows(oct, '2026-09', { inputThrough: 'month_end' }, { today: '2026-10-09' }).income.some(x => x.description === 'Oct commission'));
   // Blank status (payment_status none), as on some master rows.
