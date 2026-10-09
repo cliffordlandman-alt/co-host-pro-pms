@@ -43,6 +43,7 @@ const navGroups: { label: string; collapsible?: boolean; items: NavItem[] }[] = 
       { href: "/accounting?tab=transactions", icon: Receipt,    label: "Income & expenses" },
       { href: "/payments",                  icon: DollarSign,   label: "Payments" },
       { href: "/payout-check",              icon: Scale,          label: "Airbnb payout check", role: ["admin", "super_admin", "manager", "accountant"] },
+      { href: "/finance-inputs",            icon: FileText,       label: "Finance inputs", role: ["admin", "super_admin", "manager", "accountant"] },
       { href: "/reports",                   icon: BarChart2,    label: "Reports" },
     ],
   },

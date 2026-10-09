@@ -28,6 +28,7 @@ import OwnerHistoryPage from "@/pages/owner-history";
 import CalendarSyncPage from "@/pages/calendar-sync";
 import CompliancePage from "@/pages/compliance";
 import PayoutCheckPage from "@/pages/payout-check";
+import FinanceInputsPage from "@/pages/finance-inputs";
 import Reviews from "@/pages/reviews";
 import Inbox from "@/pages/inbox";
 import Accounting from "@/pages/accounting";
@@ -158,6 +159,7 @@ function Router() {
               <Route path="/calendar-sync" component={CalendarSyncPage} />
               <Route path="/compliance" component={CompliancePage} />
               <Route path="/payout-check" component={PayoutCheckPage} />
+              <Route path="/finance-inputs" component={FinanceInputsPage} />
               <Route path="/reviews" component={Reviews} />
               <Route path="/inbox" component={Inbox} />
               <Route path="/airbnb-import" component={AirbnbImport} />

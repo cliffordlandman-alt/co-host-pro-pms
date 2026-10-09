@@ -1,0 +1,10 @@
+export const USD_AED: number;
+export const INCOME_HEADERS: string[];
+export const EXPENSE_HEADERS: string[];
+export const MASTER_EXPENSE_CATEGORIES: string[];
+export const TREATMENT_LABEL: Record<string, string>;
+export function effectiveTreatment(t: { treatment?: string | null; allocation?: string | null }): string;
+export function monthEnd(month: string): string;
+export function mapExpenseCategory(t: any, treatment: string): string;
+export function buildWorkbookRows(data: any, month: string): any;
+export function workbookXlsx(result: any): Buffer;

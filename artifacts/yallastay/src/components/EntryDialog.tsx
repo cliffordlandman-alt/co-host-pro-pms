@@ -14,7 +14,10 @@ import { dubaiToday } from '@/lib/today-model';
  * With `entry`, the same form edits that entry in place (PATCH); the server applies the same rules,
  * keeps the before/after in the Activity Log, and refuses entries on a sent or paid owner statement.
  */
-export const EXPENSE_CATEGORIES = ['Maintenance', 'Cleaning', 'Supplies', 'Utility', 'Insurance', 'Municipality Fee', 'Agent commission', 'Transport', 'Other'];
+export const EXPENSE_CATEGORIES = ['Maintenance', 'Cleaning', 'Supplies', 'Utility', 'DEWA', 'Insurance', 'Municipality Fee', 'Agent commission', 'Transport', 'Software', 'Photography', 'Salary', 'Other'];
+/** Accounting treatment (YALLA workbook). '' = follow "Charge to" (owner → owner paid, company → operating expense). */
+export const TREATMENTS = [['', 'Follow "Charge to"'], ['company', 'Operating expense (company P&L)'], ['owner_paid', 'Owner paid (not company P&L)'], ['pass_through', 'Pass-through, e.g. DEWA (not company P&L)']] as const;
+export const USD_AED = 3.6725;
 export const INCOME_CATEGORIES = ['Additional income', 'Other'];
 const CURRENCIES = ['AED', 'ZAR', 'USD', 'EUR', 'GBP'];
 
@@ -26,14 +29,15 @@ export const isAutomaticEntry = (t: any) => t?.cleaningTaskId != null || /^(clea
 
 export function EntryDialog({ open, onOpenChange, defaultDate, entry }: { open: boolean; onOpenChange: (v: boolean) => void; defaultDate?: string; entry?: any }) {
   const today = dubaiToday();
-  const empty = { date: defaultDate || today, type: 'expense', category: '', description: '', amount: '', currency: 'AED', propertyId: '', reservationId: '', allocation: 'company', revenueStream: '', reference: '', notes: '' };
+  const empty = { date: defaultDate || today, type: 'expense', category: '', description: '', amount: '', currency: 'AED', propertyId: '', reservationId: '', allocation: 'company', revenueStream: '', reference: '', notes: '', treatment: '', paymentStatus: '', fxRate: '' };
   const [form, setForm] = useState(empty);
   const [error, setError] = useState(''), [saving, setSaving] = useState(false);
   const qc = useQueryClient();
   const { data: bookings = [] } = useQuery({ queryKey: ['company-bookings'], queryFn: () => read('/api/reservations'), enabled: open });
   const { data: properties = [] } = useQuery({ queryKey: ['company-properties'], queryFn: () => read('/api/properties'), enabled: open });
   const fromEntry = (t: any) => ({ date: t.date, type: t.type, category: t.category || '', description: t.description || '', amount: String(t.amount ?? ''), currency: t.currency || 'AED', propertyId: t.propertyId != null ? String(t.propertyId) : '',
-    reservationId: t.reservationId != null ? String(t.reservationId) : '', allocation: t.allocation || 'company', revenueStream: t.revenueStream == null ? '' : t.revenueStream ? 'yes' : 'no', reference: t.reference || '', notes: t.notes || '' });
+    reservationId: t.reservationId != null ? String(t.reservationId) : '', allocation: t.allocation || 'company', revenueStream: t.revenueStream == null ? '' : t.revenueStream ? 'yes' : 'no', reference: t.reference || '', notes: t.notes || '',
+    treatment: t.treatment || '', paymentStatus: t.paymentStatus || '', fxRate: t.fxRate != null ? String(t.fxRate) : '' });
   useEffect(() => { if (open) { setForm(entry ? fromEntry(entry) : { ...empty, date: defaultDate || today }); setError(''); } }, [open, entry?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const property = properties.find((p: any) => String(p.id) === form.propertyId);
   const propertyCurrency = property?.currency || 'AED';
@@ -43,13 +47,20 @@ export function EntryDialog({ open, onOpenChange, defaultDate, entry }: { open: 
     // A property's costs are in its own currency (owner charges must be); follow it when a property is picked.
     if (key === 'propertyId') { const p = properties.find((x: any) => String(x.id) === value); if (p) next.currency = p.currency || 'AED'; if (!value) next.allocation = 'company'; }
     if (key === 'allocation' && value === 'owner' && property) next.currency = propertyCurrency;
+    if (key === 'allocation') next.treatment = value === 'owner' ? 'owner_paid' : (f.treatment === 'owner_paid' ? '' : f.treatment);
+    if (key === 'treatment') { if (value === 'owner_paid') next.allocation = 'owner'; else if (value) next.allocation = 'company'; }
+    if (key === 'type' && value === 'income') next.treatment = '';
+    // Salary: a company operating expense, never on a property or an owner statement.
+    if (key === 'category' && value === 'Salary') { next.allocation = 'company'; next.treatment = 'company'; next.propertyId = ''; next.reservationId = ''; }
+    if (key === 'currency') next.fxRate = value === 'USD' ? String(USD_AED) : '';
     return next;
   });
   async function save(e: React.FormEvent) {
     e.preventDefault(); setSaving(true); setError('');
     try {
       const body = { ...form, propertyId: form.propertyId ? Number(form.propertyId) : null, reservationId: form.reservationId ? Number(form.reservationId) : null,
-        revenueStream: form.type === 'expense' && form.revenueStream ? form.revenueStream === 'yes' : null, reference: form.reference || null, notes: form.notes || null };
+        revenueStream: form.type === 'expense' && form.revenueStream ? form.revenueStream === 'yes' : null, reference: form.reference || null, notes: form.notes || null,
+        treatment: form.type === 'expense' && form.treatment ? form.treatment : null, paymentStatus: form.paymentStatus || null, fxRate: ['AED', 'ZAR'].includes(form.currency) || !form.fxRate ? null : Number(form.fxRate) };
       const r = await apiFetch(entry ? `/api/accounting/transactions/${entry.id}` : '/api/accounting/transactions', { method: entry ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'Could not save entry'); }
       await qc.invalidateQueries(); onOpenChange(false);
@@ -79,6 +90,17 @@ export function EntryDialog({ open, onOpenChange, defaultDate, entry }: { open: 
           {form.type === 'expense' && (
             <label className="block text-sm">Revenue stream?<select aria-label="Revenue stream" className={sel} value={form.revenueStream} onChange={e => edit('revenueStream', e.target.value)}><option value="">Not tagged</option><option value="yes">Yes</option><option value="no">No</option></select></label>
           )}
+          {form.type === 'expense' && (
+            <label className="block text-sm">Accounting treatment<select aria-label="Accounting treatment" className={sel} value={form.treatment} disabled={form.category === 'Salary'} onChange={e => edit('treatment', e.target.value)}>{TREATMENTS.map(([v, l]) => <option key={v} value={v} disabled={v === 'owner_paid' && !form.propertyId}>{l}</option>)}</select>
+              <span className="block text-xs text-muted-foreground mt-1">{form.category === 'Salary' ? 'Salary is always a company operating expense.' : form.treatment === 'pass_through' ? 'Shown on the workbook but left out of company income and expenses.' : 'Used by the monthly finance workbook export.'}</span></label>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm">Payment status<select aria-label="Payment status" className={sel} value={form.paymentStatus} onChange={e => edit('paymentStatus', e.target.value)}><option value="">Paid</option><option value="pending">Pending</option><option value="unpaid">Unpaid</option></select></label>
+            {form.currency !== 'AED' && (
+              <label className="text-sm">Rate to AED<Input aria-label="Rate to AED" type="number" step="0.0001" min="0" value={form.currency === 'ZAR' ? '' : form.fxRate} disabled={form.currency === 'USD' || form.currency === 'ZAR'} placeholder={form.currency === 'ZAR' ? 'ZAR is kept separate' : ''} onChange={e => edit('fxRate', e.target.value)} />
+                <span className="block text-xs text-muted-foreground mt-1">{form.currency === 'USD' ? 'USD is fixed at 3.6725.' : form.currency === 'ZAR' ? 'Never converted to AED.' : 'Optional.'}</span></label>
+            )}
+          </div>
           <label className="block text-sm">Booking (optional)<select aria-label="Booking" className={sel} value={form.reservationId} onChange={e => { const b = bookings.find((b: any) => b.id === Number(e.target.value)); setForm(f => ({ ...f, reservationId: e.target.value, propertyId: b ? String(b.propertyId) : f.propertyId, currency: b ? (b.currency || properties.find((p: any) => p.id === b.propertyId)?.currency || f.currency) : f.currency })); }}><option value="">No specific booking</option>{bookings.filter((b: any) => !form.propertyId || b.propertyId === Number(form.propertyId)).map((b: any) => <option key={b.id} value={b.id}>{b.guestName} · {b.checkIn}</option>)}</select></label>
           <label className="block text-sm">Reference (optional)<Input value={form.reference} onChange={e => edit('reference', e.target.value)} placeholder="Invoice or receipt number" /></label>
           <label className="block text-sm">Notes (optional)<Input value={form.notes} onChange={e => edit('notes', e.target.value)} /></label>

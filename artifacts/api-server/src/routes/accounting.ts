@@ -204,6 +204,9 @@ router.get("/accounting/transactions", asyncHandler(async (req, res) => {
       vendorName: vendorsTable.name,
       cleaningTaskId: accountingTransactionsTable.cleaningTaskId,
       notes: accountingTransactionsTable.notes,
+      treatment: accountingTransactionsTable.treatment,
+      fxRate: accountingTransactionsTable.fxRate,
+      paymentStatus: accountingTransactionsTable.paymentStatus,
       createdAt: accountingTransactionsTable.createdAt,
     })
     .from(accountingTransactionsTable)
@@ -212,7 +215,7 @@ router.get("/accounting/transactions", asyncHandler(async (req, res) => {
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(sql`${accountingTransactionsTable.date} DESC`);
 
-  res.json(rows.map(r => ({ ...r, amount: parseFloat(r.amount || "0"), createdAt: r.createdAt.toISOString() })));
+  res.json(rows.map(r => ({ ...r, amount: parseFloat(r.amount || "0"), fxRate: r.fxRate == null ? null : Number(r.fxRate), createdAt: r.createdAt.toISOString() })));
 }));
 
 // Sent or paid owner statement covering this property and month (owner entries there can't change).
@@ -227,16 +230,52 @@ const lockedMessage = (st: { status: string; month: string; propertyName: string
   `This entry is on the ${st.month} owner statement for ${st.propertyName ?? "this property"}, which has been ${st.status === "paid" ? "paid" : "sent"}, so it can't be changed. Record a correction in an open month instead.`;
 // Entries written by the system (cleaning costs, maintenance charges) are changed at their source, not here.
 const automaticEntry = (e: { cleaningTaskId?: number | null; reference?: string | null }) => e.cleaningTaskId != null || /^(cleaning|maintenance):/.test(e.reference ?? "");
-const EDITABLE_ENTRY_FIELDS = ["type", "amount", "date", "category", "propertyId", "allocation", "revenueStream", "notes", "description", "reference", "currency", "reservationId"] as const;
-const money = (r: any) => ({ ...r, amount: parseFloat(r.amount || "0"), createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt });
+const EDITABLE_ENTRY_FIELDS = ["type", "amount", "date", "category", "propertyId", "allocation", "revenueStream", "notes", "description", "reference", "currency", "reservationId", "treatment", "fxRate", "paymentStatus"] as const;
+const money = (r: any) => ({ ...r, amount: parseFloat(r.amount || "0"), fxRate: r.fxRate == null ? null : Number(r.fxRate), createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt });
+/** USD/AED is fixed (YALLA rule 7). */
+export const USD_AED_RATE = 3.6725;
+export const SALARY_CATEGORY = "Salary";
+
+/**
+ * YALLA workbook fields (migration 0025): accounting treatment, FX rate and payment status.
+ * treatment: company | owner_paid | pass_through, or null = follow allocation (behaviour before 0025).
+ * owner_paid always means "charged to the owner"; company and pass_through are company allocation.
+ * Salary is a company operating expense. USD carries the fixed 3.6725 rate; ZAR never has a rate.
+ */
+function applyFinanceFields(input: any): string | null {
+  for (const k of ["treatment", "fxRate", "paymentStatus"]) if (input[k] === "" || input[k] === undefined) input[k] = null;
+  if (input.treatment != null && !["company", "owner_paid", "pass_through"].includes(input.treatment)) return "Treatment must be company, owner paid or pass-through";
+  if (input.type !== "expense" && input.treatment != null && input.treatment !== "company") return "Owner paid and pass-through apply to expenses only";
+  if (input.treatment === "owner_paid") input.allocation = "owner";
+  if (input.treatment === "company" || input.treatment === "pass_through") input.allocation = "company";
+  if (String(input.category || "").trim().toLowerCase() === SALARY_CATEGORY.toLowerCase()) {
+    input.category = SALARY_CATEGORY;
+    if (input.type !== "expense") return "Salary is an expense";
+    if (input.treatment && input.treatment !== "company") return "Salary is a company operating expense (not owner paid or pass-through)";
+    input.allocation = "company"; input.treatment = "company"; input.propertyId = null; input.reservationId = null;
+  }
+  if (input.paymentStatus != null && !["paid", "pending", "unpaid"].includes(input.paymentStatus)) return "Payment status must be paid, pending or unpaid";
+  return null;
+}
+/** Runs once the entry's currency is known. */
+function applyFxRate(input: any): string | null {
+  const cur = String(input.currency || "AED");
+  if (input.fxRate != null) { const n = Number(input.fxRate); if (!Number.isFinite(n) || n <= 0) return "Enter a positive exchange rate"; input.fxRate = n; }
+  if (cur === "AED") input.fxRate = null;
+  else if (cur === "USD") { if (input.fxRate != null && Math.abs(input.fxRate - USD_AED_RATE) > 1e-9) return `USD is fixed at ${USD_AED_RATE} AED`; input.fxRate = USD_AED_RATE; }
+  else if (cur === "ZAR") { if (input.fxRate != null) return "ZAR is kept separate from AED: no exchange rate"; }
+  if (input.fxRate != null) input.fxRate = String(input.fxRate);
+  return null;
+}
 
 /** The one set of rules for a manual income or expense entry (used by add and edit). */
 async function validateEntry(body: any, existingCurrency?: string | null): Promise<{ input: any } | { status: number; error: string }> {
   const input = { ...body, amount: String(body.amount) };
   if (input.propertyId === "" || input.propertyId === undefined) input.propertyId = null;
   if (input.reservationId === "" || input.reservationId === undefined) input.reservationId = null;
+  const finErr = applyFinanceFields(input); if (finErr) return { status: 400, error: finErr };
   if(input.reservationId){const [b]=await db.select().from(reservationsTable).where(eq(reservationsTable.id,Number(input.reservationId)));if(!b)return {status:400,error:'Booking not found'};if(input.propertyId&&Number(input.propertyId)!==b.propertyId)return {status:400,error:'Booking and property must match'};input.propertyId=b.propertyId;}
-  input.allocation ??= input.propertyId ? 'owner' : 'company';
+  input.allocation ??= input.treatment === 'owner_paid' ? 'owner' : input.treatment ? 'company' : input.propertyId ? 'owner' : 'company';
   if (input.revenueStream !== undefined && input.revenueStream !== null && typeof input.revenueStream !== 'boolean') return {status:400,error:'Revenue stream must be yes, no or not tagged'};
   if (input.type !== 'expense') input.revenueStream = null;
   if (!['income','expense'].includes(input.type) || !['company','owner'].includes(input.allocation)) return {status:400,error:'Choose income or expense and company or owner allocation'};
@@ -247,6 +286,7 @@ async function validateEntry(body: any, existingCurrency?: string | null): Promi
    input.currency ??= home;
    if(input.allocation==='owner'&&![p.currency||'AED',home,...(existingCurrency?[existingCurrency]:[])].includes(input.currency))return {status:400,error:'Owner expenses must use the property currency (or the booking\'s)'};}
   input.currency ??= 'AED';
+  const fxErr = applyFxRate(input); if (fxErr) return { status: 400, error: fxErr };
   if(!/^[A-Z]{3}$/.test(input.currency)||!Number.isFinite(Number(input.amount))||Number(input.amount)<=0||!/^\d{4}-\d{2}-\d{2}$/.test(input.date||'')||!Number.isFinite(Date.parse(input.date))||new Date(input.date).toISOString().slice(0,10)!==input.date)return {status:400,error:'Enter a valid date, currency and positive amount'};
   if(input.allocation==='owner'&&!input.propertyId)return {status:400,error:'Choose a property for owner expenses'};
   if(input.allocation==='owner'&&input.type==='income')return {status:400,error:'Use company allocation for additional income; owner income adjustments are not supported yet'};
@@ -277,6 +317,12 @@ router.patch("/accounting/transactions/:id", asyncHandler(async (req, res) => {
   if (before) return res.status(409).json({ error: lockedMessage(before) });
   const merged: any = {};
   for (const f of EDITABLE_ENTRY_FIELDS) merged[f] = req.body[f] !== undefined ? req.body[f] : (existing as any)[f];
+  // Changing only "charge to" moves an explicit treatment with it (owner → owner paid; company keeps pass-through).
+  if (req.body.allocation !== undefined && req.body.treatment === undefined && existing.treatment) {
+    if (req.body.allocation === "owner") merged.treatment = "owner_paid";
+    else if (existing.treatment === "owner_paid") merged.treatment = "company";
+  }
+  if (req.body.currency !== undefined && req.body.fxRate === undefined) merged.fxRate = null;
   if (/^(cleaning|maintenance):/.test(merged.reference ?? "")) return res.status(400).json({ error: "That reference is reserved for automatic entries" });
   const v = await validateEntry(merged, Number(merged.propertyId) === Number(existing.propertyId) ? existing.currency : null);
   if ("error" in v) return res.status(v.status).json({ error: v.error });

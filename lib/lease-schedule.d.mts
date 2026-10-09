@@ -1,0 +1,3 @@
+export type LeaseAccrual = { date: string; month: string; from: string; to: string; amount: number; chequeSeq: number; chequeAmount: number; chequeDue: string; chequePaidOn: string | null; part: number; parts: number; description: string };
+export function leaseAccruals(lease: { startDate: string; endDate?: string | null }, cheques: { seq: number; months?: number | null; amount: unknown; dueDate: string; paidOn?: string | null }[]): LeaseAccrual[];
+export function equalCheques(lease: { startDate: string; annualRent: unknown }, count: number, firstDue: string): { seq: number; months: number; amount: number; dueDate: string; paidOn: null }[];
