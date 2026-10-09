@@ -62,7 +62,7 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
     properties: props, owners: [{ id: 7, name: 'Prajyoth' }],
     payouts: [{ id: 'A', currency: 'USD', amount: '100.00', sourceDate: '2026-08-10' }, { id: 'B', currency: 'USD', amount: '50.00', sourceDate: '2026-09-10' }, { id: 'C', currency: 'USD', amount: '5.00', sourceDate: '3 September' }],
     earnings: [{ payoutId: 'A', propertyId: 2, currency: 'AED', amount: '367.25' }, { payoutId: 'B', propertyId: 2, currency: 'AED', amount: '183.63' }, { payoutId: 'C', propertyId: 2, currency: 'AED', amount: '18.36', checkIn: '2026-09-01' }, { payoutId: 'C', propertyId: 2, currency: 'AED', amount: '0.01', checkIn: '2025-09-01' }],
-    bookings: [{ id: 50, propertyId: 1, financeMode: 'inclusive-v1', status: 'checked_out', checkOut: '2026-09-30', managementAmount: '1400', managementPercent: 10, paymentStatus: 'unknown', cleaningFee: '200' }],
+    bookings: [{ id: 50, propertyId: 1, financeMode: 'inclusive-v1', status: 'checked_out', checkIn: '2026-09-27', checkOut: '2026-09-30', managementAmount: '1400', managementPercent: 10, paymentStatus: 'unknown', cleaningFee: '200' }],
     statements: [{ id: 9, propertyId: 1, month: '2026-09', status: 'draft' }],
     transactions: [
       { id: 1, type: 'income', allocation: 'company', date: '2026-09-01', amount: '2250', directCost: '100', payer: 'direct', propertyId: 1, category: 'Booking', reportCategory: 'Airbnb', description: 'Direct booking', currency: 'AED' },
@@ -157,18 +157,22 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
   assert.equal(buildWorkbookRows(base, '2026-09', { incomeChecks: [] }).checks.status, 'PASS');
   // The .xlsx: master sheet order, Dashboard J5 = the ADIB balance, the master's formulas.
   const parts = unzip(workbookXlsx(r));
-  assert.deepEqual([...parts['xl/workbook.xml'].matchAll(/<sheet name="([^"]+)"/g)].map(x => x[1].replace(/&amp;/g, '&')), ['Dashboard', 'Apartment Performance', 'Monthly Summary', 'Income Input', 'Expense Input', 'Lists & Sources', 'Checks', 'Forecast']);
+  assert.deepEqual([...parts['xl/workbook.xml'].matchAll(/<sheet name="([^"]+)"/g)].map(x => x[1].replace(/&amp;/g, '&')), ['Dashboard', 'Apartment Performance', 'Monthly Summary', 'Income Input', 'Expense Input', 'Expense Line Items', 'Confirmed Booking', 'Lists & Sources', 'Checks', 'Forecast']);
   const dash = parts['xl/worksheets/sheet1.xml'];
   assert.ok(dash.includes('<c r="J5" s="16"><v>7259.22</v></c>'), 'J5 bank balance');
   assert.ok(dash.includes('BANK BALANCE - ADIB - 30 SEP 2026'));
   assert.ok(dash.includes('<f>SUMIFS(&apos;Monthly Summary&apos;!$B$4:$B$12') || dash.includes("<f>SUMIFS('Monthly Summary'!$B$4:$B$12"), 'D5 formula');
   assert.ok(dash.includes('<mergeCell ref="J5:L6"/>'));
   assert.ok(dash.includes('<f>Checks!B10</f><v>REVIEW</v>'), 'H2 = Checks MODEL STATUS');
-  const ck = parts['xl/worksheets/sheet7.xml'];
+  const ck = parts['xl/worksheets/sheet9.xml'];
   assert.ok(ck.includes('<f>IF(COUNTIF(F4:F9,&quot;REVIEW&quot;)=0,&quot;PASS&quot;,&quot;REVIEW&quot;)</f>') && ck.includes('<conditionalFormatting sqref="F4:F9">'));
   assert.ok(ck.includes("<f>SUMIFS('Income Input'!$H$7:$H$507,'Income Input'!$L$7:$L$507,&quot;Airbnb Monthly Report&quot;)/'Income Input'!$D$2</f>"), 'check 4 formula');
   assert.ok(parts['xl/worksheets/sheet2.xml'].includes('RANK(G5,$G$5:$G$8,0)+COUNTIF($G$5:G5,G5)-1'));
   assert.ok(parts['xl/worksheets/sheet3.xml'].includes('IF(AND(B9=0,C9=0,D9=0),&quot;No activity&quot;,IF(E9&gt;=0,&quot;Profit&quot;,&quot;Loss&quot;))'));
+  // Raju's fix: Expense Line Items (every PMS expense line, the left-out ones with the reason) and Confirmed Booking.
+  assert.equal(r.expenseLines.filter(x => x.inInput === 'Yes').length, r.expense.length);
+  assert.ok(r.expenseLines.some(x => x.inInput === 'No' && x.description === 'Policy' && /no master equivalent/.test(x.note)));
+  assert.deepEqual(r.confirmedBookings.map(b => [b.id, b.status, b.management]), [[50, 'checked_out', 1400]]);
   // M5 Forecast: the master's inputs and formulas, 9 months from the month after the report, wired to the exported sheets.
   const F = r.forecast;
   assert.equal(F.inputs.opening, 7259.22); assert.equal(F.inputs.start, '2026-10-01'); assert.equal(F.inputs.windowStart, '2026-07-01');
@@ -176,7 +180,7 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
   assert.equal(F.inputs.salary, WORKBOOK_DEFAULTS.salaryMonthly);
   for (let i = 1; i < 9; i++) assert.ok(Math.abs(F.months[i].opening - F.months[i - 1].closing) < 1e-9);
   assert.deepEqual(F.after.map(a => a.months), [3, 6, 9]); assert.equal(F.lowest, Math.min(...F.months.map(m => m.closing)));
-  const fc = parts['xl/worksheets/sheet8.xml'];
+  const fc = parts['xl/worksheets/sheet10.xml'];
   assert.ok(fc.includes('<f>Dashboard!J5</f><v>7259.22</v>'), 'B5 = Dashboard J5');
   assert.ok(fc.includes('<f>EOMONTH(B6,-1)</f>') || /<f>EOMONTH\(/.test(fc), 'B8 EOMONTH');
   assert.ok(/<f>SUMIFS\(&apos;Income Input&apos;!\$H|<f>SUMIFS\('Income Input'!\$H/.test(fc), 'B9 Airbnb average from Income Input');
@@ -332,8 +336,12 @@ try {
   const r = await raw('/accounting/workbook/2026-09.xlsx'); assert.equal(r.status, 200);
   assert.match(r.headers.get('content-disposition'), /YALLA_Workbook_2026-09\.xlsx/);
   const parts = unzip(Buffer.from(await r.arrayBuffer()));
-  assert.match(parts['xl/workbook.xml'], /<sheet name="Dashboard" sheetId="1"[^>]*\/><sheet name="Apartment Performance" sheetId="2"[^>]*\/><sheet name="Monthly Summary" sheetId="3"[^>]*\/><sheet name="Income Input" sheetId="4"[^>]*\/><sheet name="Expense Input" sheetId="5"[^>]*\/><sheet name="Lists &amp; Sources" sheetId="6"[^>]*\/><sheet name="Checks" sheetId="7"[^>]*\/><sheet name="Forecast" sheetId="8"/);
-  assert.ok(parts['xl/worksheets/sheet8.xml'].includes('<f>Dashboard!J5</f>'));
+  assert.match(parts['xl/workbook.xml'], /<sheet name="Dashboard" sheetId="1"[^>]*\/><sheet name="Apartment Performance" sheetId="2"[^>]*\/><sheet name="Monthly Summary" sheetId="3"[^>]*\/><sheet name="Income Input" sheetId="4"[^>]*\/><sheet name="Expense Input" sheetId="5"[^>]*\/><sheet name="Expense Line Items" sheetId="6"[^>]*\/><sheet name="Confirmed Booking" sheetId="7"[^>]*\/><sheet name="Lists &amp; Sources" sheetId="8"[^>]*\/><sheet name="Checks" sheetId="9"[^>]*\/><sheet name="Forecast" sheetId="10"/);
+  // Expense Line Items ties to Expense Input; Confirmed Booking lists the confirmed stays (no guest names).
+  assert.ok(parts['xl/worksheets/sheet6.xml'].includes('<f>IF(ROUND(F2-H2,2)=0,&quot;OK&quot;,&quot;REVIEW&quot;)</f><v>OK</v>'), 'line items tie');
+  assert.ok(!parts['xl/worksheets/sheet7.xml'].includes('Sept income'), 'no guest names');
+  assert.ok(parts['xl/worksheets/sheet7.xml'].includes('<t xml:space="preserve">checked_out</t>'));
+  assert.ok(parts['xl/worksheets/sheet10.xml'].includes('<f>Dashboard!J5</f>'));
   // Round 3: the report title is a setting, used only in the export (audited).
   assert.equal((await api('/accounting/workbook-settings')).reportTitle, null, 'unset = WORKBOOK_DEFAULTS.reportTitle');
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('YallaStay - Finance Dashboard'));
