@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { pgTable, serial, text, integer, numeric, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { propertiesTable } from "./properties";
 
@@ -69,8 +70,13 @@ export const bankBalancesTable = pgTable("bank_balances", {
   currency: text("currency").notNull().default("AED"),
   source: text("source").notNull().default("manual"),
   notes: text("notes"),
+  /** Migration 0027: month_end (one per account and month) or latest (one dated latest balance per account). */
+  kind: text("kind").notNull().default("month_end"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, t => [uniqueIndex("bank_balances_account_month_unique").on(t.account, t.month)]);
+}, t => [
+  uniqueIndex("bank_balances_month_end_unique").on(t.account, t.month).where(sql`${t.kind} = 'month_end'`),
+  uniqueIndex("bank_balances_latest_unique").on(t.account).where(sql`${t.kind} = 'latest'`),
+]);
 
 export type Deposit = typeof depositsTable.$inferSelect;
 export type LeaseSchedule = typeof leaseSchedulesTable.$inferSelect;

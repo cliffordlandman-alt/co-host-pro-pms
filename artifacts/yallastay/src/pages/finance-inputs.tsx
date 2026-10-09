@@ -104,17 +104,24 @@ function BankBalances() {
   const save = useSave();
   const { data: rows = [] } = useQuery<any[]>({ queryKey: ["bank-balances"], queryFn: () => apiJson("/api/accounting/bank-balances") });
   const [f, setF] = useState({ month: prevMonth(), balance: "", notes: "" });
+  const [l, setL] = useState({ balanceDate: new Date().toISOString().slice(0, 10), balance: "", notes: "" });
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">ADIB 19589605 closing balance on the last day of each month, from the bank statement.</p>
-      <table className="w-full text-sm"><thead><tr className="text-left border-b"><th className="p-2">Month</th><th>Balance date</th><th>Account</th><th className="text-right">Balance</th><th>Source</th><th>Notes</th><th></th></tr></thead><tbody>
-        {rows.map(r => <tr key={r.id} className="border-b"><td className="p-2">{r.month}</td><td>{r.balanceDate}</td><td>{r.account}</td><td className="text-right">{fmt(r.balance, r.currency)}</td><td>{r.source}</td><td>{r.notes}</td><td><Button size="sm" variant="ghost" onClick={() => confirm("Delete this balance?") && save(() => apiJson(`/api/accounting/bank-balances/${r.id}`, "DELETE"), "Deleted")}>Delete</Button></td></tr>)}
+      <p className="text-sm text-muted-foreground">ADIB 19589605: the closing balance on the last day of each month (history, from the statement) and one latest balance with its date. The workbook Dashboard shows the most recent of them, with its date.</p>
+      <table className="w-full text-sm"><thead><tr className="text-left border-b"><th className="p-2">Month</th><th>Type</th><th>Balance date</th><th>Account</th><th className="text-right">Balance</th><th>Source</th><th>Notes</th><th></th></tr></thead><tbody>
+        {rows.map(r => <tr key={r.id} className="border-b"><td className="p-2">{r.month}</td><td>{r.kind === "latest" ? "Latest" : "Month end"}</td><td>{r.balanceDate}</td><td>{r.account}</td><td className="text-right">{fmt(r.balance, r.currency)}</td><td>{r.source}</td><td>{r.notes}</td><td><Button size="sm" variant="ghost" onClick={() => confirm("Delete this balance?") && save(() => apiJson(`/api/accounting/bank-balances/${r.id}`, "DELETE"), "Deleted")}>Delete</Button></td></tr>)}
       </tbody></table>
       <form className="rounded border p-3 grid gap-2 sm:grid-cols-4 items-end" onSubmit={async e => { e.preventDefault(); if (await save(() => apiJson(`/api/accounting/bank-balances/${f.month}`, "PUT", { balance: f.balance, notes: f.notes || null }), "Balance saved")) setF({ ...f, balance: "", notes: "" }); }}>
         <label className="text-sm">Month<Input required type="month" value={f.month} onChange={e => setF({ ...f, month: e.target.value })} /></label>
         <label className="text-sm">Closing balance (AED)<Input required type="number" step="0.01" value={f.balance} onChange={e => setF({ ...f, balance: e.target.value })} /></label>
         <label className="text-sm">Notes<Input value={f.notes} onChange={e => setF({ ...f, notes: e.target.value })} /></label>
-        <Button type="submit">Save balance</Button>
+        <Button type="submit">Save month-end balance</Button>
+      </form>
+      <form className="rounded border p-3 grid gap-2 sm:grid-cols-4 items-end" onSubmit={async e => { e.preventDefault(); if (await save(() => apiJson("/api/accounting/bank-balances/latest", "PUT", { balanceDate: l.balanceDate, balance: l.balance, notes: l.notes || null }), "Latest balance saved")) setL({ ...l, balance: "", notes: "" }); }}>
+        <label className="text-sm">Latest balance date<Input required type="date" value={l.balanceDate} onChange={e => setL({ ...l, balanceDate: e.target.value })} /></label>
+        <label className="text-sm">Balance (AED)<Input required type="number" step="0.01" value={l.balance} onChange={e => setL({ ...l, balance: e.target.value })} /></label>
+        <label className="text-sm">Notes<Input value={l.notes} onChange={e => setL({ ...l, notes: e.target.value })} /></label>
+        <Button type="submit">Save latest balance</Button>
       </form>
     </div>
   );
@@ -122,21 +129,26 @@ function BankBalances() {
 
 function ReportNames() {
   const props = useProperties(); const save = useSave();
-  const [edits, setEdits] = useState<Record<number, string>>({});
+  const [edits, setEdits] = useState<Record<number, { reportName?: string; showInReport?: boolean }>>({});
+  const edit = (id: number, v: { reportName?: string; showInReport?: boolean }) => setEdits({ ...edits, [id]: { ...edits[id], ...v } });
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">The property name used in the finance workbook (Lists &amp; Sources). Empty = the listing name.</p>
-      {props.map(p => <label key={p.id} className="grid sm:grid-cols-2 gap-2 items-center text-sm"><span>{p.name}{p.status !== "active" ? ` (${p.status})` : ""}</span><Input value={edits[p.id] ?? p.reportName ?? ""} onChange={e => setEdits({ ...edits, [p.id]: e.target.value })} /></label>)}
-      <Button onClick={() => save(() => apiJson("/api/accounting/report-names", "PUT", Object.entries(edits).map(([id, reportName]) => ({ id: Number(id), reportName }))), "Names saved").then(ok => ok && setEdits({}))} disabled={!Object.keys(edits).length}>Save names</Button>
+      <p className="text-sm text-muted-foreground">The property name used in the finance workbook (Lists &amp; Sources); empty = the listing name. "Show in report": the property gets Airbnb property-report rows even when they are zero (off = only when it has an amount).</p>
+      {props.map(p => <div key={p.id} className="grid sm:grid-cols-3 gap-2 items-center text-sm"><span>{p.name}{p.status !== "active" ? ` (${p.status})` : ""}</span><Input aria-label={`Workbook name for ${p.name}`} value={edits[p.id]?.reportName ?? p.reportName ?? ""} onChange={e => edit(p.id, { reportName: e.target.value })} />
+        <label className="flex gap-2 items-center"><input type="checkbox" checked={edits[p.id]?.showInReport ?? p.showInReport ?? true} onChange={e => edit(p.id, { showInReport: e.target.checked })} />Show in report</label></div>)}
+      <Button onClick={() => save(() => apiJson("/api/accounting/report-names", "PUT", Object.entries(edits).map(([id, v]) => ({ id: Number(id), ...v }))), "Saved").then(ok => ok && setEdits({}))} disabled={!Object.keys(edits).length}>Save</Button>
     </div>
   );
 }
 
+const monthEndOf = (m: string) => { const [y, mo] = m.split("-").map(Number); return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10); };
+
 function Export() {
   const [month, setMonth] = useState(prevMonth());
   const [from, setFrom] = useState("");
-  const qs = from ? `?from=${from}` : "";
-  const { data, isFetching, error, refetch } = useQuery<any>({ queryKey: ["workbook", month, from], queryFn: () => apiJson(`/api/accounting/workbook/${month}${qs}`), enabled: /^\d{4}-\d{2}$/.test(month) });
+  const [monthOnly, setMonthOnly] = useState(false);
+  const qs = monthOnly ? `?from=${month}&through=${monthEndOf(month)}` : from ? `?from=${from}` : "";
+  const { data, isFetching, error, refetch } = useQuery<any>({ queryKey: ["workbook", month, from, monthOnly], queryFn: () => apiJson(`/api/accounting/workbook/${month}${qs}`), enabled: /^\d{4}-\d{2}$/.test(month) });
   const { toast } = useToast();
   const [feeDates, setFeeDates] = useState<Record<number, string>>({});
   async function download() {
@@ -154,13 +166,15 @@ function Export() {
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2 items-end">
         <label className="text-sm">Month<Input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label>
-        <label className="text-sm">Input rows from (optional)<Input type="month" value={from} onChange={e => setFrom(e.target.value)} /></label>
+        <label className="text-sm">Input rows from (optional)<Input type="month" value={from} disabled={monthOnly} onChange={e => setFrom(e.target.value)} /></label>
+        <label className="text-sm flex gap-2 items-center"><input type="checkbox" checked={monthOnly} onChange={e => setMonthOnly(e.target.checked)} />This month's rows only</label>
         <Button onClick={download}><Download className="w-4 h-4 mr-1" />Download workbook (.xlsx)</Button>
       </div>
-      <p className="text-sm text-muted-foreground">Sheets as in the master finance workbook: Dashboard, Apartment Performance, Monthly Summary, Income Input, Expense Input and Lists &amp; Sources, with the master's formulas. Airbnb counts by payout date; property-report rows are view-only. ZAR rows are listed below, never converted. Leave "rows from" empty to export the month only.</p>
+      <p className="text-sm text-muted-foreground">Sheets as in the master finance workbook: Dashboard, Apartment Performance, Monthly Summary, Income Input, Expense Input, Lists &amp; Sources and Checks, with the master's formulas. By default the input rows run from the Monthly Summary's first month to today, like the master. Airbnb counts by payout date; property-report rows are view-only. ZAR rows and rows with a category the workbook doesn't have are listed below, not exported.</p>
       {isFetching && <p className="text-sm">Loading…</p>}{error && <p className="text-sm text-red-600">{(error as Error).message}</p>}
       {data && <div className="text-sm space-y-2">
         <p>Income rows {data.income.length} · Expense rows {data.expense.length} · Income (counted) {fmt(data.totals.income)} · Operating expenses {fmt(data.totals.operatingExpenses)} · Owner paid {fmt(data.totals.ownerPaid)} · Pass-through {fmt(data.totals.passThrough)} · Refundable deposits {fmt(data.totals.refundableDeposits)}</p>
+        {data.checks && <p>Checks: <b>{data.checks.status}</b>{data.checks.checks.filter((c: any) => c.status !== "OK").map((c: any) => ` · ${c.label}: ${fmt(c.actual)} vs ${fmt(c.expected)}`).join("")}</p>}
         {d && <p>Dashboard: properties {d.propertiesManaged} · income this month {fmt(d.incomeMonth)} · deposits held {fmt(d.depositsHeld)} · bank {d.bankBalance == null ? "not entered" : fmt(d.bankBalance)} · net operating profit {fmt(d.netProfit)}</p>}
         {data.warnings?.length > 0 && <div><b>To check</b><ul className="list-disc pl-5">{data.warnings.map((w: any, i: number) => <li key={i}>{w.message}</li>)}</ul></div>}
         {pendingFees.length > 0 && <div><b>Management fees still Pending</b> (enter the date the fee was received, e.g. netted from the owner payout)

@@ -30,6 +30,8 @@ export const propertiesTable = pgTable("properties", {
   status: text("status").notNull().default("active"),
   /** Name used in the YALLA workbook export (e.g. "Lofts West 603"); null = the listing name. Migration 0025. */
   reportName: text("report_name"),
+  /** Migration 0027: YALLA Airbnb Property Report rows even at zero (default); off = only non-zero rows. */
+  showInReport: boolean("show_in_report").notNull().default(true),
   airbnbIcalUrl: text("airbnb_ical_url"),
   bookingComIcalUrl: text("booking_com_ical_url"),
   vrboIcalUrl: text("vrbo_ical_url"),

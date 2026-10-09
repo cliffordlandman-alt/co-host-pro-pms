@@ -74,6 +74,8 @@ export const accountingTransactionsTable = pgTable("accounting_transactions", {
   payer: text("payer"),
   /** The master workbook's category for this row; null = the default mapping from category. */
   reportCategory: text("report_category"),
+  /** Migration 0027: Income Input "Source" text for this row (default: the Co-Host Pro entry reference). */
+  reportSource: text("report_source"),
   vendorId: integer("vendor_id").references(() => vendorsTable.id),
   /** Set on the automatic cleaning expense; unique, so a task can never be expensed twice. */
   cleaningTaskId: integer("cleaning_task_id").unique("accounting_transactions_cleaning_task_uq").references(() => cleaningTasksTable.id),

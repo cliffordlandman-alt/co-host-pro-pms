@@ -3,7 +3,7 @@
 // (via Raju). Rules: /workspace/finance/yalla_export_spec.md. Mounted under /accounting so the accounting roles apply.
 import { Router } from "express";
 import { z } from "zod";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, and } from "drizzle-orm";
 import {
   db, depositsTable, leaseSchedulesTable, leaseChequesTable, bankBalancesTable, propertiesTable, ownersTable,
   accountingTransactionsTable, reservationsTable, airbnbEarningsTable, airbnbPayoutsTable, ownerStatementsTable, maintenanceTicketsTable, ownerPayoutsTable,
@@ -172,27 +172,44 @@ router.delete("/accounting/leases/:id", asyncHandler(async (req, res) => {
   res.status(204).send();
 }));
 
-// ── Bank balance: closing balance on the month's last day, typed in ──
+// ── Bank balance: month-end closing balances (history) and one dated latest balance per account ──
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
-const bankSchema = z.object({ account: z.string().trim().min(1).max(60).optional(), balance: z.coerce.number().finite().refine(n => Math.abs(Math.round(n * 100) - n * 100) < 1e-6, "Use at most 2 decimals"), currency, source: z.enum(["manual", "statement"]).optional(), notes: optText() }).strict();
+const amount2 = z.coerce.number().finite().refine(n => Math.abs(Math.round(n * 100) - n * 100) < 1e-6, "Use at most 2 decimals");
+const bankSchema = z.object({ account: z.string().trim().min(1).max(60).optional(), balance: amount2, currency, source: z.enum(["manual", "statement"]).optional(), notes: optText() }).strict();
+const latestSchema = bankSchema.extend({ balanceDate: date }).strict();
 const bankOut = (r: any) => ({ ...r, balance: Number(r.balance), updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : r.updatedAt });
 router.get("/accounting/bank-balances", asyncHandler(async (_req, res) => {
-  res.json((await db.select().from(bankBalancesTable).orderBy(asc(bankBalancesTable.month), asc(bankBalancesTable.account))).map(bankOut));
+  res.json((await db.select().from(bankBalancesTable).orderBy(asc(bankBalancesTable.month), asc(bankBalancesTable.account), asc(bankBalancesTable.kind))).map(bankOut));
+}));
+/** Insert or replace the one row matching (account, kind[, month]). */
+async function upsertBank(values: any, req: any, res: any) {
+  const { row, before } = await db.transaction(async tx => {
+    const where = values.kind === "latest" ? and(eq(bankBalancesTable.account, values.account), eq(bankBalancesTable.kind, "latest"))
+      : and(eq(bankBalancesTable.account, values.account), eq(bankBalancesTable.kind, "month_end"), eq(bankBalancesTable.month, values.month));
+    const [before] = await tx.select().from(bankBalancesTable).where(where).for("update");
+    const [row] = before ? await tx.update(bankBalancesTable).set(values).where(eq(bankBalancesTable.id, before.id)).returning() : await tx.insert(bankBalancesTable).values(values).returning();
+    return { row, before };
+  });
+  await insertAuditLog({ action: before ? "update" : "create", entity: "bank_balance", entityId: row.id, details: { before: before ? bankOut(before) : null, after: bankOut(row) }, performedBy: who(req, res) });
+  return bankOut(row);
+}
+// The latest balance (any day, e.g. 9 Oct); the Dashboard shows it with its date. Registered before /:month.
+router.put("/accounting/bank-balances/latest", asyncHandler(async (req, res) => {
+  const p = latestSchema.safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: firstIssue(p.error) });
+  if (p.data.balanceDate > dubaiToday()) return res.status(400).json({ error: "The balance date can't be in the future" });
+  res.json(await upsertBank({ account: p.data.account ?? "ADIB 19589605", kind: "latest", month: p.data.balanceDate.slice(0, 7), balanceDate: p.data.balanceDate, balance: p.data.balance.toFixed(2), currency: p.data.currency ?? "AED", source: p.data.source ?? "manual", notes: p.data.notes ?? null, updatedAt: new Date() }, req, res));
 }));
 router.put("/accounting/bank-balances/:month", asyncHandler(async (req, res) => {
   const month = String(req.params.month);
   if (!MONTH.test(month)) return res.status(400).json({ error: "Month must look like 2026-09" });
   const p = bankSchema.safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: firstIssue(p.error) });
-  const account = p.data.account ?? "ADIB 19589605";
-  const values = { account, month, balanceDate: monthEnd(month), balance: p.data.balance.toFixed(2), currency: p.data.currency ?? "AED", source: p.data.source ?? "manual", notes: p.data.notes ?? null, updatedAt: new Date() };
-  const [before] = await db.select().from(bankBalancesTable).where(eq(bankBalancesTable.month, month));
-  const [row] = await db.insert(bankBalancesTable).values(values).onConflictDoUpdate({ target: [bankBalancesTable.account, bankBalancesTable.month], set: values }).returning();
-  await insertAuditLog({ action: before ? "update" : "create", entity: "bank_balance", entityId: row.id, details: { before: before ? bankOut(before) : null, after: bankOut(row) }, performedBy: who(req, res) });
-  res.json(bankOut(row));
+  res.json(await upsertBank({ account: p.data.account ?? "ADIB 19589605", kind: "month_end", month, balanceDate: monthEnd(month), balance: p.data.balance.toFixed(2), currency: p.data.currency ?? "AED", source: p.data.source ?? "manual", notes: p.data.notes ?? null, updatedAt: new Date() }, req, res));
 }));
 router.delete("/accounting/bank-balances/:id", asyncHandler(async (req, res) => {
-  const id = parseId(req.params.id); if (id === null) return res.status(400).json({ error: "Invalid id" });
+  const id = parseId(req.params.id);
+  if (id === null) return res.status(400).json({ error: "Invalid id" });
   const [row] = await db.delete(bankBalancesTable).where(eq(bankBalancesTable.id, id)).returning();
   if (!row) return res.status(404).json({ error: "Not found" });
   await insertAuditLog({ action: "delete", entity: "bank_balance", entityId: id, details: { before: bankOut(row) }, performedBy: who(req, res) });
@@ -201,19 +218,23 @@ router.delete("/accounting/bank-balances/:id", asyncHandler(async (req, res) => 
 
 // ── Workbook property names ──
 router.get("/accounting/report-names", asyncHandler(async (_req, res) => {
-  res.json(await db.select({ id: propertiesTable.id, name: propertiesTable.name, unitNumber: propertiesTable.unitNumber, status: propertiesTable.status, reportName: propertiesTable.reportName }).from(propertiesTable).orderBy(asc(propertiesTable.id)));
+  res.json(await db.select({ id: propertiesTable.id, name: propertiesTable.name, unitNumber: propertiesTable.unitNumber, status: propertiesTable.status, reportName: propertiesTable.reportName, showInReport: propertiesTable.showInReport }).from(propertiesTable).orderBy(asc(propertiesTable.id)));
 }));
-const namesSchema = z.array(z.object({ id: z.coerce.number().int().positive(), reportName: z.union([z.null(), z.string().trim().max(80).transform(s => s || null)]) }).strict()).max(500);
+const namesSchema = z.array(z.object({ id: z.coerce.number().int().positive(), reportName: z.union([z.null(), z.string().trim().max(80).transform(s => s || null)]).optional(), showInReport: z.boolean().optional() }).strict()).max(500);
 router.put("/accounting/report-names", asyncHandler(async (req, res) => {
   const p = namesSchema.safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: firstIssue(p.error) });
   const changed: any[] = [];
   await db.transaction(async tx => {
     for (const r of p.data) {
-      const [before] = await tx.select({ reportName: propertiesTable.reportName }).from(propertiesTable).where(eq(propertiesTable.id, r.id));
-      if (!before || before.reportName === r.reportName) continue;
-      await tx.update(propertiesTable).set({ reportName: r.reportName }).where(eq(propertiesTable.id, r.id));
-      changed.push({ id: r.id, from: before.reportName, to: r.reportName });
+      const [before] = await tx.select({ reportName: propertiesTable.reportName, showInReport: propertiesTable.showInReport }).from(propertiesTable).where(eq(propertiesTable.id, r.id));
+      if (!before) continue;
+      const set: any = {};
+      if (r.reportName !== undefined && before.reportName !== r.reportName) set.reportName = r.reportName;
+      if (r.showInReport !== undefined && before.showInReport !== r.showInReport) set.showInReport = r.showInReport;
+      if (!Object.keys(set).length) continue;
+      await tx.update(propertiesTable).set(set).where(eq(propertiesTable.id, r.id));
+      changed.push({ id: r.id, from: Object.fromEntries(Object.keys(set).map(k => [k, (before as any)[k]])), to: set });
     }
   });
   if (changed.length) await insertAuditLog({ action: "update", entity: "property_report_names", entityId: 0, details: { changed }, performedBy: who(req, res) });
@@ -249,16 +270,20 @@ async function workbookData() {
     leases: leases.map(l => ({ ...l, cheques: cheques.filter(c => c.leaseId === l.id) })),
   };
 }
-// GET /accounting/workbook/2026-09 (JSON) or .xlsx; ?from=2026-04 puts every month from April on the Input sheets.
+// GET /accounting/workbook/2026-09 (JSON) or .xlsx.
 router.get(/^\/accounting\/workbook\/(\d{4}-\d{2})(\.xlsx)?$/, asyncHandler(async (req, res) => {
   const month = (req.params as any)[0] as string, xlsx = !!(req.params as any)[1];
   if (!MONTH.test(month)) return res.status(400).json({ error: "Month must look like 2026-09" });
+  // Default range = the workbook's (WORKBOOK_DEFAULTS.inputFrom / inputThrough: the Monthly Summary's first month to
+  // today, like the master); ?from=YYYY-MM&through=YYYY-MM-DD narrows it (e.g. one month to paste).
   const from = req.query.from == null || req.query.from === "" ? undefined : String(req.query.from);
+  const through = req.query.through == null || req.query.through === "" ? undefined : String(req.query.through);
   if (from !== undefined && (!MONTH.test(from) || from > month)) return res.status(400).json({ error: "From must be a month like 2026-04, not after the reporting month" });
-  const result = buildWorkbookRows(await workbookData(), month, {}, { from, today: dubaiToday(), companyName: await documentCompanyName() });
+  if (through !== undefined && (!realDate(through) || through < monthEnd(month))) return res.status(400).json({ error: "Through must be a date (YYYY-MM-DD) on or after the reporting month end" });
+  const result = buildWorkbookRows(await workbookData(), month, {}, { from, through, today: dubaiToday(), companyName: await documentCompanyName() });
   if (!xlsx) return res.json(result);
   const buf = workbookXlsx(result);
-  await insertAuditLog({ action: "create", entity: "yalla_workbook_export", entityId: 0, details: { month, from: result.from, incomeRows: result.income.length, expenseRows: result.expense.length, excluded: result.excluded.length, warnings: result.warnings.length }, performedBy: who(req, res) });
+  await insertAuditLog({ action: "create", entity: "yalla_workbook_export", entityId: 0, details: { month, from: result.from, through: result.through, incomeRows: result.income.length, expenseRows: result.expense.length, excluded: result.excluded.length, warnings: result.warnings.length }, performedBy: who(req, res) });
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", `attachment; filename="YALLA_Workbook_${month}.xlsx"`);
   res.send(buf);

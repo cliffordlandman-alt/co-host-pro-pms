@@ -32,7 +32,7 @@ export const isAutomaticEntry = (t: any) => t?.cleaningTaskId != null || /^(clea
 
 export function EntryDialog({ open, onOpenChange, defaultDate, entry }: { open: boolean; onOpenChange: (v: boolean) => void; defaultDate?: string; entry?: any }) {
   const today = dubaiToday();
-  const empty = { date: defaultDate || today, type: 'expense', category: '', description: '', amount: '', currency: 'AED', propertyId: '', reservationId: '', allocation: 'company', revenueStream: '', reference: '', notes: '', treatment: '', paymentStatus: '', fxRate: '', directCost: '', payer: '', reportCategory: '' };
+  const empty = { date: defaultDate || today, type: 'expense', category: '', description: '', amount: '', currency: 'AED', propertyId: '', reservationId: '', allocation: 'company', revenueStream: '', reference: '', notes: '', treatment: '', paymentStatus: '', fxRate: '', directCost: '', payer: '', reportCategory: '', reportSource: '' };
   const [form, setForm] = useState(empty);
   const [error, setError] = useState(''), [saving, setSaving] = useState(false);
   const qc = useQueryClient();
@@ -40,7 +40,7 @@ export function EntryDialog({ open, onOpenChange, defaultDate, entry }: { open: 
   const { data: properties = [] } = useQuery({ queryKey: ['company-properties'], queryFn: () => read('/api/properties'), enabled: open });
   const fromEntry = (t: any) => ({ date: t.date, type: t.type, category: t.category || '', description: t.description || '', amount: String(t.amount ?? ''), currency: t.currency || 'AED', propertyId: t.propertyId != null ? String(t.propertyId) : '',
     reservationId: t.reservationId != null ? String(t.reservationId) : '', allocation: t.allocation || 'company', revenueStream: t.revenueStream == null ? '' : t.revenueStream ? 'yes' : 'no', reference: t.reference || '', notes: t.notes || '',
-    treatment: t.treatment || '', paymentStatus: t.paymentStatus || '', fxRate: t.fxRate != null ? String(t.fxRate) : '' , directCost: t.directCost != null ? String(t.directCost) : '', payer: t.payer || '', reportCategory: t.reportCategory || '' });
+    treatment: t.treatment || '', paymentStatus: t.paymentStatus || '', fxRate: t.fxRate != null ? String(t.fxRate) : '' , directCost: t.directCost != null ? String(t.directCost) : '', payer: t.payer || '', reportCategory: t.reportCategory || '', reportSource: t.reportSource || '' });
   useEffect(() => { if (open) { setForm(entry ? fromEntry(entry) : { ...empty, date: defaultDate || today }); setError(''); } }, [open, entry?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const property = properties.find((p: any) => String(p.id) === form.propertyId);
   const propertyCurrency = property?.currency || 'AED';
@@ -64,7 +64,7 @@ export function EntryDialog({ open, onOpenChange, defaultDate, entry }: { open: 
       const body = { ...form, propertyId: form.propertyId ? Number(form.propertyId) : null, reservationId: form.reservationId ? Number(form.reservationId) : null,
         revenueStream: form.type === 'expense' && form.revenueStream ? form.revenueStream === 'yes' : null, reference: form.reference || null, notes: form.notes || null,
         treatment: form.type === 'expense' && form.treatment ? form.treatment : null, paymentStatus: form.paymentStatus || null, fxRate: ['AED', 'ZAR'].includes(form.currency) || !form.fxRate ? null : Number(form.fxRate),
-        directCost: form.type === 'income' && form.directCost !== '' ? form.directCost : null, payer: form.type === 'income' && form.payer.trim() ? form.payer.trim() : null, reportCategory: form.reportCategory || null };
+        directCost: form.type === 'income' && form.directCost !== '' ? form.directCost : null, payer: form.type === 'income' && form.payer.trim() ? form.payer.trim() : null, reportCategory: form.reportCategory || null, reportSource: form.type === 'income' && form.reportSource.trim() ? form.reportSource.trim() : null };
       const r = await apiFetch(entry ? `/api/accounting/transactions/${entry.id}` : '/api/accounting/transactions', { method: entry ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'Could not save entry'); }
       await qc.invalidateQueries(); onOpenChange(false);
@@ -99,7 +99,7 @@ export function EntryDialog({ open, onOpenChange, defaultDate, entry }: { open: 
               <span className="block text-xs text-muted-foreground mt-1">{form.category === 'Salary' ? 'Salary is always a company operating expense.' : form.treatment === 'pass_through' ? 'Shown on the workbook but left out of company income and expenses.' : 'Used by the monthly finance workbook export.'}</span></label>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm">Payment status<select aria-label="Payment status" className={sel} value={form.paymentStatus} onChange={e => edit('paymentStatus', e.target.value)}><option value="">Paid</option><option value="pending">Pending</option><option value="unpaid">Unpaid</option></select></label>
+            <label className="text-sm">Payment status<select aria-label="Payment status" className={sel} value={form.paymentStatus} onChange={e => edit('paymentStatus', e.target.value)}><option value="">Paid</option><option value="pending">Pending</option><option value="unpaid">Unpaid</option><option value="none">Blank in workbook</option></select></label>
             {form.currency !== 'AED' && (
               <label className="text-sm">Rate to AED<Input aria-label="Rate to AED" type="number" step="0.0001" min="0" value={form.currency === 'ZAR' ? '' : form.fxRate} disabled={form.currency === 'USD' || form.currency === 'ZAR'} placeholder={form.currency === 'ZAR' ? 'ZAR is kept separate' : ''} onChange={e => edit('fxRate', e.target.value)} />
                 <span className="block text-xs text-muted-foreground mt-1">{form.currency === 'USD' ? 'USD is fixed at 3.6725.' : form.currency === 'ZAR' ? 'Never converted to AED.' : 'Optional.'}</span></label>
@@ -109,6 +109,7 @@ export function EntryDialog({ open, onOpenChange, defaultDate, entry }: { open: 
             <div className="grid grid-cols-2 gap-3">
               <label className="text-sm">Direct cost (optional)<Input aria-label="Direct cost" type="number" min="0" step="0.01" inputMode="decimal" value={form.directCost} onChange={e => edit('directCost', e.target.value)} placeholder="0.00" /></label>
               <label className="text-sm">Owner / payer (optional)<Input aria-label="Payer" maxLength={80} value={form.payer} onChange={e => edit('payer', e.target.value)} placeholder="Defaults to the property's owner" /></label>
+              <label className="text-sm col-span-2">Workbook source (optional)<Input aria-label="Workbook source" maxLength={60} value={form.reportSource} onChange={e => edit('reportSource', e.target.value)} placeholder="Income Input Source, e.g. Workbook" /></label>
             </div>
           )}
           <label className="block text-sm">Workbook category (optional)<select aria-label="Workbook category" className={sel} value={form.reportCategory} onChange={e => edit('reportCategory', e.target.value)}><option value="">Default for the category</option>{(form.type === 'income' ? WORKBOOK_INCOME_CATEGORIES : WORKBOOK_EXPENSE_CATEGORIES).map(v => <option key={v}>{v}</option>)}</select>
