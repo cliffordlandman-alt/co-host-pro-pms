@@ -131,12 +131,18 @@ function ReportNames() {
   const props = useProperties(); const save = useSave();
   const { data: ws } = useQuery<any>({ queryKey: ["workbook-settings"], queryFn: () => apiJson("/api/accounting/workbook-settings") });
   const [title, setTitle] = useState<string | null>(null);
+  const [ec, setEc] = useState<{ monthly: string; from: string } | null>(null);
+  const ecv = ec ?? { monthly: ws?.expectedCommissions ? String(ws.expectedCommissions.monthly) : "", from: ws?.expectedCommissions?.from ?? "" };
   const [edits, setEdits] = useState<Record<number, { reportName?: string; showInReport?: boolean }>>({});
   const edit = (id: number, v: { reportName?: string; showInReport?: boolean }) => setEdits({ ...edits, [id]: { ...edits[id], ...v } });
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2 items-end"><label className="text-sm">Workbook report title (sheet titles of the export only; empty = the master's)<Input aria-label="Workbook report title" maxLength={80} value={title ?? ws?.reportTitle ?? ""} onChange={e => setTitle(e.target.value)} /></label>
         <Button variant="outline" disabled={title === null} onClick={() => save(() => apiJson("/api/accounting/workbook-settings", "PUT", { reportTitle: title || null }), "Title saved").then(ok => ok && setTitle(null))}>Save title</Button></div>
+      <form className="flex flex-wrap gap-2 items-end" onSubmit={e => { e.preventDefault(); save(() => apiJson("/api/accounting/workbook-settings", "PUT", { expectedCommissions: ecv.monthly === "" ? null : { monthly: Number(ecv.monthly), from: ecv.from } }), "Expected commissions saved").then(ok => ok && setEc(null)); }}>
+        <label className="text-sm">Expected commissions (AED / month, Forecast B20; empty = none)<Input aria-label="Expected commissions per month" type="number" min="0" step="0.01" value={ecv.monthly} onChange={e => setEc({ ...ecv, monthly: e.target.value })} /></label>
+        <label className="text-sm">From month (Forecast B21)<Input aria-label="Expected commissions start month" type="month" required={ecv.monthly !== ""} value={ecv.from} onChange={e => setEc({ ...ecv, from: e.target.value })} /></label>
+        <Button type="submit" variant="outline" disabled={ec === null}>Save expected commissions</Button></form>
       <p className="text-sm text-muted-foreground">The property name used in the finance workbook (Lists &amp; Sources); empty = the listing name. "Show in report": the property gets Airbnb property-report rows even when they are zero (off = only when it has an amount).</p>
       {props.map(p => <div key={p.id} className="grid sm:grid-cols-3 gap-2 items-center text-sm"><span>{p.name}{p.status !== "active" ? ` (${p.status})` : ""}</span><Input aria-label={`Workbook name for ${p.name}`} value={edits[p.id]?.reportName ?? p.reportName ?? ""} onChange={e => edit(p.id, { reportName: e.target.value })} />
         <label className="flex gap-2 items-center"><input type="checkbox" checked={edits[p.id]?.showInReport ?? p.showInReport ?? true} onChange={e => edit(p.id, { showInReport: e.target.checked })} />Show in report</label></div>)}

@@ -206,7 +206,10 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
   for (let i = 1; i < 9; i++) assert.ok(Math.abs(F.months[i].opening - F.months[i - 1].closing) < 1e-9);
   assert.deepEqual(F.after.map(a => a.months), [1, 3, 6, 9]);
   // Master since 9 Oct: expected commissions from Nov (own column) and the one-off: pending company income after the month end.
-  assert.deepEqual(F.inputs.expected, { monthly: 15000, from: '2026-11-01' }); assert.deepEqual(F.months.map(m => m.expected).slice(0, 3), [0, 15000, 15000]);
+  assert.deepEqual(F.inputs.expected, { monthly: 0, from: '2026-10-01' }, 'none entered');
+  { const fe = buildWorkbookRows(base, '2026-09', { forecastExpectedCommissions: { monthly: 15000, from: '2026-11' } }, { today: '2026-10-09' }).forecast;
+    assert.deepEqual(fe.inputs.expected, { monthly: 15000, from: '2026-11-01' }); assert.deepEqual(fe.months.map(m => m.expected).slice(0, 3), [0, 15000, 15000]);
+    assert.ok(Math.abs(fe.totals.closing - F.totals.closing - 8 * 15000) < 1e-6, '8 months x 15,000 from Nov'); }
   assert.equal(F.inputs.oneOff.amount, 0);
 
   { const oo = ro.forecast.inputs.oneOff; assert.equal(oo.amount, 7000); assert.equal(oo.month, '2026-10-01'); assert.equal(ro.forecast.months[0].oneOff, 7000); assert.equal(ro.forecast.months[1].oneOff, 0);
@@ -385,12 +388,18 @@ try {
     await api('/accounting/company-month/2026-9', 'GET', null, 400); }
   // Round 3: the report title is a setting, used only in the export (audited).
   assert.equal((await api('/accounting/workbook-settings')).reportTitle, null, 'unset = WORKBOOK_DEFAULTS.reportTitle');
+  // Expected commissions (Finance inputs) feed Forecast B20:B21; the title is kept.
+  assert.deepEqual(await api('/accounting/workbook-settings', 'PUT', { expectedCommissions: { monthly: 15000, from: '2026-11' } }), { reportTitle: null, expectedCommissions: { monthly: 15000, from: '2026-11' } });
+  { const wf = await api('/accounting/workbook/2026-09'); assert.deepEqual(wf.forecast.inputs.expected, { monthly: 15000, from: '2026-11-01' }); }
+  await api('/accounting/workbook-settings', 'PUT', { expectedCommissions: { monthly: 1, from: '2026-1' } }, 400);
+  await api('/accounting/workbook-settings', 'PUT', { expectedCommissions: null });
+  assert.equal((await api('/accounting/workbook-settings')).expectedCommissions, null);
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('YallaStay - Finance Dashboard'));
   await api('/accounting/workbook-settings', 'PUT', { reportTitle: 'Test Title' });
   const t2 = unzip(Buffer.from(await (await raw('/accounting/workbook/2026-09.xlsx')).arrayBuffer()));
   assert.ok(t2['xl/worksheets/sheet1.xml'].includes('Test Title - Finance Dashboard'));
   await api('/accounting/workbook-settings', 'PUT', { reportTitle: 'x'.repeat(81) }, 400);
-  assert.deepEqual(await api('/accounting/workbook-settings', 'PUT', { reportTitle: '' }), { reportTitle: null });
+  assert.deepEqual(await api('/accounting/workbook-settings', 'PUT', { reportTitle: '' }), { reportTitle: null, expectedCommissions: null });
   assert.ok((await api('/audit-log')).some(a => a.entity === 'workbook_settings'));
   const texts = xml => [...xml.matchAll(/<t xml:space="preserve">([^<]*)<\/t>/g)].map(m => m[1].replace(/&amp;/g, '&'));
   const row = (xml, n) => texts((xml.match(new RegExp(`<row r="${n}"[^>]*>(.*?)</row>`)) || [])[1] || '');

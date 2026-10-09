@@ -279,12 +279,28 @@ async function workbookReportTitle(): Promise<string | undefined> {
     return typeof t === "string" && t.trim() ? t.trim().slice(0, 80) : undefined;
   } catch { return undefined; }
 }
-router.get("/accounting/workbook-settings", asyncHandler(async (_req, res) => { res.json({ reportTitle: (await workbookReportTitle()) ?? null }); }));
+// Expected commissions (Forecast B20:B21): { monthly, from: "YYYY-MM" } or null (none).
+async function workbookExpectedCommissions(): Promise<{ monthly: number; from: string } | null> {
+  try {
+    const [row] = await db.select().from(appSettingsTable).where(eq(appSettingsTable.key, "workbook"));
+    const e = (row?.value as any)?.expectedCommissions;
+    return e && Number.isFinite(Number(e.monthly)) && MONTH.test(String(e.from)) ? { monthly: Number(e.monthly), from: String(e.from) } : null;
+  } catch { return null; }
+}
+const workbookOverrides = async () => { const e = await workbookExpectedCommissions(); return e ? { forecastExpectedCommissions: e } : {}; };
+router.get("/accounting/workbook-settings", asyncHandler(async (_req, res) => { res.json({ reportTitle: (await workbookReportTitle()) ?? null, expectedCommissions: await workbookExpectedCommissions() }); }));
 router.put("/accounting/workbook-settings", asyncHandler(async (req, res) => {
-  const p = z.object({ reportTitle: z.union([z.null(), z.string().trim().max(80)]) }).strict().safeParse(req.body);
+  const p = z.object({
+    reportTitle: z.union([z.null(), z.string().trim().max(80)]).optional(),
+    expectedCommissions: z.union([z.null(), z.object({ monthly: z.coerce.number().min(0).max(10_000_000), from: z.string().regex(MONTH, "Start month must look like 2026-11") }).strict()]).optional(),
+  }).strict().safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: firstIssue(p.error) });
-  const value = { reportTitle: p.data.reportTitle || null };
   const [ex] = await db.select().from(appSettingsTable).where(eq(appSettingsTable.key, "workbook"));
+  const prev: any = ex?.value ?? {};
+  const value = {
+    reportTitle: p.data.reportTitle === undefined ? prev.reportTitle ?? null : p.data.reportTitle || null,
+    expectedCommissions: p.data.expectedCommissions === undefined ? prev.expectedCommissions ?? null : p.data.expectedCommissions ? { monthly: Math.round(p.data.expectedCommissions.monthly * 100) / 100, from: p.data.expectedCommissions.from } : null,
+  };
   if (ex) await db.update(appSettingsTable).set({ value, updatedAt: new Date() }).where(eq(appSettingsTable.key, "workbook"));
   else await db.insert(appSettingsTable).values({ key: "workbook", value });
   await insertAuditLog({ action: ex ? "update" : "create", entity: "workbook_settings", entityId: 0, details: { before: ex?.value ?? null, after: value }, performedBy: who(req, res) });
@@ -295,7 +311,7 @@ router.put("/accounting/workbook-settings", asyncHandler(async (req, res) => {
 router.get("/accounting/company-month/:month", asyncHandler(async (req, res) => {
   const month = String(req.params.month);
   if (!MONTH.test(month)) return res.status(400).json({ error: "Month must look like 2026-09" });
-  res.json(companyMonthSummary(await workbookData(), month, {}, { today: dubaiToday(), companyName: await documentCompanyName() }));
+  res.json(companyMonthSummary(await workbookData(), month, await workbookOverrides(), { today: dubaiToday(), companyName: await documentCompanyName() }));
 }));
 // GET /accounting/workbook/2026-09 (JSON) or .xlsx.
 router.get(/^\/accounting\/workbook\/(\d{4}-\d{2})(\.xlsx)?$/, asyncHandler(async (req, res) => {
@@ -307,7 +323,7 @@ router.get(/^\/accounting\/workbook\/(\d{4}-\d{2})(\.xlsx)?$/, asyncHandler(asyn
   const through = req.query.through == null || req.query.through === "" ? undefined : String(req.query.through);
   if (from !== undefined && (!MONTH.test(from) || from > month)) return res.status(400).json({ error: "From must be a month like 2026-04, not after the reporting month" });
   if (through !== undefined && (!realDate(through) || through < monthEnd(month))) return res.status(400).json({ error: "Through must be a date (YYYY-MM-DD) on or after the reporting month end" });
-  const result = buildWorkbookRows(await workbookData(), month, {}, { from, through, today: dubaiToday(), companyName: await documentCompanyName(), reportTitle: await workbookReportTitle() });
+  const result = buildWorkbookRows(await workbookData(), month, await workbookOverrides(), { from, through, today: dubaiToday(), companyName: await documentCompanyName(), reportTitle: await workbookReportTitle() });
   if (!xlsx) return res.json(result);
   const buf = workbookXlsx(result);
   await insertAuditLog({ action: "create", entity: "yalla_workbook_export", entityId: 0, details: { month, from: result.from, through: result.through, incomeRows: result.income.length, expenseRows: result.expense.length, excluded: result.excluded.length, warnings: result.warnings.length }, performedBy: who(req, res) });
