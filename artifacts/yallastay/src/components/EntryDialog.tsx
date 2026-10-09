@@ -20,7 +20,7 @@ export const TREATMENTS = [['', 'Follow "Charge to"'], ['company', 'Operating ex
 export const USD_AED = 3.6725;
 export const INCOME_CATEGORIES = ['Additional income', 'Other'];
 /** The master finance workbook's lists (Lists & Sources); see lib/yalla-config.mjs. */
-export const WORKBOOK_INCOME_CATEGORIES = ['Airbnb', 'Booking', 'Cleaning', 'Cleaning Profit', 'Cleaning/Viewing', 'Commission', 'DTCM', 'Lock', 'Photography', 'Photos', 'Referral', 'Management Fee', 'Maintenance', 'Other'];
+export const WORKBOOK_INCOME_CATEGORIES = ['Airbnb', 'Booking', 'Cleaning', 'Cleaning Profit', 'Cleaning/Viewing', 'Commission', 'DTCM', 'Lock', 'Photography', 'Photos', 'Referral', 'Management Fee', 'Maintenance', 'Other', 'Accommodation'];
 export const WORKBOOK_EXPENSE_CATEGORIES = ['Salary', 'Rent', 'Security Deposit', 'Agent Commission', 'Cleaning', 'DEWA Deposit', 'Cooling Deposit', 'Fuel', 'Noon', 'Car', 'Cleaner', 'Marketing', 'Photography', 'Software', 'DTCM', 'Supplies', 'DEWA', 'Refund'];
 const CURRENCIES = ['AED', 'ZAR', 'USD', 'EUR', 'GBP'];
 
