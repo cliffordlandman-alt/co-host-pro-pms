@@ -29,7 +29,7 @@ async function loadHistory(propertyId: number) {
   const [owner] = property.ownerId ? await db.select().from(ownersTable).where(eq(ownersTable.id, property.ownerId)) : [];
   const [rules] = await db.select().from(propertySettingsTable).where(eq(propertySettingsTable.propertyId, propertyId));
   const bookings = (await db.select().from(reservationsTable).where(and(eq(reservationsTable.propertyId, propertyId), ne(reservationsTable.status, "cancelled")))).filter(r => r.status !== "blocked");
-  const expenses = await db.select().from(accountingTransactionsTable).where(and(eq(accountingTransactionsTable.propertyId, propertyId), eq(accountingTransactionsTable.type, "expense"), eq(accountingTransactionsTable.allocation, "owner")));
+  const expenses = (await db.select().from(accountingTransactionsTable).where(and(eq(accountingTransactionsTable.propertyId, propertyId), eq(accountingTransactionsTable.type, "expense"), eq(accountingTransactionsTable.allocation, "owner")))).filter(t => t.paymentStatus !== "void");
   const tickets = await db.select().from(maintenanceTicketsTable).where(and(eq(maintenanceTicketsTable.propertyId, propertyId), eq(maintenanceTicketsTable.status, "completed")));
   const payouts = await db.select().from(airbnbBookingPayoutsTable);
   const statements = await db.select().from(ownerStatementsTable).where(eq(ownerStatementsTable.propertyId, propertyId));

@@ -476,7 +476,8 @@ function TransactionsTab() {
             <p key={o.currency} className="text-xs text-muted-foreground" data-testid={`company-${o.currency}`}>
               <span className="font-medium text-foreground">{o.currency} (not converted):</span>{" "}
               {o.airbnbInAedRevenue ? <>company Airbnb fees {aed(o.airbnbInAedRevenue, o.currency)}, paid through {o.usdPayouts} USD payout{o.usdPayouts === 1 ? "" : "s"} and already in Airbnb revenue at the USD paid (not added again)</> : null}
-              {o.separate.income || o.separate.expenses ? <>{o.airbnbInAedRevenue ? "; " : ""}separate from the AED totals: income {aed(o.separate.income, o.currency)}, expenses {aed(o.separate.expenses, o.currency)}, net {aed(o.separate.net, o.currency)}</> : null}
+              {o.countedInCurrency ? <>{o.airbnbInAedRevenue ? "; " : ""}company fees {aed(o.countedInCurrency, o.currency)} counted once, in {o.currency} (the USD-paid part is taken out of the AED revenue)</> : null}
+              {o.separate.income || o.separate.expenses ? <>{o.airbnbInAedRevenue || o.countedInCurrency ? "; " : ""}separate from the AED totals: income {aed(o.separate.income, o.currency)}, expenses {aed(o.separate.expenses, o.currency)}, net {aed(o.separate.net, o.currency)}</> : null}
             </p>
           ))}
           {filterProp !== "all" && <p className="text-xs text-muted-foreground">These cards are for the whole company; the list below is filtered to one property.</p>}

@@ -226,7 +226,7 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
     assert.equal(cm.profit, Math.round(msRow.net * 100) / 100, 'profit = Monthly Summary E');
     assert.equal(cm.expenses.ownerPaid, 200); assert.equal(cm.revenue.managementFeesAndCommissions, 1400);
     assert.ok(Math.abs(cm.revenue.airbnb - Math.round((50 + 5 + 19.46) * 3.6725 * 100) / 100) < 0.011, 'ZAR listing paid in USD: in Airbnb revenue at the USD paid');
-    assert.deepEqual(cm.otherCurrencies, [{ currency: 'ZAR', airbnbInAedRevenue: 313.56, usdPayouts: 1, separate: { airbnb: 0, income: 500, expenses: 0, net: 500 } }], 'ZAR never converted, not added twice');
+    assert.deepEqual(cm.otherCurrencies, [{ currency: 'ZAR', airbnbInAedRevenue: 313.56, countedInCurrency: 0, usdPayouts: 1, separate: { airbnb: 0, income: 500, expenses: 0, net: 500 } }], 'ZAR never converted, not added twice');
     assert.equal(cm.tags[3], 'Owner paid'); assert.equal(cm.tags[9], 'ZAR (separate)'); assert.equal(cm.tags[5], 'Not in company totals'); assert.equal(cm.tags[2], undefined);
   }
   // Raju's fix: Expense Line Items (every PMS expense line, the left-out ones with the reason) and Confirmed Booking.
@@ -339,7 +339,7 @@ try {
   assert.match((await api(`/accounting/deposits/${dep.id}`, 'PATCH', { status: 'kept', settledOn: '2026-09-20', keptAmount: 1200, keptReason: 'x' }, 400)).error, /more than the deposit/);
   assert.match((await api(`/accounting/deposits/${dep.id}`, 'PATCH', { status: 'refunded', settledOn: '2026-09-01' }, 400)).error, /before the deposit/);
   let regs = await api('/accounting/deposits');
-  assert.deepEqual(regs.held, [{ currency: 'AED', asset: 11500, liability: 1000 }]);
+  assert.deepEqual(regs.held, [{ currency: 'AED', asset: 11500, liability: 1000, owner_funds: 0 }]);
 
   // Lease + cheques
   const L = await api('/accounting/leases', 'POST', { name: 'Sunrise Bay 2106 lease', propertyId: SB.id, startDate: '2026-08-08', endDate: '2027-08-07', annualRent: 115000, agencyFee: 6037.5, agencyFeeDate: '2026-08-17', agencyFeeNote: 'Agency fee - paid by Aziza, repaid 17 Aug (one-off)',

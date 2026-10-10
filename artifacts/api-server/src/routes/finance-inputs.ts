@@ -30,7 +30,8 @@ const firstIssue = (e: z.ZodError) => e.issues[0]?.message ?? "Invalid input";
 
 // ── Deposits register (balance sheet only; never P&L) ──
 const depositSchema = z.object({
-  kind: z.enum(["asset", "liability"], { message: "Choose asset (we paid it) or liability (we hold it)" }),
+  // owner_funds (10 Oct): an owner's own money we hold (e.g. Bonnita's Airbnb net) - owed to the owner, never income.
+  kind: z.enum(["asset", "liability", "owner_funds"], { message: "Choose asset (we paid it), liability (we hold it) or owner money (owed to the owner)" }),
   propertyId: z.union([z.null(), z.coerce.number().int().positive()]).optional(),
   counterparty: z.string().trim().min(1, "Say who paid it or who holds it").max(120),
   amount: money,
@@ -61,8 +62,8 @@ const depositRow = (d: any) => ({ ...d, amount: d.amount.toFixed(2), keptAmount:
 router.get("/accounting/deposits", asyncHandler(async (_req, res) => {
   const rows = await db.select({ d: depositsTable, propertyName: propertiesTable.name, reportName: propertiesTable.reportName }).from(depositsTable).leftJoin(propertiesTable, eq(depositsTable.propertyId, propertiesTable.id)).orderBy(asc(depositsTable.date), asc(depositsTable.id));
   const items = rows.map(r => ({ ...depositOut(r.d), propertyName: r.reportName || r.propertyName }));
-  const held: Record<string, { asset: number; liability: number }> = {};
-  for (const d of items) if (d.status === "held") { const t = held[d.currency] ??= { asset: 0, liability: 0 }; t[d.kind as "asset" | "liability"] = Math.round((t[d.kind as "asset" | "liability"] + d.amount) * 100) / 100; }
+  const held: Record<string, { asset: number; liability: number; owner_funds: number }> = {};
+  for (const d of items) if (d.status === "held") { const t = held[d.currency] ??= { asset: 0, liability: 0, owner_funds: 0 }; const k = d.kind as "asset" | "liability" | "owner_funds"; t[k] = Math.round(((t[k] ?? 0) + d.amount) * 100) / 100; }
   res.json({ items, held: Object.entries(held).map(([currency, t]) => ({ currency, ...t })) });
 }));
 router.post("/accounting/deposits", asyncHandler(async (req, res) => {

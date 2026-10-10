@@ -262,7 +262,8 @@ function applyFinanceFields(input: any): string | null {
     if (input.treatment && input.treatment !== "company") return "Salary is a company operating expense (not owner paid or pass-through)";
     input.allocation = "company"; input.treatment = "company"; input.propertyId = null; input.reservationId = null;
   }
-  if (input.paymentStatus != null && !["paid", "pending", "unpaid", "none"].includes(input.paymentStatus)) return "Payment status must be paid, pending, unpaid or none";
+  // void = cancelled / withdrawn entry kept for the record (never hard-deleted) and counted nowhere.
+  if (input.paymentStatus != null && !["paid", "pending", "unpaid", "none", "void"].includes(input.paymentStatus)) return "Payment status must be paid, pending, unpaid, none or void";
   // Migration 0026: Income Input direct cost and payer (income only), and the master workbook category override.
   for (const k of ["directCost", "payer", "reportCategory", "reportSource", "reportProperty", "forecastLabel", "reportDescription"]) { if (typeof input[k] === "string") input[k] = input[k].trim(); if (input[k] === "" || input[k] === undefined) input[k] = null; }
   if (input.type !== "income" && (input.directCost != null || input.payer != null)) return "Direct cost and payer apply to income only";

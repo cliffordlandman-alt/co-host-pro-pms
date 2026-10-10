@@ -62,7 +62,7 @@ router.get("/reports/pnl", async (_req, res) => {
     const row = (c: string) => { let r = rows.get(c); if (!r) rows.set(c, r = { revenue: 0, maintenance: 0, other: 0 }); return r; };
     for (const b of verified) row(bookingCurrency(b, p)).revenue += cents(b.revenue);
     for (const t of tickets) if (t.propertyId === p.id && t.status === "completed") row(home).maintenance += cents(t.cost);
-    for (const t of expenses) if (t.propertyId === p.id && t.type === "expense" && t.allocation === "owner") row(t.currency || home).other += cents(t.amount);
+    for (const t of expenses) if (t.propertyId === p.id && t.type === "expense" && t.allocation === "owner" && t.paymentStatus !== "void") row(t.currency || home).other += cents(t.amount);
     return [...rows.entries()].map(([currency, r]) => ({ propertyId: p.id, propertyName: p.name, currency, revenue: r.revenue / 100, expenses: (r.maintenance + r.other) / 100, net: (r.revenue - r.maintenance - r.other) / 100, unverifiedBookings: currency === home ? own.length - verified.length : 0 }));
   }));
 });
