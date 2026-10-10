@@ -340,6 +340,13 @@ try {
   assert.match((await api(`/accounting/deposits/${dep.id}`, 'PATCH', { status: 'refunded', settledOn: '2026-09-01' }, 400)).error, /before the deposit/);
   let regs = await api('/accounting/deposits');
   assert.deepEqual(regs.held, [{ currency: 'AED', asset: 11500, liability: 1000, owner_funds: 0 }]);
+  { // 10 Oct (migration 0030): owner money held (kind owner_funds) and void entries are accepted by the database.
+    const of = await api('/accounting/deposits', 'POST', { kind: 'owner_funds', propertyId: LW.id, counterparty: 'Bonnita', amount: 10, date: '2026-09-30', method: 'PayPal', notes: 'test' }, 201);
+    assert.deepEqual((await api('/accounting/deposits')).held, [{ currency: 'AED', asset: 11500, liability: 1000, owner_funds: 10 }]);
+    await api(`/accounting/deposits/${of.id}`, 'DELETE', undefined, 204);
+    const v = await api('/accounting/transactions', 'POST', { type: 'income', allocation: 'company', date: '2026-09-01', category: 'Booking', description: 'void test', amount: 5, currency: 'AED', paymentStatus: 'void' }, 201);
+    assert.equal(v.paymentStatus, 'void');
+    await api(`/accounting/transactions/${v.id}`, 'DELETE', undefined, 204); }
 
   // Lease + cheques
   const L = await api('/accounting/leases', 'POST', { name: 'Sunrise Bay 2106 lease', propertyId: SB.id, startDate: '2026-08-08', endDate: '2027-08-07', annualRent: 115000, agencyFee: 6037.5, agencyFeeDate: '2026-08-17', agencyFeeNote: 'Agency fee - paid by Aziza, repaid 17 Aug (one-off)',
