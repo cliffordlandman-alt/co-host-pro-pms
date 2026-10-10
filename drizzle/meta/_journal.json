@@ -218,6 +218,13 @@
       "when": 1790900030000,
       "tag": "0030_yalla_owner_funds_void",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790900031000,
+      "tag": "0031_yalla_owner_funds_paid_out",
+      "breakpoints": true
     }
   ]
 }

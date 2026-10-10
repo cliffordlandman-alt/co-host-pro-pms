@@ -38,7 +38,8 @@ const depositSchema = z.object({
   currency,
   date,
   method: optText(60),
-  status: z.enum(["held", "refunded", "kept"]).optional(),
+  // paid_out (10 Oct): owner money paid to the owner (kind owner_funds only).
+  status: z.enum(["held", "refunded", "kept", "paid_out"]).optional(),
   settledOn: optDate,
   keptAmount: z.union([z.null(), z.literal("").transform(() => null), money]).optional(),
   keptReason: optText(300),
@@ -48,7 +49,9 @@ const depositSchema = z.object({
 function checkDeposit(d: any): string | null {
   const status = d.status ?? "held";
   if (status === "held" && (d.settledOn || d.keptAmount)) return "A held deposit has no settled date or kept amount";
-  if (status !== "held" && !d.settledOn) return "Enter the date it was refunded or kept";
+  if (status !== "held" && !d.settledOn) return "Enter the date it was refunded, kept or paid out";
+  if (status === "paid_out" && d.kind !== "owner_funds") return "Only owner money is paid out (a deposit is refunded or kept)";
+  if (d.kind === "owner_funds" && ["refunded", "kept"].includes(status)) return "Owner money is held or paid out";
   if (d.settledOn && d.settledOn < d.date) return "The settled date is before the deposit date";
   if (status === "kept" && !d.keptAmount) return "Enter the amount kept against damage";
   if (status === "kept" && !d.keptReason) return "Say why it was kept (e.g. the damage)";

@@ -343,6 +343,9 @@ try {
   { // 10 Oct (migration 0030): owner money held (kind owner_funds) and void entries are accepted by the database.
     const of = await api('/accounting/deposits', 'POST', { kind: 'owner_funds', propertyId: LW.id, counterparty: 'Bonnita', amount: 10, date: '2026-09-30', method: 'PayPal', notes: 'test' }, 201);
     assert.deepEqual((await api('/accounting/deposits')).held, [{ currency: 'AED', asset: 11500, liability: 1000, owner_funds: 10 }]);
+    await api(`/accounting/deposits/${of.id}`, 'PATCH', { status: 'paid_out', settledOn: '2026-09-30' });
+    await api(`/accounting/deposits/${of.id}`, 'PATCH', { status: 'refunded', settledOn: '2026-09-30' }, 400);
+    await api(`/accounting/deposits/${dep.id}`, 'PATCH', { status: 'paid_out', settledOn: '2026-09-30' }, 400);
     await api(`/accounting/deposits/${of.id}`, 'DELETE', undefined, 204);
     const v = await api('/accounting/transactions', 'POST', { type: 'income', allocation: 'company', date: '2026-09-01', category: 'Booking', description: 'void test', amount: 5, currency: 'AED', paymentStatus: 'void' }, 201);
     assert.equal(v.paymentStatus, 'void');
