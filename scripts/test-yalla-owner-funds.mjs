@@ -70,13 +70,27 @@ assert.ok(ii.includes(`<f>-H${gl}</f>`) && ii.includes(`<f>-H${mp}</f>`));
 assert.ok(ii.includes(`<f>3000+H${gr}+H${gl}+H${mp}-H${mon}</f>`), 'rounding tie formula');
 assert.ok(ii.includes('(Lists &amp; Sources row ' + (23 + r.lists.items.findIndex(i => i.key === 'fee-once:1')) + ')'), 'fee row names its memo row');
 assert.ok(ls.includes('Owed to owners - owner money held') && ls.includes(`<f>-&apos;Income Input&apos;!H${sep}</f>`) || ls.includes(`<f>-'Income Input'!H${sep}</f>`), 'Owed to owners links to the income row');
-assert.ok(ls.includes('Owed to Bonnita to 30 Sep (Oct bookings not yet included)'));
+assert.ok(ls.includes('Bonnita Aug-Sep to date (Aug-Sep owed)') && ls.includes('BALANCE OWED'));
 // Paid out (Clifford, 10 Oct: Bonnita paid): Owed to owners = 0, rows listed as Paid out, revenue unchanged.
 { const paid = { ...data, deposits: data.deposits.map(d => ({ ...d, status: 'paid_out', settledOn: d.date, notes: d.notes + '\nPaid: Paid to Bonnita (Clifford confirmed 10 Oct); exact date TBC' })) };
   const rp = buildWorkbookRows(paid, '2026-09', {}, { from: '2026-08', today: '2026-10-10' });
   assert.equal(rp.lists.ownerFundsHeld.total, 0);
-  assert.deepEqual(rp.lists.ownerFundsHeld.rows.map(o => [o.status, o.notes]), [['Paid out', 'Paid to Bonnita (Clifford confirmed 10 Oct); exact date TBC'], ['Paid out', 'Paid to Bonnita (Clifford confirmed 10 Oct); exact date TBC']]);
+  assert.deepEqual(rp.lists.ownerFundsHeld.rows.map(o => [o.status, o.notes]), [['Paid', 'Paid to Bonnita (Clifford confirmed 10 Oct); exact date TBC'], ['Paid', 'Paid to Bonnita (Clifford confirmed 10 Oct); exact date TBC']]);
   assert.equal(rp.lists.ownerFundsHeld.note, 'Nothing owed to Bonnita at 30 Sep - paid out');
   assert.equal(companyMonthSummary(paid, '2026-09', {}, { today: '2026-10-10' }).revenue.total, 3000, 'paying the owner does not change company revenue');
-  assert.ok(unzip(workbookXlsx(rp))['xl/worksheets/sheet8.xml'].includes('&quot;Held&quot;)'), 'TOTAL counts held rows only'); }
+  assert.ok(unzip(workbookXlsx(rp))['xl/worksheets/sheet8.xml'].includes('BALANCE OWED') && unzip(workbookXlsx(rp))['xl/worksheets/sheet8.xml'].includes('&quot;Held&quot;,'), 'BALANCE OWED counts held rows only'); }
 console.log('OK owner money held, fee counted once in ZAR, rounding tie, void entries');
+// Audit sec. 9 (10 Oct): Jun-Sep Paid, Oct HMPZ825599 209.23 Held; Garden Retreat Airbnb net auto-excluded from income.
+{ const oct = { ...data,
+    payouts: [{ id: 'P2', currency: 'USD', amount: '85.70', sourceDate: '2026-10-03' }],
+    earnings: [{ ...line('HMPZ825599', 2, 'AED', 209.23), payoutId: 'P2', checkIn: '2026-10-02', checkOut: '2026-10-04', sourceDate: '2026-10-03' }, { ...line('HMJR5FQD9F', 1, 'AED', 105.50), payoutId: 'P2', sourceDate: '2026-10-03' }],
+    deposits: data.deposits.map(d => ({ ...d, status: 'paid_out', settledOn: d.date, notes: d.notes + '\nPaid: Paid to Bonnita (Clifford, 10 Oct)' })) };
+  const ro = buildWorkbookRows(oct, '2026-10', {}, { from: '2026-08', today: '2026-10-10' });
+  const of = ro.lists.ownerFundsHeld;
+  assert.equal(of.total, 209.23, 'balance owed to Bonnita = Oct only');
+  assert.deepEqual(of.rows.filter(o => o.date >= '2026-10-01').map(o => [o.property, o.owner, o.amount, o.status]), [['Garden Retreat', 'Bonnita', 209.23, 'Held']]);
+  assert.ok(of.rows.filter(o => o.date < '2026-10-01').every(o => o.status === 'Paid'));
+  const grNet = ro.income.filter(x => x.propertyId === 2 && x.date >= '2026-10-01' && x.kind !== 'airbnb-ytd').reduce((n, x) => n + Math.round(x.gross * 100), 0);
+  assert.equal(grNet, 0, 'Garden Retreat October nets to zero in company income');
+  const cmo = companyMonthSummary(oct, '2026-10', {}, { today: '2026-10-10' });
+  console.log('Oct owed', of.total, of.totalNote, '|', of.balanceNote, '| company revenue', cmo.revenue.total); }
