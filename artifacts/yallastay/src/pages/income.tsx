@@ -4,7 +4,7 @@ import { AlertTriangle, ChevronRight, Info } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IncomePeriodControls } from "@/components/IncomePeriodControls";
 import { AirbnbSplitSummary } from "@/components/AirbnbSplit";
-import { estimateText, hasFigures, money, periodFromSearch, periodLabel, periodQuery, useIncome, type IncomeProperty, type IncomeRow, type IncomeTotal, type Period } from "@/lib/income";
+import { estimateText, hasFigures, money, shortDate, periodFromSearch, periodLabel, periodQuery, useIncome, type IncomeProperty, type IncomeRow, type IncomeTotal, type Period } from "@/lib/income";
 
 // Income per property: every property for a month (default: this month) or a calendar year, each in its own
 // currency, totals per currency. All figures come from the server's owner-statement calculation.
@@ -24,18 +24,35 @@ export function EstimateChip({ p }: { p: IncomeProperty }) {
 }
 
 function TotalsCard({ t }: { t: IncomeTotal }) {
+  const r = t.range;
+  const line = (label: string, v: number, sign = "", testid?: string, strong?: boolean) => <div data-testid={testid} className={`flex justify-between gap-3 py-1 ${strong ? "font-semibold" : ""}`}><span className="text-muted-foreground">{label}</span><span className="tabular-nums">{sign}{money(v, t.currency)}</span></div>;
   return (
     <section data-testid={`income-total-${t.currency}`} className="rounded-2xl border bg-card p-4 sm:p-5">
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="font-semibold">{t.currency} properties</h2>
         <span className="text-xs text-muted-foreground">{t.properties} with income · {t.bookings} booking{t.bookings === 1 ? "" : "s"} · {t.nights} nights</span>
       </div>
-      {t.properties === 0 ? <p className="mt-3 text-sm text-muted-foreground">No verified {t.currency} income in this period yet.</p> : <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {r && <p data-testid="box-range" className="mt-1 text-xs text-muted-foreground">Checkouts {shortDate(r.start)} – {shortDate(r.end)}{r.firstCheckIn ? ` · stays counted ${shortDate(r.firstCheckIn)} – ${shortDate(r.lastCheckOut)}` : ""}</p>}
+      {t.propertyNames?.length > 0 && <p className="text-xs text-muted-foreground">{t.propertyNames.join(" · ")}</p>}
+      {t.properties === 0 ? <p className="mt-3 text-sm text-muted-foreground">No verified {t.currency} income in this period yet.</p> : <>
+      <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Figure label="Gross booking income" value={money(t.gross, t.currency)} />
         <Figure label="Company management fee" value={money(t.managementFee, t.currency)} strong />
         <Figure label="Owner share" value={money(t.ownerShare, t.currency)} />
         <Figure label="Net to company" value={money(t.companyNet, t.currency)} strong />
-      </div>}
+      </div>
+      <div data-testid="box-reconcile" className="mt-3 border-t pt-2 text-sm">
+        {line("Gross booking income", t.gross)}
+        {line("Airbnb host fees", t.airbnbFees, "− ", "box-airbnb-fees")}
+        {line("Net payout", t.netPayout, "", "box-net-payout", true)}
+        {t.otherDeductions !== 0 && line("VAT, tourism, cleaning & owner expenses", t.otherDeductions, "− ", "box-other")}
+        {line("Management fee", t.managementFee, "", "box-fee")}
+        {line("Owner share", t.ownerShare, "", "box-owner")}
+        {Math.abs(t.unexplained) >= 0.01 && <p data-testid="box-gap" className="mt-1 rounded bg-rose-50 px-2 py-1 text-xs text-rose-800">Doesn't add up: {money(t.unexplained, t.currency)} not explained.</p>}
+        {Math.abs(t.feeDifference) >= 0.01 && <p data-testid="box-fee-diff" className="mt-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-900">Fee settings on net payout give {money(t.expectedManagementFee, t.currency)}; the bookings carry {money(t.managementFee, t.currency)}. Re-save them on Verify to recalculate.</p>}
+      </div></>}
+      {t.missingAmounts > 0 && <p data-testid="box-missing" className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
+        <b>{t.missingAmounts} booking{t.missingAmounts === 1 ? "" : "s"} missing amounts</b> (no gross or Airbnb host fee) and not in these figures. <Link href="/verify-bookings" className="underline font-medium">Verify bookings</Link></p>}
       {t.unverifiedBookings > 0 && <p className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
         <b>{t.unverifiedBookings} booking{t.unverifiedBookings === 1 ? "" : "s"} not verified yet</b> and not in these figures.{t.unverifiedEstimate ? <> Airbnb host payouts recorded for them: <b>{money(t.unverifiedEstimate, t.currency)}</b> (estimate, not the guest total).</> : null}{" "}
         <Link href="/verify-bookings" className="underline font-medium">Verify bookings</Link></p>}

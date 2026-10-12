@@ -8,8 +8,11 @@ export type IncomeRow = { currency: string; bookings: number; nights: number; gr
 export type Unverified = { count: number; nights: number; withoutAmount: number; estimates: { currency: string; amount: number }[] };
 export type IncomeProperty = { propertyId: number; name: string; unitNumber: string | null; currency: string; ownerName: string | null; hasOwner: boolean;
   occupancy: { nights: number; days: number; percent: number }; rows: IncomeRow[]; unverified: Unverified; estimate: boolean;
-  statement: { status: "none" | "draft" | "sent" | "paid" | "duplicate"; id?: number } | { published: number; drafts: number }; held: string | null };
-export type IncomeTotal = IncomeRow & { properties: number; unverifiedBookings: number; unverifiedEstimate: number };
+  statement: { status: "none" | "draft" | "sent" | "paid" | "duplicate"; id?: number } | { published: number; drafts: number }; held: string | null; feePercent?: number | null; missingAmounts?: number };
+export type IncomeTotal = IncomeRow & { properties: number; unverifiedBookings: number; unverifiedEstimate: number;
+  /** Box reconciliation: gross - airbnbFees = netPayout; netPayout - otherDeductions = managementFee + ownerShare (unexplained must be 0). */
+  airbnbFees: number; netPayout: number; otherDeductions: number; unexplained: number; expectedManagementFee: number; feeDifference: number;
+  missingAmounts: number; propertyNames: string[]; range: { start: string; end: string; firstCheckIn: string | null; lastCheckOut: string | null } };
 export type IncomeReport = { period: { kind: "month" | "year"; month?: string; year?: string; start: string; end: string; days: number }; properties: IncomeProperty[]; totals: IncomeTotal[];
   companyOther: { currency: string; income: number; costs: number; net: number }[] };
 export type Period = { month: string } | { year: string };
@@ -46,3 +49,5 @@ export function periodFromSearch(search: string): Period {
   if (/^\d{4}-(0[1-9]|1[0-2])$/.test(q.get("month") || "")) return { month: q.get("month")! };
   return { month: dubaiMonth() };
 }
+
+export const shortDate = (d: string | null | undefined) => d ? new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`)) : "–";

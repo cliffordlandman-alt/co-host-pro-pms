@@ -29,6 +29,38 @@ const near = (a, b, msg) => assert.ok(Math.abs(Number(a) - Number(b)) < 0.005, `
   assert.equal(r.properties[0].held.slice(0, 14), 'Mixed currency');
 }
 
+// ── Pure: per-currency boxes add up (Clifford, 12 Oct 2026): gross - Airbnb host fees = net payout;
+// net payout - other deductions = management fee + owner share, no gap; the property's own fee %; date range;
+// bookings with no gross or host fee counted and flagged; one box per property currency. ──
+{
+  const props = [{ id: 1, name: 'Dubai 15', currency: 'AED', status: 'active' }, { id: 2, name: 'Lofts 603', currency: 'AED', status: 'active' }, { id: 3, name: 'Lakeside', currency: 'ZAR', status: 'active' }];
+  const settings = [{ propertyId: 1, managementFeePercent: '15' }, { propertyId: 2, managementFeePercent: '10' }, { propertyId: 3, managementFeePercent: '0' }];
+  // net payout basis: gross 1000, host fee 150 -> net 850; fee 15 % = 127.50, owner 722.50 (no cleaning)
+  const v = (id, propertyId, pct, extra = {}) => ({ id, propertyId, guestName: `G${id}`, status: 'checked_out', platform: 'airbnb', checkIn: '2026-09-02', checkOut: '2026-09-05', nights: 3, financeMode: 'inclusive-v1', grossAmount: '1000.00', vatAmount: '0', tourismFee: '0',
+    channelAmount: '150.00', channelFees: '150.00', managementAmount: (850 * pct / 100).toFixed(2), cleaningFee: '0', ownerAmount: (850 - 850 * pct / 100).toFixed(2), ...extra });
+  const bookings = [v(1, 1, 15), v(2, 2, 10, { checkIn: '2026-09-20', checkOut: '2026-09-25', nights: 5 }), v(3, 3, 0),
+    { id: 4, propertyId: 1, guestName: 'Blank', status: 'checked_out', platform: 'airbnb', checkIn: '2026-09-10', checkOut: '2026-09-12', nights: 2, financeMode: null, grossAmount: null },
+    { id: 5, propertyId: 3, guestName: 'Blank ZAR', status: 'checked_out', platform: 'airbnb', checkIn: '2026-09-10', checkOut: '2026-09-12', nights: 2, financeMode: null, grossAmount: null },
+    { id: 6, propertyId: 1, guestName: 'Cancelled', status: 'cancelled', platform: 'airbnb', checkIn: '2026-09-10', checkOut: '2026-09-12', nights: 2, grossAmount: null }];
+  const r = incomeReport({ properties: props, settings, bookings, transactions: [], tickets: [], earnings: [], statements: [], owners: [] }, { month: '2026-09' });
+  const aed = r.totals.find(t => t.currency === 'AED'), zar = r.totals.find(t => t.currency === 'ZAR');
+  assert.deepEqual(r.totals.map(t => t.currency), ['AED', 'ZAR'], 'a box per property currency');
+  near(aed.gross, 2000, 'AED gross'); near(aed.airbnbFees, 300, 'AED Airbnb host fees'); near(aed.netPayout, 1700, 'AED net payout');
+  near(aed.managementFee, 212.5, 'AED fee: 15 % + Lofts 10 %'); near(aed.ownerShare, 1487.5, 'AED owner share');
+  near(aed.netPayout - aed.otherDeductions, aed.managementFee + aed.ownerShare, 'AED adds up'); near(aed.unexplained, 0, 'no gap');
+  near(aed.expectedManagementFee, 212.5, 'fee from each property\'s own setting'); near(aed.feeDifference, 0, 'fee agrees with settings');
+  assert.equal(aed.missingAmounts, 1, 'blank gross counted, cancelled not'); assert.equal(aed.bookings, 2); assert.equal(aed.nights, 8);
+  assert.deepEqual(aed.range, { start: '2026-09-01', end: '2026-09-30', firstCheckIn: '2026-09-02', lastCheckOut: '2026-09-25' }, 'date range shown');
+  assert.deepEqual(aed.propertyNames, ['Dubai 15', 'Lofts 603']);
+  near(zar.managementFee, 0, 'Lakeside 0 %'); near(zar.ownerShare, 850, 'ZAR owner share'); assert.equal(zar.missingAmounts, 1); near(zar.unexplained, 0, 'ZAR adds up');
+  // A booking carrying a fee the settings would not give is flagged, not hidden.
+  const off = incomeReport({ properties: props.slice(0, 1), settings, bookings: [v(1, 1, 20)], transactions: [], tickets: [], earnings: [], statements: [], owners: [] }, { month: '2026-09' }).totals[0];
+  near(off.feeDifference, 42.5, 'fee difference flagged'); near(off.unexplained, 0, 'still adds up');
+  // Only blank bookings: the box still appears with its warning.
+  const onlyBlank = incomeReport({ properties: props.slice(0, 1), settings, bookings: [bookings[3]], transactions: [], tickets: [], earnings: [], statements: [], owners: [] }, { month: '2026-09' });
+  assert.equal(onlyBlank.totals[0].missingAmounts, 1, 'blank-only currency still shows a box');
+}
+
 // ── API: real statements vs Income per property ──
 const data = await mkdtemp(path.join(tmpdir(), 'yallapms-income-'));
 const outLog = path.join(data, 'outbound.log'); await writeFile(outLog, '');
