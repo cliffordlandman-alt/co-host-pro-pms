@@ -327,7 +327,7 @@ router.get("/accounting/company-statement", asyncHandler(async (req, res) => {
   const wb = companyStatementFromWorkbook(data, start, end, await workbookOverrides(), { today: dubaiToday(), companyName: await documentCompanyName() });
   // A company keeping its books from Airbnb's monthly reports (the YALLA workbook, like Clifford's) gets the workbook
   // rules, so this equals company-month. Without those reports the booking-based statement is the only data there is.
-  if (wb.lines.some((l: any) => l.kind === "airbnb-monthly")) return res.json(wb);
+  if (wb.lines.some((l: any) => l.kind === "airbnb-monthly") || (data.payouts ?? []).some((p: any) => p.currency === "USD")) return res.json(wb);
   const [settings, maintenance] = await Promise.all([db.select().from(propertySettingsTable), db.select().from(maintenanceTicketsTable)]);
   const bookings = await db.select().from(reservationsTable);
   res.json({ ...companyStatement({ earnings: data.earnings, bookings, transactions: data.transactions, properties: data.properties, maintenance, settings }, start, end), basis: "bookings" });
