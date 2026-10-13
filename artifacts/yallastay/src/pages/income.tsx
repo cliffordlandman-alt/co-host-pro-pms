@@ -3,6 +3,7 @@ import { Link, useLocation, useSearch } from "wouter";
 import { AlertTriangle, ChevronRight, Info } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IncomePeriodControls } from "@/components/IncomePeriodControls";
+import { ExportIncome } from "@/components/ExportIncome";
 import { AirbnbSplitSummary } from "@/components/AirbnbSplit";
 import { estimateText, hasFigures, money, shortDate, periodFromSearch, periodLabel, periodQuery, useIncome, type IncomeProperty, type IncomeRow, type IncomeTotal, type Period } from "@/lib/income";
 
@@ -142,7 +143,7 @@ export default function IncomePage() {
       <header className="space-y-3">
         <div><h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Income per property</h1>
           <p className="text-sm text-muted-foreground mt-1">{periodLabel(period)} · each booking counts in the month the guest checks out, exactly as on owner statements. Tap a property for its bookings.</p></div>
-        <IncomePeriodControls period={period} onChange={setPeriod} />
+        <div className="flex flex-wrap items-center gap-2"><IncomePeriodControls period={period} onChange={setPeriod} /><ExportIncome period={period} /></div>
       </header>
       {error ? <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{(error as Error).message}</p> : isLoading || !data ? <div className="space-y-3"><Skeleton className="h-32 rounded-2xl" /><Skeleton className="h-64 rounded-2xl" /></div> : <>
         <div className="grid gap-3 xl:grid-cols-2">{data.totals.length ? data.totals.map(t => <TotalsCard key={t.currency} t={t} />) : <p className="text-sm text-muted-foreground">No bookings checked out in this period.</p>}</div>

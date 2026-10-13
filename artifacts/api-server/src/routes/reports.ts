@@ -6,6 +6,7 @@ import { dubaiToday, addDays, addMonths } from "../lib/dubai-date";
 import { earningsDate } from "../../../../lib/company-statement.mjs";
 import { Router } from "express";
 import { db, reservationsTable, propertiesTable, maintenanceTicketsTable, airbnbEarningsTable, accountingTransactionsTable, propertySettingsTable, ownerStatementsTable, ownersTable, airbnbPayoutLinesTable } from "@workspace/db";
+import { exportModel, toXlsx, toPdf, exportFileName } from "../../../../lib/income-export.mjs";
 import { incomeReport, incomePropertyDetail, periodOf } from "../../../../lib/income-report.mjs";
 import { airbnbSplit, addSplitTotals } from "../../../../lib/airbnb-split.mjs";
 import { reconcilePayouts } from "../../../../lib/payout-recon.mjs";
@@ -121,6 +122,24 @@ router.get("/reports/income", asyncHandler(async (req, res) => {
   const splits = await splitsFor(data, period, report.properties.map((x: any) => x.propertyId));
   res.json({ ...withAedEquivalents(report, await fxSetting()), airbnbSplit: report.properties.filter((x: any) => splits.has(x.propertyId)).map((x: any) => ({ propertyId: x.propertyId, name: x.name, ...splits.get(x.propertyId)!, rows: undefined })),
     airbnbSplitTotals: addSplitTotals([...splits.values()]) });
+}));
+// Export of the Income per property page (read-only): same report, plus each property's bookings.
+router.get("/reports/income/export", asyncHandler(async (req, res) => {
+  const period = incomePeriod(req.query);
+  if ("error" in period) return res.status(400).json(period);
+  const format = String(req.query.format || "xlsx");
+  if (!["xlsx", "pdf"].includes(format)) return res.status(400).json({ error: "format must be xlsx or pdf" });
+  const data = await incomeData();
+  const report: any = withAedEquivalents(incomeReport(data, period), await fxSetting());
+  const months: string[] = (periodOf(period) as any).months;
+  const bookings: Record<number, any[]> = {};
+  for (const p of report.properties) bookings[p.propertyId] = months.flatMap(month => (incomePropertyDetail(data, p.propertyId, { month }) as any)?.bookings ?? []);
+  const model = exportModel(report, bookings);
+  const name = exportFileName(report.period, format);
+  res.setHeader("Content-Type", format === "xlsx" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send(format === "xlsx" ? toXlsx(model) : toPdf(model));
 }));
 router.get("/reports/income/:propertyId", asyncHandler(async (req, res) => {
   const period = incomePeriod(req.query);
