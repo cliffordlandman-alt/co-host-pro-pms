@@ -7,7 +7,7 @@ import { mkdtemp, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { BRAND, DEFAULT_FROM_EMAIL, documentName } from '../lib/brand.mjs';
+import { BRAND, PRODUCT_FULL, DEFAULT_FROM_EMAIL, documentName } from '../lib/brand.mjs';
 import { ownerCodeEmail, statementEmail } from '../lib/owner-emails.mjs';
 import { buildIcal } from '../lib/calendar-export.mjs';
 import { statementHtml } from '../artifacts/yallastay/src/lib/print-statement.ts';
@@ -17,9 +17,9 @@ const OLD = /yalla\s?stay|yalla\s?pms|owners come first/i;
 
 // ── Brand module and the setting's fallback ──
 assert.equal(BRAND, 'LaunchRiot');
-assert.equal(documentName(undefined), BRAND); assert.equal(documentName({ name: 'YallaStay Holiday Homes' }), BRAND, 'the old company name is not used on documents');
-assert.equal(documentName({ documentName: '   ' }), BRAND); assert.equal(documentName({ documentName: '  Landman  Stays ' }), 'Landman Stays');
-assert.match(DEFAULT_FROM_EMAIL, /^LaunchRiot </, 'sender name'); assert.match(DEFAULT_FROM_EMAIL, /<noreply@yallastay\.ae>$/, 'the sending address (domain already set up) is unchanged');
+assert.equal(documentName(undefined), PRODUCT_FULL); assert.equal(documentName({ name: 'YallaStay Holiday Homes' }), PRODUCT_FULL, 'the old company name is not used on documents');
+assert.equal(documentName({ documentName: '   ' }), PRODUCT_FULL); assert.equal(documentName({ documentName: '  Landman  Stays ' }), 'Landman Stays');
+assert.match(DEFAULT_FROM_EMAIL, /^LaunchRiot for Holiday Homes </, 'sender name'); assert.match(DEFAULT_FROM_EMAIL, /<noreply@yallastay\.ae>$/, 'the sending address (domain already set up) is unchanged');
 
 // ── Shell: window title, manifest, favicon ──
 const html = await read('artifacts/yallastay/index.html');
@@ -105,20 +105,20 @@ async function api(route, method = 'GET', body, expected = 200, auth = true) {
 }
 try {
   for (let i = 0; i < 80; i++) { try { await api('/healthz'); break; } catch { await new Promise(r => setTimeout(r, 250)); } }
-  assert.deepEqual(await api('/brand', 'GET', null, 200, false), { appName: BRAND, documentName: BRAND }, 'public, default LaunchRiot');
+  assert.deepEqual(await api('/brand', 'GET', null, 200, false), { appName: BRAND, documentName: PRODUCT_FULL }, 'public, default LaunchRiot');
   await api('/settings', 'GET', null, 401, false);
   token = (await api('/auth/register', 'POST', { name: 'Brand Admin', email: 'brand@example.invalid', password: 'Test-only-6284!' }, 201)).token;
   const s0 = await api('/settings');
-  assert.equal(s0.company.documentName, BRAND); assert.doesNotMatch(JSON.stringify(s0.company), OLD, 'no old brand in the defaults');
+  assert.equal(s0.company.documentName, PRODUCT_FULL); assert.doesNotMatch(JSON.stringify(s0.company), OLD, 'no old brand in the defaults');
   // A company setting saved before the rebrand (old name, no documentName): documents still say LaunchRiot.
   await api('/settings/company', 'PUT', { value: { name: 'YallaStay Holiday Homes', email: 'hello@example.invalid', currency: 'AED' } }, 201);
   const s1 = await api('/settings');
-  assert.equal(s1.company.documentName, BRAND, 'missing field filled from the default'); assert.equal(s1.company.name, 'YallaStay Holiday Homes', 'stored values untouched'); assert.equal(s1.company.email, 'hello@example.invalid');
-  assert.equal((await api('/brand', 'GET', null, 200, false)).documentName, BRAND);
+  assert.equal(s1.company.documentName, PRODUCT_FULL, 'missing field filled from the default'); assert.equal(s1.company.name, 'YallaStay Holiday Homes', 'stored values untouched'); assert.equal(s1.company.email, 'hello@example.invalid');
+  assert.equal((await api('/brand', 'GET', null, 200, false)).documentName, PRODUCT_FULL);
   await api('/settings/company', 'PUT', { value: { ...s1.company, documentName: 'Landman Holiday Homes' } });
   assert.equal((await api('/brand', 'GET', null, 200, false)).documentName, 'Landman Holiday Homes', 'the setting is used');
   await api('/settings/company', 'PUT', { value: { ...s1.company, documentName: '  ' } });
-  assert.equal((await api('/brand', 'GET', null, 200, false)).documentName, BRAND, 'empty falls back to LaunchRiot');
+  assert.equal((await api('/brand', 'GET', null, 200, false)).documentName, PRODUCT_FULL, 'empty falls back to LaunchRiot');
   assert.equal((await fetch('http://127.0.0.1:3033/api/brand', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 404, 'read only');
   console.log('PASS: rebrand to LaunchRiot (title, manifest, favicon, UI, statements, owner emails, calendar name); "Company name on documents" setting defaults to LaunchRiot; internal identifiers unchanged');
 } catch (e) { console.error(logs.slice(-3000)); throw e; } finally { child.kill(); }

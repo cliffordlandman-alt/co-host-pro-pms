@@ -103,7 +103,7 @@ export default function Signup() {
               <img src={logoPath} alt={BRAND} className="h-16 w-16" style={{ filter:"drop-shadow(0 0 20px rgba(45,212,191,0.7))" }} />
               <div>
                 <div className="text-xl font-extrabold text-white">Launch<span className="text-teal-400">Riot</span></div>
-                <div className="text-[10px] text-teal-300/60 tracking-[0.15em] uppercase">Property Management</div>
+                <div className="text-[10px] text-teal-300/60 tracking-[0.15em] uppercase">for Holiday Homes</div>
               </div>
             </div>
 

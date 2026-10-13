@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api-fetch";
-import { BRAND } from "../../../../lib/brand.mjs";
+import { BRAND, PRODUCT_FULL } from "../../../../lib/brand.mjs";
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -97,7 +97,7 @@ function CompanySection({ settings, onSave }: { settings: any; onSave: (v: any) 
   async function save() { setSaving(true); await onSave(form); setSaving(false); toast({ title: "Company settings saved" }); }
   return (
     <SectionCard title="Company Details" desc="Used on invoices, receipts, owner statements, and reports" onSave={save} saving={saving}>
-      <Field label="Company name on documents"><Input data-testid="document-name" value={form.documentName} onChange={e => set("documentName", e.target.value)} placeholder={BRAND} maxLength={120} /><p className="text-xs text-muted-foreground mt-1">Shown on owner statements and their PDFs, in the Owner Portal and in emails to owners. Leave empty to use {BRAND}.</p></Field>
+      <Field label="Company name on documents"><Input data-testid="document-name" value={form.documentName} onChange={e => set("documentName", e.target.value)} placeholder={PRODUCT_FULL} maxLength={120} /><p className="text-xs text-muted-foreground mt-1">Shown on owner statements and their PDFs, in the Owner Portal and in emails to owners. Leave empty to use {PRODUCT_FULL}.</p></Field>
       <Field label="Email"><Input type="email" value={form.email} onChange={e => set("email", e.target.value)} /></Field>
       <Field label="Phone"><Input value={form.phone} onChange={e => set("phone", e.target.value)} /></Field>
       <Field label="Address"><Input value={form.address} onChange={e => set("address", e.target.value)} /></Field>

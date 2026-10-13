@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, appSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { BRAND, documentName } from "../../../../lib/brand.mjs";
+import { BRAND, PRODUCT_FULL, documentName } from "../../../../lib/brand.mjs";
 
 const router = Router();
 
@@ -9,7 +9,7 @@ const DEFAULTS: Record<string, unknown> = {
   company: {
     name: "",
     // Settings → Company → "Company name on documents": owner statements, their PDFs, the Owner Portal and owner emails.
-    documentName: BRAND,
+    documentName: PRODUCT_FULL,
     phone: "+971 50 000 0000",
     email: "",
     address: "Dubai Marina, Dubai, UAE",

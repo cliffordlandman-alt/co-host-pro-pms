@@ -87,7 +87,7 @@ export default function Login() {
               </div>
               <div>
                 <div data-testid="brand-wordmark" className="text-2xl font-extrabold text-white tracking-tight leading-none">Launch<span className="text-teal-400">Riot</span></div>
-                <div className="text-[11px] font-semibold text-teal-300/70 tracking-[0.15em] uppercase mt-0.5">Property Management</div>
+                <div className="text-[11px] font-semibold text-teal-300/70 tracking-[0.15em] uppercase mt-0.5">for Holiday Homes</div>
               </div>
             </div>
 
@@ -197,7 +197,7 @@ export default function Login() {
                 style={{ background:"linear-gradient(135deg,#0d9488,#0f766e)", cursor: loading ? "wait" : "pointer" }}
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
-                Sign In to {BRAND}
+                Sign In to {PRODUCT_FULL}
               </button>
             </form>
 

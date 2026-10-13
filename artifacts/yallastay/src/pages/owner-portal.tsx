@@ -20,7 +20,7 @@ import {
   format, parseISO, isSameDay,
 } from "date-fns";
 import logoPath from "../assets/cohost-logo.svg";
-import { BRAND } from "../../../../lib/brand.mjs";
+import { BRAND, PRODUCT_FULL } from "../../../../lib/brand.mjs";
 import { useDocumentName } from "@/lib/use-brand";
 import { useToast } from "@/hooks/use-toast";
 import { CHANNEL_COLORS, LEGEND, barStyle, channelColor } from "@/lib/channel-colors";
@@ -590,7 +590,7 @@ export default function OwnerPortal() {
           <div className="flex items-center gap-2">
             <img src={logoPath} alt={BRAND} className="h-5 w-5 rounded-md bg-sidebar p-0.5" />
             <span className="text-xs text-muted-foreground">
-              <span className="font-semibold text-foreground">Powered by {BRAND}</span> · Property Management System
+              <span className="font-semibold text-foreground">Powered by {PRODUCT_FULL}</span>
             </span>
           </div>
           <span className="text-[10px] text-muted-foreground hidden sm:block">{companyName}</span>
