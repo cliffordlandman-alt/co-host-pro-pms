@@ -1,0 +1,37 @@
+# Always-on stack for one VM: Postgres + API + Caddy (HTTPS). Only ports 80/443 are public.
+# Start:  docker compose -f deploy/cloud/docker-compose.yml --env-file deploy/cloud/.env up -d --build
+name: launchriot
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: launchriot
+      POSTGRES_USER: launchriot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes: [ "pgdata:/var/lib/postgresql/data" ]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U launchriot -d launchriot"], interval: 10s, retries: 10 }
+    shm_size: 128mb
+  app:
+    build: { context: ../.., dockerfile: deploy/cloud/Dockerfile, target: app }
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      DATABASE_URL: postgres://launchriot:${POSTGRES_PASSWORD}@db:5432/launchriot
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      PUBLIC_APP_URL: https://${SITE_DOMAIN}
+      APP_ORIGIN: https://${SITE_DOMAIN}
+      OUTBOUND_DELIVERY: ${OUTBOUND_DELIVERY:-off}
+      BOT_RELAY: ${BOT_RELAY:-off}
+      SYNC_SCHEDULER: ${SYNC_SCHEDULER:-on}
+      AUTO_STATEMENTS: ${AUTO_STATEMENTS:-on}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TZ: Asia/Dubai
+  web:
+    build: { context: ../.., dockerfile: deploy/cloud/Dockerfile, target: web }
+    restart: unless-stopped
+    depends_on: [ app ]
+    environment: { SITE_DOMAIN: "${SITE_DOMAIN:?set SITE_DOMAIN in .env}" }
+    ports: [ "80:80", "443:443", "443:443/udp" ]
+    volumes: [ "caddy_data:/data", "caddy_config:/config" ]
+volumes: { pgdata: {}, caddy_data: {}, caddy_config: {} }

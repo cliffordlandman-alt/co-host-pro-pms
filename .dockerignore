@@ -1,0 +1,10 @@
+**/node_modules
+.local-data
+**/.local-data
+**/dist
+logs
+**/*.log
+.git
+deploy/cloud/.env
+*.tgz
+*.zip
