@@ -11,7 +11,7 @@ Nothing sleeps. Outgoing guest/owner messages stay OFF (OUTBOUND_DELIVERY=off).
    (shows "Always Free-eligible"). Download the SSH key it offers. If it says "Out of capacity", try again later or another
    availability domain; this is common and costs nothing.
 3. Open the web ports: the VM's subnet → Security list → add Ingress rules TCP 80 and TCP 443 from 0.0.0.0/0.
-4. On the Mac, double-check nothing else is needed, then run `zsh deploy/cloud/mac-export-data.sh` (stops the app ~1 min,
+4. On the Mac run `zsh ~/YallaPMS-backups/mac-export-data.sh` (stops the app ~1 min,
    makes one private data file in ~/YallaPMS-backups).
 5. Copy the code package and the data file to the VM:
    `scp -i key.pem launchriot-src-*.tgz launchriot-data-*.tgz* ubuntu@<VM-IP>:`
