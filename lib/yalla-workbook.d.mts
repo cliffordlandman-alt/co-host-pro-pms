@@ -16,3 +16,4 @@ export function summaryWindow(config: Record<string, any>, month: string): strin
 export function forecastValues(result: any): any;
 export function workbookXlsx(result: any): Buffer;
 export const MASTER_SHA256: string;
+export function companyStatementFromWorkbook(data: any, start: string, end: string, overrides?: Record<string, any>, opts?: { today?: string; companyName?: string }): any;

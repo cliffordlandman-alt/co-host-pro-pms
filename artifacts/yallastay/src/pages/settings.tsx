@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast";
 import { useTheme, ACCENT_VARS } from "@/contexts/theme-context";
 import { useAuth, ROLE_LABELS, ROLE_COLORS } from "@/contexts/auth-context";
+import { useUiMode } from "@/hooks/use-ui-mode";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -121,11 +122,30 @@ function CompanySection({ settings, onSave }: { settings: any; onSave: (v: any) 
 }
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
+function UiModeField() {
+  const { mode, setMode, saving } = useUiMode();
+  const { toast } = useToast();
+  return (
+    <Field label="Workspace mode">
+      <div className="flex gap-2 flex-wrap">
+        {(["simple", "full"] as const).map(m => (
+          <Button key={m} type="button" size="sm" variant={mode === m ? "default" : "outline"} disabled={saving} data-testid={`settings-ui-mode-${m}`}
+            onClick={async () => { try { await setMode(m); toast({ title: m === "simple" ? "Simple mode on" : "Full PMS mode on" }); } catch (e: any) { toast({ title: e.message, variant: "destructive" }); } }}>
+            {m === "simple" ? "Simple" : "Full PMS"}
+          </Button>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground mt-1">Simple shows only Today, calendar, bookings, cleaning, maintenance and owner statements. Saved for your login.</p>
+    </Field>
+  );
+}
+
 function ThemeSection() {
   const { theme, setColorScheme, setAccent, setDensity } = useTheme();
   const { toast } = useToast();
   return (
     <SectionCard title="Appearance & Theme" desc={`Customize how ${BRAND} looks and feels`} onSave={() => toast({ title: "Theme saved" })}>
+      <UiModeField />
       <Field label="Color Mode">
         <div className="flex gap-2 flex-wrap">
           {(["light","dark","system"] as const).map(m => (

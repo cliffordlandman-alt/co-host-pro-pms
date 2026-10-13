@@ -17,6 +17,29 @@ import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { Button } from "@/components/ui/button";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { useAuth, ROLE_LABELS, ROLE_COLORS } from "@/contexts/auth-context";
+import { useUiMode, inSimple } from "@/hooks/use-ui-mode";
+
+/** Asked once after login (per user): Simple or Full PMS. Changeable later in Settings → Appearance. */
+function UiModeChooser() {
+  const { mode, loaded, setMode, saving } = useUiMode();
+  if (!loaded || mode) return null;
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Choose your workspace">
+      <div className="bg-background rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
+        <h2 className="text-lg font-semibold">How would you like to use the app?</h2>
+        <p className="text-sm text-muted-foreground">You can change this any time in Settings → Appearance.</p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <button disabled={saving} data-testid="ui-mode-simple" onClick={() => setMode("simple")} className="text-left border rounded-lg p-4 hover:border-primary">
+            <div className="font-medium">Simple</div><div className="text-xs text-muted-foreground mt-1">Today, calendar, bookings, cleaning, maintenance and owner statements only.</div>
+          </button>
+          <button disabled={saving} data-testid="ui-mode-full" onClick={() => setMode("full")} className="text-left border rounded-lg p-4 hover:border-primary">
+            <div className="font-medium">Full PMS</div><div className="text-xs text-muted-foreground mt-1">Every module: accounting, reports, channels, compliance, automations and more.</div>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Menu: the main jobs first, grouped; rarely used pages live under "More" (collapsed). Nothing is removed:
 // every page keeps a menu entry. (The old "Listing mapping" and "Supported devices" entries opened the Devices
@@ -96,7 +119,9 @@ const BOTTOM_NAV: NavItem[] = [
 
 function useVisibleItems(items: NavItem[]) {
   const { user } = useAuth();
+  const { mode } = useUiMode();
   return items.filter(item => {
+    if (mode === "simple" && !inSimple(item.href)) return false;
     if (item.ownerOnly && user?.email !== OWNER_EMAIL_NAV) return false;
     return !item.role || item.role.includes(user?.role ?? "");
   });
@@ -251,6 +276,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user } = useAuth();
+  const { mode: uiMode } = useUiMode();
 
   useEffect(() => {
     const token = localStorage.getItem("ys_token");
@@ -269,6 +295,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-[100dvh] w-full bg-background text-foreground flex-col md:flex-row">
       <OnboardingWizard />
+      <UiModeChooser />
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-60 bg-sidebar text-sidebar-foreground flex-shrink-0 sticky top-0 h-screen border-r border-sidebar-border">
         <div className="px-4 pt-5 pb-4 border-b border-sidebar-border/30">
@@ -329,7 +356,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Mobile Bottom Nav */}
       <nav aria-label="Main" data-testid="bottom-nav" className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t grid grid-cols-5 items-stretch z-20 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.04)]">
-        {(["admin", "super_admin", "manager", "accountant"].includes(user?.role ?? "") ? BOTTOM_NAV : [...BOTTOM_NAV.slice(0, 3), { href: "/cleaning", icon: Sparkles, label: "Jobs" }]).map(item => {
+        {(["admin", "super_admin", "manager", "accountant"].includes(user?.role ?? "") ? BOTTOM_NAV : [...BOTTOM_NAV.slice(0, 3), { href: "/cleaning", icon: Sparkles, label: "Jobs" }]).map(i => uiMode === "simple" && !inSimple(i.href) ? { href: "/cleaning", icon: Sparkles, label: "Cleaning" } : i).map(item => {
           const active = item.href === "/income" ? location.startsWith("/income") : location === item.href;
           return (
             <Link key={item.label} href={item.href}>

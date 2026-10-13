@@ -5,12 +5,23 @@ import { eq, and, ne, or, isNull, like, inArray } from 'drizzle-orm';
 import { requireAdmin } from '../lib/auth-middleware';
 import { asyncHandler } from '../lib/asyncHandler';
 import { normalizeImport } from '../lib/airbnb-import.mjs';
+import { insertAuditLog } from '../lib/audit';
 const router=Router();
 router.use('/airbnb-data',requireAdmin);
 router.get('/airbnb-data',asyncHandler(async(_req,res)=>{
  const rows=await db.select().from(airbnbEarningsTable);
  const payouts=await db.select().from(airbnbPayoutsTable);
  res.json({rows:rows.map(r=>({...r,amount:Number(r.amount)})),payouts:payouts.map(p=>({...p,amount:Number(p.amount)}))});
+}));
+// Correct one earnings line's amount (e.g. HMXPZK9MAS 12,019.64 -> 12,019.66 from Airbnb's reservation page). Admin, audit-logged.
+router.patch('/airbnb-data/earnings/:id',asyncHandler(async(req,res)=>{
+ const id=String(req.params.id),amount=Number(req.body?.amount);
+ if(!Number.isFinite(amount)||Math.abs(Math.round(amount*100)-amount*100)>1e-6)return res.status(400).json({error:'Enter an amount with at most 2 decimals'});
+ const [before]=await db.select().from(airbnbEarningsTable).where(eq(airbnbEarningsTable.id,id));
+ if(!before)return res.status(404).json({error:'Earnings line not found'});
+ await db.update(airbnbEarningsTable).set({amount:amount.toFixed(2)}).where(eq(airbnbEarningsTable.id,id));
+ await insertAuditLog({action:'update',entity:'airbnb_earnings',entityId:0,details:{id,code:before.confirmationCode,from:before.amount,to:amount.toFixed(2),note:req.body?.note??null},performedBy:req.headers['x-user-id'] as string});
+ res.json({id,code:before.confirmationCode,from:Number(before.amount),to:amount});
 }));
 router.post('/airbnb-data/preview',asyncHandler(async(req,res)=>{
  try{

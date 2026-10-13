@@ -12,7 +12,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { parseId } from "../lib/parseId";
 import { insertAuditLog } from "../lib/audit";
 import { leaseAccruals } from "../../../../lib/lease-schedule.mjs";
-import { buildWorkbookRows, companyMonthSummary, workbookXlsx, monthEnd } from "../../../../lib/yalla-workbook.mjs";
+import { buildWorkbookRows, companyMonthSummary, companyStatementFromWorkbook, workbookXlsx, monthEnd } from "../../../../lib/yalla-workbook.mjs";
 import { reservationFinancials } from "../../../../lib/reservation-financials.mjs";
 import { dubaiToday } from "../lib/dubai-date";
 import { documentCompanyName } from "./app-settings";
@@ -316,6 +316,13 @@ router.get("/accounting/company-month/:month", asyncHandler(async (req, res) => 
   const month = String(req.params.month);
   if (!MONTH.test(month)) return res.status(400).json({ error: "Month must look like 2026-09" });
   res.json(companyMonthSummary(await workbookData(), month, await workbookOverrides(), { today: dubaiToday(), companyName: await documentCompanyName() }));
+}));
+// GET /accounting/company-statement?start&end: same rows and rules as company-month / the YALLA export (13 Oct 2026:
+// the old booking-based statement disagreed: Sunrise Bay as fee + cleaning, no rent/DEWA, ZAR fees missing).
+router.get("/accounting/company-statement", asyncHandler(async (req, res) => {
+  const end = String(req.query.end || dubaiToday()), start = String(req.query.start || "0001-01-01");
+  if (![start, end].every(d => realDate(d)) || start > end) return res.status(400).json({ error: "Invalid statement date range" });
+  res.json(companyStatementFromWorkbook(await workbookData(), start, end, await workbookOverrides(), { today: dubaiToday(), companyName: await documentCompanyName() }));
 }));
 // GET /accounting/workbook/2026-09 (JSON) or .xlsx.
 router.get(/^\/accounting\/workbook\/(\d{4}-\d{2})(\.xlsx)?$/, asyncHandler(async (req, res) => {

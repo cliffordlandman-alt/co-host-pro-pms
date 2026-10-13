@@ -428,18 +428,12 @@ router.post("/accounting/cleaning-expenses/backfill", asyncHandler(async (req, r
   return res.json(result);
 }));
 
-router.get('/accounting/company-statement',asyncHandler(async(req,res)=>{
- const end=String(req.query.end || dubaiToday());const start=String(req.query.start || '0001-01-01');
- if(![start,end].every(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d))&&new Date(d).toISOString().slice(0,10)===d)||start>end)return res.status(400).json({error:'Invalid statement date range'});
- const [settings,earnings,bookings,transactions,properties,maintenance]=await Promise.all([db.select().from(propertySettingsTable),db.select().from(airbnbEarningsTable),db.select().from(reservationsTable),db.select().from(accountingTransactionsTable),db.select().from(propertiesTable),db.select().from(maintenanceTicketsTable)]);
- res.json(companyStatement({earnings,bookings,transactions,properties,maintenance,settings},start,end));
-}));
+// /accounting/company-statement moved to finance-inputs.ts (workbook rules, 13 Oct 2026).
 
 // ── Owner Statements ───────────────────────────────────────────────────────────
 
 router.get("/accounting/statements", asyncHandler(async (req, res) => {
-  const drafts=await db.select({month:ownerStatementsTable.month}).from(ownerStatementsTable).where(eq(ownerStatementsTable.status,"draft"));
-  for(const month of new Set(drafts.map(d=>d.month))) await refreshOwnerStatements(month);
+  // Read only (13 Oct 2026): drafts are recalculated by POST /accounting/statements/refresh-drafts or Generate, never on a GET.
   const { month, ownerId, status, propertyId } = req.query as { month?: string; ownerId?: string; status?: string; propertyId?: string };
   const p = pageParams(req.query as Record<string, unknown>);
   const conds = [];
@@ -523,6 +517,14 @@ router.get("/accounting/statements", asyncHandler(async (req, res) => {
 // Property/month pairs holding more than one statement (only possible in data from before the unique rule).
 router.get("/accounting/statements/duplicates", asyncHandler(async (_req, res) => {
   res.json(await duplicateOwnerStatements());
+}));
+
+router.post("/accounting/statements/refresh-drafts", asyncHandler(async (req, res) => {
+  const drafts=await db.select({month:ownerStatementsTable.month}).from(ownerStatementsTable).where(eq(ownerStatementsTable.status,"draft"));
+  const months=[...new Set(drafts.map(d=>d.month))].sort(); const results:any[]=[];
+  for(const month of months) results.push({month, result: await refreshOwnerStatements(month)});
+  await insertAuditLog({ action: "update", entity: "owner_statement_refresh", entityId: 0, details: { months }, performedBy: req.headers["x-user-id"] as string });
+  res.json({ months, results });
 }));
 
 router.post("/accounting/statements/generate", asyncHandler(async (req,res)=>{

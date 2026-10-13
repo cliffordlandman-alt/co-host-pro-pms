@@ -34,6 +34,28 @@ const DEFAULTS: Record<string, unknown> = {
   },
 };
 
+// Per-user workspace mode: "full" (every module) or "simple" (essentials only). Stored in app_settings under
+// "ui-mode:<userId>" (no migration). null = not chosen yet (the app asks once after login).
+const UI_MODES = ["full", "simple"];
+router.get("/me/ui-mode", async (req, res) => {
+  const uid = (res.locals as any).user?.id ?? req.headers["x-user-id"];
+  if (!uid) return res.status(401).json({ error: "Not signed in" });
+  const [row] = await db.select().from(appSettingsTable).where(eq(appSettingsTable.key, `ui-mode:${uid}`));
+  const mode = (row?.value as any)?.mode;
+  res.json({ mode: UI_MODES.includes(mode) ? mode : null });
+});
+router.put("/me/ui-mode", async (req, res) => {
+  const uid = (res.locals as any).user?.id ?? req.headers["x-user-id"];
+  if (!uid) return res.status(401).json({ error: "Not signed in" });
+  const mode = req.body?.mode;
+  if (!UI_MODES.includes(mode)) return res.status(400).json({ error: "Mode must be full or simple" });
+  const key = `ui-mode:${uid}`, value = { mode };
+  const [ex] = await db.select().from(appSettingsTable).where(eq(appSettingsTable.key, key));
+  if (ex) await db.update(appSettingsTable).set({ value, updatedAt: new Date() }).where(eq(appSettingsTable.key, key));
+  else await db.insert(appSettingsTable).values({ key, value });
+  res.json({ mode });
+});
+
 router.get("/settings", async (_req, res) => {
   const rows = await db.select().from(appSettingsTable);
   const result: Record<string, unknown> = { ...DEFAULTS };
