@@ -83,6 +83,7 @@ function PropertyCard({ p, href }: { p: IncomeProperty; href: string }) {
             <Figure label="Owner share" value={money(r.ownerShare, r.currency)} />
             <Figure label="Net to company" value={money(r.companyNet, r.currency)} />
           </div>
+          {(r as any).aedEquivalent && <p className="text-xs text-sky-900 mt-2" data-testid="aed-equivalent">≈ AED {(r as any).aedEquivalent.gross.toFixed(2)} gross · owner AED {(r as any).aedEquivalent.ownerShare.toFixed(2)} (1 {r.currency} = {(r as any).aedEquivalent.rate} AED, {(r as any).aedEquivalent.source}, {String((r as any).aedEquivalent.asOf).slice(0, 10)}; display only)</p>}
           <p className="text-xs text-muted-foreground mt-2">{r.bookings} booking{r.bookings === 1 ? "" : "s"} · {r.nights} nights · {p.occupancy.percent}% occupied · channel fees {money(r.channelFees, r.currency)} · cleaning & expenses {money(r.cleaning + r.expenses, r.currency)}{r.taxes ? ` · VAT & tourism ${money(r.taxes, r.currency)}` : ""}</p>
         </div>)}
         {p.estimate && <p className="text-xs text-amber-900 mt-2">{p.unverified.count} booking{p.unverified.count === 1 ? "" : "s"} ({p.unverified.nights} nights) not verified{p.unverified.estimates.length ? `: Airbnb payouts ${estimateText(p.unverified)} (estimate)` : ""}.</p>}

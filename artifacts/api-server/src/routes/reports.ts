@@ -1,3 +1,5 @@
+import { withAedEquivalents, FX_DEFAULT } from "../../../../lib/fx-convert.mjs";
+import { appSettingsTable } from "@workspace/db";
 import { financialTotals } from "../../../../lib/reservation-financials.mjs";
 import { bookingCurrency } from "../../../../lib/booking-currency.mjs";
 import { dubaiToday, addDays, addMonths } from "../lib/dubai-date";
@@ -108,13 +110,16 @@ async function splitsFor(data: Awaited<ReturnType<typeof incomeData>>, period: {
   }
   return out;
 }
+async function fxSetting() {
+  try { const [row] = await db.select().from(appSettingsTable).where(eq(appSettingsTable.key, "fx")); return (row?.value as any)?.pairs ? row!.value : FX_DEFAULT; } catch { return FX_DEFAULT; }
+}
 router.get("/reports/income", asyncHandler(async (req, res) => {
   const period = incomePeriod(req.query);
   if ("error" in period) return res.status(400).json(period);
   const data = await incomeData();
   const report = incomeReport(data, period);
   const splits = await splitsFor(data, period, report.properties.map((x: any) => x.propertyId));
-  res.json({ ...report, airbnbSplit: report.properties.filter((x: any) => splits.has(x.propertyId)).map((x: any) => ({ propertyId: x.propertyId, name: x.name, ...splits.get(x.propertyId)!, rows: undefined })),
+  res.json({ ...withAedEquivalents(report, await fxSetting()), airbnbSplit: report.properties.filter((x: any) => splits.has(x.propertyId)).map((x: any) => ({ propertyId: x.propertyId, name: x.name, ...splits.get(x.propertyId)!, rows: undefined })),
     airbnbSplitTotals: addSplitTotals([...splits.values()]) });
 }));
 router.get("/reports/income/:propertyId", asyncHandler(async (req, res) => {

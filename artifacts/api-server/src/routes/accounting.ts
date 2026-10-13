@@ -1,3 +1,4 @@
+import { aedEquivalent, FX_DEFAULT } from "../../../../lib/fx-convert.mjs";
 import { refreshOwnerStatements, duplicateOwnerStatements, awaitDraftRefresh } from "../lib/owner-statements";
 import { dubaiToday } from "../lib/dubai-date";
 import { companyStatement } from "../../../../lib/company-statement.mjs";
@@ -512,7 +513,9 @@ router.get("/accounting/statements", asyncHandler(async (req, res) => {
   }));
   const payouts = await payoutsFor(items.map(i => i.id));
   const withPayouts = items.map(i => { const list = payouts.filter(x => x.statementId === i.id); return { ...i, payouts: list, paidTotal: list.reduce((n, x) => n + Math.round(x.amount * 100), 0) / 100 }; });
-  res.json(p ? paged(withPayouts, total, p, summary) : withPayouts);
+  const fxIds = new Set(FX_DEFAULT.convertPropertyIds);
+  const withFx = withPayouts.map(i => fxIds.has(i.propertyId) && i.currency && i.currency !== "AED" ? { ...i, aedEquivalent: aedEquivalent(i) } : i);
+  res.json(p ? paged(withFx, total, p, summary) : withFx);
 }));
 
 // Property/month pairs holding more than one statement (only possible in data from before the unique rule).
