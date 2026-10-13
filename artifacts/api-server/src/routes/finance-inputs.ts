@@ -6,7 +6,7 @@ import { z } from "zod";
 import { eq, asc, and } from "drizzle-orm";
 import {
   db, depositsTable, leaseSchedulesTable, leaseChequesTable, bankBalancesTable, propertiesTable, ownersTable,
-  accountingTransactionsTable, reservationsTable, airbnbEarningsTable, airbnbPayoutsTable, ownerStatementsTable, maintenanceTicketsTable, ownerPayoutsTable, appSettingsTable,
+  accountingTransactionsTable, propertySettingsTable, reservationsTable, airbnbEarningsTable, airbnbPayoutsTable, ownerStatementsTable, maintenanceTicketsTable, ownerPayoutsTable, appSettingsTable,
 } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { parseId } from "../lib/parseId";
@@ -16,6 +16,7 @@ import { buildWorkbookRows, companyMonthSummary, companyStatementFromWorkbook, w
 import { reservationFinancials } from "../../../../lib/reservation-financials.mjs";
 import { dubaiToday } from "../lib/dubai-date";
 import { documentCompanyName } from "./app-settings";
+import { companyStatement } from "../../../../lib/company-statement.mjs";
 
 const router = Router();
 const realDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(d + "T00:00:00Z").toISOString().slice(0, 10) === d;
@@ -322,7 +323,14 @@ router.get("/accounting/company-month/:month", asyncHandler(async (req, res) => 
 router.get("/accounting/company-statement", asyncHandler(async (req, res) => {
   const end = String(req.query.end || dubaiToday()), start = String(req.query.start || "0001-01-01");
   if (![start, end].every(d => realDate(d)) || start > end) return res.status(400).json({ error: "Invalid statement date range" });
-  res.json(companyStatementFromWorkbook(await workbookData(), start, end, await workbookOverrides(), { today: dubaiToday(), companyName: await documentCompanyName() }));
+  const data = await workbookData();
+  const wb = companyStatementFromWorkbook(data, start, end, await workbookOverrides(), { today: dubaiToday(), companyName: await documentCompanyName() });
+  // A company keeping its books from Airbnb's monthly reports (the YALLA workbook, like Clifford's) gets the workbook
+  // rules, so this equals company-month. Without those reports the booking-based statement is the only data there is.
+  if (wb.lines.some((l: any) => l.kind === "airbnb-monthly")) return res.json(wb);
+  const [settings, maintenance] = await Promise.all([db.select().from(propertySettingsTable), db.select().from(maintenanceTicketsTable)]);
+  const bookings = await db.select().from(reservationsTable);
+  res.json({ ...companyStatement({ earnings: data.earnings, bookings, transactions: data.transactions, properties: data.properties, maintenance, settings }, start, end), basis: "bookings" });
 }));
 // GET /accounting/workbook/2026-09 (JSON) or .xlsx.
 router.get(/^\/accounting\/workbook\/(\d{4}-\d{2})(\.xlsx)?$/, asyncHandler(async (req, res) => {

@@ -68,3 +68,17 @@ export async function refreshOwnerStatements(month:string, opts:{propertyIds?:nu
  });
  return {generated:generated.length,statements:generated,skipped};
 }
+
+// Draft statements follow the data without GET requests writing anything (13 Oct 2026, Raju): after any successful
+// change (POST/PUT/PATCH/DELETE) the draft months are recalculated once, in the background; GET /accounting/statements
+// only waits for a recalculation already in progress, so it never reads half-updated drafts.
+let pendingRefresh: Promise<void> | null = null, again = false;
+async function refreshDraftMonths() {
+  const drafts = await db.select({ month: ownerStatementsTable.month }).from(ownerStatementsTable).where(eq(ownerStatementsTable.status, "draft"));
+  for (const month of new Set(drafts.map(d => d.month))) await refreshOwnerStatements(month);
+}
+export function scheduleDraftRefresh() {
+  if (pendingRefresh) { again = true; return; }
+  pendingRefresh = (async () => { do { again = false; try { await refreshDraftMonths(); } catch { /* next change retries */ } } while (again); })().finally(() => { pendingRefresh = null; });
+}
+export async function awaitDraftRefresh() { while (pendingRefresh) await pendingRefresh; }

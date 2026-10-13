@@ -1,4 +1,4 @@
-import { refreshOwnerStatements, duplicateOwnerStatements } from "../lib/owner-statements";
+import { refreshOwnerStatements, duplicateOwnerStatements, awaitDraftRefresh } from "../lib/owner-statements";
 import { dubaiToday } from "../lib/dubai-date";
 import { companyStatement } from "../../../../lib/company-statement.mjs";
 import { airbnbEarningsTable } from "@workspace/db";
@@ -433,7 +433,8 @@ router.post("/accounting/cleaning-expenses/backfill", asyncHandler(async (req, r
 // ── Owner Statements ───────────────────────────────────────────────────────────
 
 router.get("/accounting/statements", asyncHandler(async (req, res) => {
-  // Read only (13 Oct 2026): drafts are recalculated by POST /accounting/statements/refresh-drafts or Generate, never on a GET.
+  // Read only (13 Oct 2026): drafts are recalculated after changes (scheduleDraftRefresh), by refresh-drafts or Generate, never by a GET.
+  await awaitDraftRefresh();
   const { month, ownerId, status, propertyId } = req.query as { month?: string; ownerId?: string; status?: string; propertyId?: string };
   const p = pageParams(req.query as Record<string, unknown>);
   const conds = [];
