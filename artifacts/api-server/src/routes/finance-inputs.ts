@@ -275,7 +275,7 @@ async function workbookData() {
     leases: leases.map(l => ({ ...l, cheques: cheques.filter(c => c.leaseId === l.id) })),
   };
 }
-// Workbook report title (sheet titles of the export only; the app stays Co-Host Pro). Setting "workbook" =
+// Workbook report title (sheet titles of the export only; the app stays LaunchRiot). Setting "workbook" =
 // { reportTitle }; empty = WORKBOOK_DEFAULTS.reportTitle (the master's text).
 async function workbookReportTitle(): Promise<string | undefined> {
   try {

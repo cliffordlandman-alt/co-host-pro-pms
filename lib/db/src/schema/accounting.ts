@@ -74,7 +74,7 @@ export const accountingTransactionsTable = pgTable("accounting_transactions", {
   payer: text("payer"),
   /** The master workbook's category for this row; null = the default mapping from category. */
   reportCategory: text("report_category"),
-  /** Migration 0027: Income Input "Source" text for this row (default: the Co-Host Pro entry reference). */
+  /** Migration 0027: Income Input "Source" text for this row (default: the LaunchRiot entry reference). */
   reportSource: text("report_source"),
   /** Migration 0028: Income Input Property text for a row with no property (e.g. "Company"); null = "Various". Income only. */
   reportProperty: text("report_property"),

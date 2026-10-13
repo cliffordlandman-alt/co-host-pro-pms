@@ -61,7 +61,7 @@ function ExportBlock({ p, base }: { p: Prop; base: string }) {
   }
   async function toggle(v: boolean) {
     setBusy(true);
-    try { await apiJson(`/api/calendar-sync/${p.id}`, "PATCH", { includeChannelBookings: v }); toast({ title: v ? "Other channels' bookings included" : "Only Co-Host Pro blocks and direct bookings" }); }
+    try { await apiJson(`/api/calendar-sync/${p.id}`, "PATCH", { includeChannelBookings: v }); toast({ title: v ? "Other channels' bookings included" : "Only LaunchRiot blocks and direct bookings" }); }
     catch (e: any) { toast({ title: "Not saved", description: e.message, variant: "destructive" }); }
     finally { setBusy(false); qc.invalidateQueries({ queryKey: ["calendar-sync"] }); }
   }
@@ -86,7 +86,7 @@ function ExportBlock({ p, base }: { p: Prop; base: string }) {
   return (
     <div className="mt-3 rounded-xl border bg-muted/30 p-3">
       <button type="button" data-testid={`export-toggle-${p.id}`} aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 text-left">
-        <span className="text-sm font-semibold">Co-Host Pro calendar link (outgoing)</span>
+        <span className="text-sm font-semibold">LaunchRiot calendar link (outgoing)</span>
         <span className="flex items-center gap-2 text-xs text-muted-foreground">
           {all.total} unavailable period{all.total === 1 ? "" : "s"} · last read by a channel: {e.lastFetchedAt ? `${dubaiTime(e.lastFetchedAt)} (${e.fetchCount}×)` : "never"}
           <span className="inline-flex items-center whitespace-nowrap font-medium text-foreground">{open ? "Hide" : "Show links"}<ChevronDown className={`ml-0.5 h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} /></span>
@@ -112,7 +112,7 @@ function ExportBlock({ p, base }: { p: Prop; base: string }) {
       <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <label className="flex items-start gap-2 text-sm">
           <Switch data-testid={`include-${p.id}`} checked={e.includeChannelBookings} disabled={busy} onCheckedChange={toggle} />
-          <span><b>Also send bookings from other channels.</b><span className="block text-xs text-muted-foreground">Off: only blocks and direct bookings made in Co-Host Pro. On: Airbnb's link also carries Booking.com and Vrbo bookings, and so on. A channel never gets its own bookings back. Leave off if your channels already read each other's calendars.</span></span>
+          <span><b>Also send bookings from other channels.</b><span className="block text-xs text-muted-foreground">Off: only blocks and direct bookings made in LaunchRiot. On: Airbnb's link also carries Booking.com and Vrbo bookings, and so on. A channel never gets its own bookings back. Leave off if your channels already read each other's calendars.</span></span>
         </label>
         <Button size="sm" variant="outline" className="w-fit shrink-0" disabled={busy} onClick={() => setRotateOpen(true)}><RotateCcw className="mr-1 h-3.5 w-3.5" />New secret link</Button>
       </div>
@@ -121,7 +121,7 @@ function ExportBlock({ p, base }: { p: Prop; base: string }) {
       <AlertDialog open={rotateOpen} onOpenChange={setRotateOpen}>
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>Make a new secret link for {p.name}?</AlertDialogTitle>
-            <AlertDialogDescription>The current links stop working straight away. Any channel still using them will stop receiving Co-Host Pro blocks until you paste the new link there.</AlertDialogDescription></AlertDialogHeader>
+            <AlertDialogDescription>The current links stop working straight away. Any channel still using them will stop receiving LaunchRiot blocks until you paste the new link there.</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter><AlertDialogCancel>Keep current link</AlertDialogCancel><AlertDialogAction onClick={rotate}>Make new link</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -137,12 +137,12 @@ export default function CalendarSyncPage() {
     <div className="mx-auto max-w-5xl space-y-4 p-3 sm:p-6">
       <div>
         <h1 className="text-xl font-bold sm:text-2xl">Calendar sync</h1>
-        <p className="text-sm text-muted-foreground">Incoming channel calendars and the Co-Host Pro calendar link each channel can import, so dates blocked or booked here close on Airbnb, Booking.com and Vrbo too.</p>
+        <p className="text-sm text-muted-foreground">Incoming channel calendars and the LaunchRiot calendar link each channel can import, so dates blocked or booked here close on Airbnb, Booking.com and Vrbo too.</p>
       </div>
       {q.data && !q.data.publicBaseUrl && (
         <div data-testid="hosting-note" className="flex gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
-          <div><b>These links can't be read by the channels yet.</b> Co-Host Pro runs on your Mac, which Airbnb, Booking.com and Vrbo can't reach from the internet. The links work on this computer (use Check), and they'll work for the channels once Co-Host Pro is hosted online. Don't paste them into the channels before then: they would show as broken there.</div>
+          <div><b>These links can't be read by the channels yet.</b> LaunchRiot runs on your Mac, which Airbnb, Booking.com and Vrbo can't reach from the internet. The links work on this computer (use Check), and they'll work for the channels once LaunchRiot is hosted online. Don't paste them into the channels before then: they would show as broken there.</div>
         </div>
       )}
       {s && (
@@ -153,7 +153,7 @@ export default function CalendarSyncPage() {
           <Tile label="Not synced recently" value={s.stale + s.never} tone={s.stale ? "warn" : undefined} />
         </div>
       )}
-      {s && s.alerts > 0 && <p data-testid="alert-banner" className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900"><b>{s.alerts} channel calendar{s.alerts === 1 ? " has" : "s have"} failed for more than 2 hours.</b> New bookings from that channel aren't reaching Co-Host Pro, so double bookings are possible. An alert is in your notifications.{q.data?.outboundDelivery ? " Managers were also messaged on WhatsApp." : " No WhatsApp or email was sent (outgoing messages are switched off)."}</p>}
+      {s && s.alerts > 0 && <p data-testid="alert-banner" className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900"><b>{s.alerts} channel calendar{s.alerts === 1 ? " has" : "s have"} failed for more than 2 hours.</b> New bookings from that channel aren't reaching LaunchRiot, so double bookings are possible. An alert is in your notifications.{q.data?.outboundDelivery ? " Managers were also messaged on WhatsApp." : " No WhatsApp or email was sent (outgoing messages are switched off)."}</p>}
       {q.isLoading && <Skeleton className="h-40 w-full" />}
       {q.error && <p className="text-sm text-destructive">{(q.error as Error).message}</p>}
       {q.data && [...q.data.properties].sort((a, b) => rank(a) - rank(b)).map(p => (

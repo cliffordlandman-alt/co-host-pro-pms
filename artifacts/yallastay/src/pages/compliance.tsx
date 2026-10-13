@@ -90,7 +90,7 @@ function FiledDialog({ period, onClose }: { period: string; onClose: () => void 
     <Dialog open onOpenChange={o => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>Tourism Dirham return · {monthLabel(period)}</DialogTitle></DialogHeader>
-        <p className="text-sm text-muted-foreground">Record that you filed this return on the DTCM portal. Co-Host Pro doesn't file it for you.</p>
+        <p className="text-sm text-muted-foreground">Record that you filed this return on the DTCM portal. LaunchRiot doesn't file it for you.</p>
         <label className="text-sm">Filed on<Input type="date" max={today} value={filedOn} onChange={e => setFiledOn(e.target.value)} /></label>
         <label className="text-sm">DTCM reference (optional)<Input data-testid="filing-reference" value={reference} onChange={e => setReference(e.target.value)} /></label>
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button data-testid="filing-save" disabled={busy} onClick={save}>Record as filed</Button></DialogFooter>
@@ -239,7 +239,7 @@ function RegistrationTab() {
   const d = q.data;
   return (
     <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">Dubai bookings checking out from yesterday to arrivals in the next 30 days. Airbnb bookings count as "Airbnb-verified ID" (never pending); change to Registered once the guest is registered with DTCM. Co-Host Pro doesn't submit to DTCM itself.</p>
+      <p className="text-xs text-muted-foreground">Dubai bookings checking out from yesterday to arrivals in the next 30 days. Airbnb bookings count as "Airbnb-verified ID" (never pending); change to Registered once the guest is registered with DTCM. LaunchRiot doesn't submit to DTCM itself.</p>
       {d.bookings.length === 0 ? <p className="text-sm text-muted-foreground">No Dubai bookings in this window.</p> : d.bookings.map((b: any) => (
         <div key={b.reservationId} data-testid={`reg-${b.reservationId}`} className="flex flex-col gap-2 rounded-xl border bg-card p-3 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1"><Link href={`/reservations/${b.reservationId}`} className="font-medium hover:underline">{b.guestName}</Link>

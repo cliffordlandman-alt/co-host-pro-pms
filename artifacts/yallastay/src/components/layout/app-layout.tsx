@@ -304,7 +304,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <img src={logoPath} alt={BRAND} className="h-10 w-10 flex-shrink-0" />
               <div>
                 <div data-testid="sidebar-wordmark" className="font-bold text-base tracking-tight leading-tight">{BRAND}</div>
-                <div className="text-[11px] text-sidebar-foreground/50 leading-tight">Property management</div>
+                <div className="text-[11px] text-sidebar-foreground/50 leading-tight">for Holiday Homes</div>
               </div>
             </div>
           </Link>

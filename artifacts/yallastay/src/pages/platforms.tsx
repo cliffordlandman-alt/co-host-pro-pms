@@ -217,7 +217,7 @@ function ConnectAirbnbModal({ open, onClose }: { open: boolean; onClose: () => v
             <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
             <div className="text-amber-800 dark:text-amber-200">
               <p className="font-medium mb-0.5">Airbnb API access is invite-only</p>
-              <p className="text-xs">Airbnb's official sync API is restricted to approved channel partners (Guesty, Hostaway, etc.). Co-Host Pro syncs via iCal — the same reliable method used across the industry.</p>
+              <p className="text-xs">Airbnb's official sync API is restricted to approved channel partners (Guesty, Hostaway, etc.). LaunchRiot syncs via iCal — the same reliable method used across the industry.</p>
             </div>
           </div>
 
@@ -227,7 +227,7 @@ function ConnectAirbnbModal({ open, onClose }: { open: boolean; onClose: () => v
               <div className="w-6 h-6 rounded-full bg-[#DC2626] flex items-center justify-center text-white text-xs font-bold">1</div>
               Add the property
             </div>
-            <p className="text-xs text-muted-foreground ml-8">Create it on the Properties page (name, unit, owner). Co-Host Pro doesn't read Airbnb listing pages.</p>
+            <p className="text-xs text-muted-foreground ml-8">Create it on the Properties page (name, unit, owner). LaunchRiot doesn't read Airbnb listing pages.</p>
             <div className="ml-8 mt-2">
               <Button
                 className="h-8 text-xs"

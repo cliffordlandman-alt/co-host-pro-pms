@@ -582,7 +582,7 @@ const QUICK_PROMPTS = [
 function ChatTab() {
   const { toast } = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: "Hi! I'm your Co-Host Pro AI assistant 👋\n\nI can help you draft messages, explain payouts, create owner updates, summarize issues, and much more.\n\nTry a quick prompt below or type your own question.", ts: Date.now() },
+    { role: "assistant", content: "Hi! I'm your LaunchRiot AI assistant 👋\n\nI can help you draft messages, explain payouts, create owner updates, summarize issues, and much more.\n\nTry a quick prompt below or type your own question.", ts: Date.now() },
   ]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -708,7 +708,7 @@ function ChatTab() {
       <p className="text-center text-[11px] text-muted-foreground mt-2">Press Enter to send · Shift+Enter for new line</p>
 
       <div className="flex justify-end mt-2">
-        <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground gap-1.5" onClick={() => setMessages([{ role: "assistant", content: "Hi! I'm your Co-Host Pro AI assistant 👋\n\nI can help you draft messages, explain payouts, create owner updates, summarize issues, and much more.\n\nTry a quick prompt below or type your own question.", ts: Date.now() }])}>
+        <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground gap-1.5" onClick={() => setMessages([{ role: "assistant", content: "Hi! I'm your LaunchRiot AI assistant 👋\n\nI can help you draft messages, explain payouts, create owner updates, summarize issues, and much more.\n\nTry a quick prompt below or type your own question.", ts: Date.now() }])}>
           <Trash2 className="h-3.5 w-3.5" /> Clear chat
         </Button>
       </div>

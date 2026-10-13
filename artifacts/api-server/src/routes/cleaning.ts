@@ -127,11 +127,11 @@ router.post("/cleaning", asyncHandler(async (req, res) => {
       const [staff] = await db.select({ name: staffTable.name })
         .from(staffTable).where(eq(staffTable.id, row.assignedToId));
       const staffName = staff?.name ?? "there";
-      const staffMsg = `🧹 *New Cleaning Task*\n\nHi ${staffName}, you've been assigned a cleaning task.\n\nProperty: ${propLabel}\nDate: ${dateStr}${row.notes ? `\nNotes: ${row.notes}` : ""}\n\nPlease confirm you've received this in Co-Host Pro.`;
+      const staffMsg = `🧹 *New Cleaning Task*\n\nHi ${staffName}, you've been assigned a cleaning task.\n\nProperty: ${propLabel}\nDate: ${dateStr}${row.notes ? `\nNotes: ${row.notes}` : ""}\n\nPlease confirm you've received this in LaunchRiot.`;
       await notifyStaffMember(row.assignedToId, staffMsg);
     }
 
-    const managerMsg = `🧹 *Cleaning Task Created*\n\nProperty: ${propLabel}\nDate: ${dateStr}${row.assignedToId ? "" : "\n⚠️ Not yet assigned to a cleaner"}\n\nView in Co-Host Pro.`;
+    const managerMsg = `🧹 *Cleaning Task Created*\n\nProperty: ${propLabel}\nDate: ${dateStr}${row.assignedToId ? "" : "\n⚠️ Not yet assigned to a cleaner"}\n\nView in LaunchRiot.`;
     await notifyManagers(managerMsg);
   } catch (err: unknown) {
     console.error("[cleaning] WhatsApp notification error:", err instanceof Error ? err.message : err);
@@ -190,7 +190,7 @@ router.patch("/cleaning/:id", asyncHandler(async (req, res) => {
       const [prop] = await db.select({ name: propertiesTable.name, unitNumber: propertiesTable.unitNumber })
         .from(propertiesTable).where(eq(propertiesTable.id, row.propertyId));
       const propLabel = prop ? `${prop.name}${prop.unitNumber ? ` · Unit ${prop.unitNumber}` : ""}` : `Property #${row.propertyId}`;
-      await notifyStaffMember(row.assignedToId, `🧹 *New Cleaning Task*\n\nYou've been assigned a cleaning task.\n\nProperty: ${propLabel}\nDate: ${row.scheduledDate}${row.notes ? `\nNotes: ${row.notes}` : ""}\n\nPlease confirm you've received this in Co-Host Pro.`);
+      await notifyStaffMember(row.assignedToId, `🧹 *New Cleaning Task*\n\nYou've been assigned a cleaning task.\n\nProperty: ${propLabel}\nDate: ${row.scheduledDate}${row.notes ? `\nNotes: ${row.notes}` : ""}\n\nPlease confirm you've received this in LaunchRiot.`);
     } catch (err: unknown) {
       console.error("[cleaning] WhatsApp notification error:", err instanceof Error ? err.message : err);
     }

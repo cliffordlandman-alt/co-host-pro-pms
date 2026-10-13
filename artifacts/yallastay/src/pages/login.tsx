@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth-context";
 import { Loader2, Eye, EyeOff, LogIn, Mail, Lock, Shield, Building2, TrendingUp, Star, CheckCircle2, UserPlus } from "lucide-react";
 import logoPath from "../assets/cohost-logo.svg";
-import { BRAND } from "../../../../lib/brand.mjs";
+import { BRAND, PRODUCT_FULL } from "../../../../lib/brand.mjs";
 import dubaiSkyline from "../assets/dubai-skyline.png";
 
 const FEATURES = [
@@ -86,7 +86,7 @@ export default function Login() {
                 <img src={logoPath} alt={BRAND} className="relative h-44 w-44" style={{ filter:"drop-shadow(0 0 28px rgba(45,212,191,0.8))" }} />
               </div>
               <div>
-                <div data-testid="brand-wordmark" className="text-2xl font-extrabold text-white tracking-tight leading-none">Co-Host <span className="text-teal-400">Pro</span></div>
+                <div data-testid="brand-wordmark" className="text-2xl font-extrabold text-white tracking-tight leading-none">Launch<span className="text-teal-400">Riot</span></div>
                 <div className="text-[11px] font-semibold text-teal-300/70 tracking-[0.15em] uppercase mt-0.5">Property Management</div>
               </div>
             </div>
@@ -131,7 +131,7 @@ export default function Login() {
             <div className="flex flex-col items-center mb-7 text-center">
               <img src={logoPath} alt={BRAND} className="h-12 w-12 rounded-xl mb-4 block md:hidden" style={{ filter:"drop-shadow(0 0 8px rgba(45,212,191,0.35))" }} />
               <h1 className="text-2xl font-bold text-white">Welcome back</h1>
-              <p className="text-white/45 text-sm mt-1">Sign in to your {BRAND} account</p>
+              <p className="text-white/45 text-sm mt-1">Sign in to {PRODUCT_FULL}</p>
             </div>
 
             {successMsg && (

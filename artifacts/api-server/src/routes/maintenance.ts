@@ -134,7 +134,7 @@ router.post("/maintenance", asyncHandler(async (req, res) => {
     const propLabel = prop ? `${prop.name}${prop.unitNumber ? ` · Unit ${prop.unitNumber}` : ""}` : `Property #${row.propertyId}`;
     const priorityEmoji: Record<string, string> = { emergency: "🚨", high: "🔴", medium: "🟡", low: "🟢" };
     const emoji = priorityEmoji[row.priority] ?? "🔧";
-    const msg = `${emoji} *New Maintenance Ticket*\n\nProperty: ${propLabel}\nIssue: ${row.issue}\nPriority: ${row.priority.charAt(0).toUpperCase() + row.priority.slice(1)}\n\nOpen Co-Host Pro to assign a technician.`;
+    const msg = `${emoji} *New Maintenance Ticket*\n\nProperty: ${propLabel}\nIssue: ${row.issue}\nPriority: ${row.priority.charAt(0).toUpperCase() + row.priority.slice(1)}\n\nOpen LaunchRiot to assign a technician.`;
     await notifyManagers(msg);
     if (row.assignedToId) await notifyStaffMember(row.assignedToId, msg);
   } catch (err: unknown) {

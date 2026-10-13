@@ -1,6 +1,6 @@
 {
-  "name": "Co-Host Pro",
-  "short_name": "Co-Host Pro",
+  "name": "LaunchRiot for Holiday Homes",
+  "short_name": "LaunchRiot",
   "description": "Property management for holiday homes",
   "start_url": "/",
   "display": "standalone",

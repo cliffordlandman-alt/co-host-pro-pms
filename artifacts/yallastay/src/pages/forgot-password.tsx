@@ -36,7 +36,7 @@ export default function ForgotPassword() {
 
           <div className="flex flex-col items-center mb-8 text-center">
             <img src={logoPath} alt={BRAND} className="h-14 w-14 mb-4" style={{ filter:"drop-shadow(0 0 12px rgba(45,212,191,0.5))" }} />
-            <div className="text-xl font-extrabold text-white">Co-Host <span className="text-teal-400">Pro</span></div>
+            <div className="text-xl font-extrabold text-white">Launch<span className="text-teal-400">Riot</span></div>
             <div className="text-[10px] text-teal-300/60 tracking-[0.15em] uppercase mt-0.5">Property Management</div>
           </div>
 

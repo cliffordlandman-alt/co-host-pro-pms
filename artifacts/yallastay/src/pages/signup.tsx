@@ -7,7 +7,7 @@ import {
   Shield, CheckCircle2, ArrowLeft, Briefcase,
 } from "lucide-react";
 import logoPath from "../assets/cohost-logo.svg";
-import { BRAND } from "../../../../lib/brand.mjs";
+import { BRAND, PRODUCT_FULL } from "../../../../lib/brand.mjs";
 import dubaiSkyline from "../assets/dubai-skyline.png";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -102,7 +102,7 @@ export default function Signup() {
             <div className="ys-a1 flex items-center gap-3">
               <img src={logoPath} alt={BRAND} className="h-16 w-16" style={{ filter:"drop-shadow(0 0 20px rgba(45,212,191,0.7))" }} />
               <div>
-                <div className="text-xl font-extrabold text-white">Co-Host <span className="text-teal-400">Pro</span></div>
+                <div className="text-xl font-extrabold text-white">Launch<span className="text-teal-400">Riot</span></div>
                 <div className="text-[10px] text-teal-300/60 tracking-[0.15em] uppercase">Property Management</div>
               </div>
             </div>
@@ -148,7 +148,7 @@ export default function Signup() {
 
             <div className="mb-7">
               <h1 className="text-2xl font-bold text-white">Create your account</h1>
-              <p className="text-white/45 text-sm mt-1">Get started with {BRAND}, free to use</p>
+              <p className="text-white/45 text-sm mt-1">Get started with {PRODUCT_FULL}</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">

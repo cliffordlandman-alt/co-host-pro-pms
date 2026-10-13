@@ -77,7 +77,7 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
     deposits: [{ id: 1, kind: 'liability', propertyId: 1, counterparty: 'Tonye', amount: '1000', currency: 'AED', date: '2026-09-06', status: 'held' }, { id: 2, kind: 'asset', propertyId: 2, counterparty: 'Landlord', amount: '11500', currency: 'AED', date: '2026-07-29', status: 'kept', settledOn: '2026-09-15', keptAmount: '500', keptReason: 'paint' }],
     bankBalances: [{ account: 'ADIB 19589605', month: '2026-09', balanceDate: '2026-09-30', balance: '7259.22', currency: 'AED' }],
   };
-  const r = buildWorkbookRows(base, '2026-09', {}, { today: '2026-10-09', companyName: 'Co-Host Pro' });
+  const r = buildWorkbookRows(base, '2026-09', {}, { today: '2026-10-09', companyName: 'LaunchRiot' });
   const codes = r.warnings.map(w => w.code);
   // Q8: a cumulative row per active property dated the 1st (through 1 Sep) and the month's rows, zero rows for every
   // active property with "Show in report" on; Villa 7 (show off) is listed but gets no zero Airbnb rows.
@@ -192,7 +192,7 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
     assert.ok(rcx && parts['[Content_Types].xml'].includes('/xl/worksheets/sheet11.xml') && parts['xl/_rels/workbook.xml.rels'].includes('worksheets/sheet11.xml'));
     assert.ok(rcx.includes('On Expense Input (AED)') && rcx.includes('In Expense Input') && rcx.includes(`SUM('Expense Input'!$F$5:$F$503)`) && !/<drawing /.test(rcx));
     assert.ok(!parts['xl/worksheets/sheet6.xml'].includes('In Expense Input') && !parts['xl/worksheets/sheet6.xml'].includes('On Expense Input'));
-    for (const [k, v] of Object.entries(parts)) assert.ok(!String(v).includes('Co-Host Pro'), `no "Co-Host Pro" in ${k}`); }
+    for (const [k, v] of Object.entries(parts)) assert.ok(!String(v).includes('LaunchRiot'), `no "LaunchRiot" in ${k}`); }
   const dash = parts['xl/worksheets/sheet1.xml'];
   assert.match(dash, /<c r="J5" s="\d+"><v>7259.22<\/v><\/c>/, 'J5 bank balance');
   assert.ok(dash.includes('AVAILABLE AFTER DEPOSITS HELD') && dash.includes('<f>J5-G5</f><v>6259.22</v>'), 'J13 available after deposits held');
@@ -258,7 +258,7 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
   assert.ok(/<f>MIN\(J\d+:J\d+\)<\/f>/.test(fc), 'lowest balance');
   assert.ok(fc.includes('Cash Forecast - 9 Months (Oct 2026 to Jun 2027)'));
   assert.ok(parts['xl/worksheets/sheet1.xml'].includes('YallaStay - Finance Dashboard'), 'report title (export only)');
-  assert.ok(buildWorkbookRows(base, '2026-09', {}, { today: '2026-10-09', companyName: 'Co-Host Pro', reportTitle: 'Other title' }).reportTitle === 'Other title');
+  assert.ok(buildWorkbookRows(base, '2026-09', {}, { today: '2026-10-09', companyName: 'LaunchRiot', reportTitle: 'Other title' }).reportTitle === 'Other title');
   assert.equal(Object.keys(WORKBOOK_DEFAULTS).length >= 18, true);
   console.log('OK pure M3: Monthly Summary, Apartment Performance, Dashboard, Lists & Sources; Raju answers as settings');
 }

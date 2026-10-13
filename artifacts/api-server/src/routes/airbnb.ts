@@ -6,7 +6,7 @@ import { db, importLogsTable } from "@workspace/db";
 // Properties it created, and their import logs, are kept. Calendars still sync through the Airbnb iCal link, and
 // reservations and earnings still come in through the CSV imports.
 const router = Router();
-export const AIRBNB_LINK_IMPORT_OFF = "Importing from Airbnb listing links has been switched off, and Co-Host Pro no longer reads Airbnb listing pages. Add a property on the Properties page, connect its Airbnb calendar with the iCal link (Platforms or Calendar sync), and bring in reservations and earnings with the CSV imports.";
+export const AIRBNB_LINK_IMPORT_OFF = "Importing from Airbnb listing links has been switched off, and LaunchRiot no longer reads Airbnb listing pages. Add a property on the Properties page, connect its Airbnb calendar with the iCal link (Platforms or Calendar sync), and bring in reservations and earnings with the CSV imports.";
 const gone = (_req: any, res: any) => res.status(410).json({ error: AIRBNB_LINK_IMPORT_OFF });
 router.post("/airbnb/import", gone);
 router.post("/airbnb/check-duplicates", gone);

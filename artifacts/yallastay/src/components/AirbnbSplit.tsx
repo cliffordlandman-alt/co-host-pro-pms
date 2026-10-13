@@ -60,7 +60,7 @@ export function AirbnbSplitDetail({ split }: { split: any }) {
         <div key={r.code ?? r.reservationId} data-testid="split-booking" className={`rounded-xl border p-3 text-sm ${r.known ? "bg-card" : "bg-amber-50/60 border-amber-200"}`}>
           <div className="flex items-start justify-between gap-2"><div className="min-w-0">
             <p className="font-medium">{r.reservationId ? <Link href={`/reservations/${r.reservationId}`} className="hover:underline">{r.guestName || "Guest"}</Link> : (r.guestName || "Guest")}{r.code && <span className="ml-1 font-mono text-xs text-muted-foreground">{r.code}</span>}</p>
-            <p className="text-xs text-muted-foreground">{r.checkIn} → {r.checkOut}{r.known ? ` · from the ${r.source}` : ""}{r.known && !r.inYallaPMS ? " · not a Co-Host Pro booking" : ""}</p></div></div>
+            <p className="text-xs text-muted-foreground">{r.checkIn} → {r.checkOut}{r.known ? ` · from the ${r.source}` : ""}{r.known && !r.inYallaPMS ? " · not a LaunchRiot booking" : ""}</p></div></div>
           {r.known ? <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
             <div><p className="text-muted-foreground">Total</p><p className="font-semibold tabular-nums">{money(r.total, r.currency)}</p></div>
             <div><p className="text-muted-foreground">Co-host payout</p><p className="tabular-nums">{money(r.cohostPayout, r.currency)}</p><p className="text-muted-foreground">{basis(r.cohostBasis)}</p></div>

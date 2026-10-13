@@ -120,7 +120,7 @@ async function recordFeedHealth(propertyId: number, platform: Platform, outcome:
   await db.insert(notificationsTable).values({ type: "ical_feed_failing", title: `Calendar sync failing · ${property?.name ?? "Property"} · ${label}`, message, link: "/calendar-sync", entityType: "channel_feed", entityId });
   await db.update(channelSyncHealthTable).set({ alertedAt: now }).where(eq(channelSyncHealthTable.id, saved.id));
   // WhatsApp to managers only when outgoing delivery is switched on (OUTBOUND_DELIVERY=on); otherwise nothing leaves.
-  await notifyManagers(`Co-Host Pro: ${property?.name ?? "Property"} – ${message}`).catch(() => {});
+  await notifyManagers(`LaunchRiot: ${property?.name ?? "Property"} – ${message}`).catch(() => {});
 }
 
 /** Sync one property's channel calendar and record the outcome for the sync-health panel. */
