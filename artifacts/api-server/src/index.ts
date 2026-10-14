@@ -1,3 +1,5 @@
+import { startAiStaffChecks } from "./routes/ai-staff";
+import { startAiStaffSchedule } from "./routes/ai-staff-ops";
 import { startAutoStatements } from "./lib/auto-statements";
 import app from "./app";
 import { logger } from "./lib/logger";
@@ -50,7 +52,7 @@ initializeDatabase().then(runMigrations).then(() => {
     logger.info({ port }, "Server listening");
     // SYNC_SCHEDULER=off: no scheduled channel (iCal) sync, for restore tests and throwaway copies of real data.
     if (process.env.SYNC_SCHEDULER === "off") logger.info("Scheduled channel sync is off (SYNC_SCHEDULER=off)");
-    else startSyncScheduler();
+    else { startSyncScheduler(); startAiStaffChecks(); startAiStaffSchedule(); }
     // Monthly automatic owner statements: only owners with the setting on (off by default); AUTO_STATEMENTS=off stops the check.
     if (process.env.AUTO_STATEMENTS !== "off" && process.env.SYNC_SCHEDULER !== "off") startAutoStatements();
   });

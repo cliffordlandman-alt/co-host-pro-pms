@@ -2,6 +2,8 @@ import type { Request, Response, NextFunction } from 'express';
 import { db, usersTable, ownersTable, propertiesTable, reservationsTable, ownerStatementsTable, staffTable, cleaningTasksTable, maintenanceTicketsTable, ownerPayoutsTable } from '@workspace/db';
 import { eq, and, inArray, ne, sql } from 'drizzle-orm';
 import { getTokenPayload } from './auth-middleware';
+import { verifyBotKey, getConfig } from './ai-staff-store';
+import { botEnabled, canRead } from '../../../../lib/ai-staff.mjs';
 
 const publicPaths = new Set(['/healthz', '/auth/login', '/auth/register', '/owner-auth/send-code', '/owner-auth/verify', '/brand']);
 const attempts = new Map<string, {count:number; until:number}>();
@@ -19,6 +21,18 @@ export async function apiAccess(req: Request, res: Response, next: NextFunction)
       if (++a.count > 30) return res.status(429).json({error:'Too many attempts. Please try again in 15 minutes.'});
     }
     return next();
+  }
+  // AI staff: an external bot (e.g. the company's Grok Bot) calls with its own key. It may only read its role's
+  // pages and use /ai-staff/bot/*; every change it wants goes in as a proposal for a person to approve.
+  if (req.headers['x-bot-key']) {
+    const bot = await verifyBotKey(req.headers['x-bot-key']);
+    if (!bot) return res.status(401).json({error:'Invalid bot key'});
+    const cfg = await getConfig();
+    if (!botEnabled(cfg, bot)) return res.status(403).json({error:'This bot is switched off for this company'});
+    res.locals.bot = bot;
+    if (req.path.startsWith('/ai-staff/bot/')) return next();
+    if (req.method === 'GET' && canRead(bot, req.path)) return next();
+    return res.status(403).json({error:'Bots can read their own pages only; send changes as proposals (POST /api/ai-staff/bot/proposals)'});
   }
   const token = getTokenPayload(req);
   if (!token) return res.status(401).json({error:'Please sign in'});

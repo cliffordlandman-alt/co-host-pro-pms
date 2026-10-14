@@ -4,7 +4,7 @@ import { apiFetch } from "@/lib/api-fetch";
 export type UiMode = "full" | "simple";
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
 /** Pages shown in Simple mode (everything else is hidden from the menus; Full shows all). */
-export const SIMPLE_PATHS = ["/dashboard", "/multi-calendar", "/calendar", "/reservations", "/cleaning", "/maintenance", "/accounting", "/cleaner-app", "/settings"];
+export const SIMPLE_PATHS = ["/dashboard", "/multi-calendar", "/calendar", "/reservations", "/cleaning", "/maintenance", "/accounting", "/cleaner-app", "/settings", "/ai-staff"];
 export const inSimple = (href: string) => { const [path, q] = href.split("?"); return SIMPLE_PATHS.includes(path) && (path !== "/accounting" || !q); };
 
 export function useUiMode() {

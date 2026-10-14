@@ -14,6 +14,7 @@ export const SCREENS: Screen[] = [
   { href: "/cleaning", label: "Cleaning", keywords: "cleaner turnover" },
   { href: "/maintenance", label: "Maintenance", keywords: "repairs tickets" },
   { href: "/task-centre", label: "Task Centre", keywords: "tasks to do" },
+  { href: "/ai-staff", label: "AI staff", keywords: "bots assistant bot checks daily report escalation staff check-in proposals" },
   { href: "/income", label: "Income per property", keywords: "revenue report occupancy" },
   { href: "/accounting", label: "Owner statements", keywords: "statement owner payout report" },
   { href: "/owner-history", label: "Statement history", keywords: "past statements report" },

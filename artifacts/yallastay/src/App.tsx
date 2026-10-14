@@ -41,6 +41,7 @@ import Subscriptions from "@/pages/subscriptions";
 import Templates from "@/pages/templates";
 import SettingsPage from "@/pages/settings";
 import AIAssistant from "@/pages/ai-assistant";
+import AiStaffPage from "@/pages/ai-staff";
 import Pricing from "@/pages/pricing";
 import AuditLog from "@/pages/audit-log";
 import SystemHealth from "@/pages/system-health";
@@ -175,6 +176,7 @@ function Router() {
               <Route path="/templates" component={Templates} />
               <Route path="/settings" component={SettingsPage} />
               <Route path="/ai-assistant" component={AIAssistant} />
+              <Route path="/ai-staff" component={AiStaffPage} />
               <Route path="/pricing" component={Pricing} />
               <Route path="/audit-log">
                 <RequireOwner><AuditLog /></RequireOwner>

@@ -56,6 +56,7 @@ const navGroups: { label: string; collapsible?: boolean; items: NavItem[] }[] = 
       { href: "/cleaning",        icon: Sparkles,        label: "Cleaning" },
       { href: "/maintenance",     icon: Wrench,          label: "Maintenance" },
       { href: "/task-centre",     icon: ListChecks,      label: "Task Centre" },
+      { href: "/ai-staff",        icon: Bot,             label: "AI staff" },
     ],
   },
   {
