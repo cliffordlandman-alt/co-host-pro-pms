@@ -10,7 +10,15 @@ export async function loadInstance() {
   if (INSTANCE.whiteLabel) {
     document.title = INSTANCE.productName!;
     if (INSTANCE.logoUrl) { const l = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null; if (l) l.href = INSTANCE.logoUrl; }
-    if (INSTANCE.brandColor) document.documentElement.style.setProperty("--wl-brand", INSTANCE.brandColor);
+    if (INSTANCE.brandColor) {
+      const hex = INSTANCE.brandColor.slice(1), [r, g, b] = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn, sat = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+      const h = !d ? 0 : mx === r ? 60 * (((g - b) / d) % 6) : mx === g ? 60 * ((b - r) / d + 2) : 60 * ((r - g) / d + 4);
+      const hsl = `${Math.round((h + 360) % 360)} ${Math.round(sat * 100)}% ${Math.round(l * 100)}%`;
+      const st = document.createElement("style"); st.id = "wl-theme";
+      st.textContent = `:root, .dark { --primary: ${hsl} !important; --ring: ${hsl} !important; --sidebar-primary: ${hsl} !important; --sidebar-ring: ${hsl} !important; --sidebar: 0 0% 9% !important; --sidebar-border: 0 0% 16% !important; --sidebar-accent: 0 0% 18% !important; }`;
+      document.head.appendChild(st);
+    }
   }
   return INSTANCE;
 }
