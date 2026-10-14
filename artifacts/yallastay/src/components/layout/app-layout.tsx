@@ -13,6 +13,7 @@ import {
   PieChart, Receipt, FileBarChart, Link2, Tv2, MapPin, Smartphone, DollarSign, ListChecks, Scale,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { INSTANCE, term, hiddenHref } from "@/lib/instance";
 
 /** Client workspace: company name + logo (Settings company.workspaceName / company.logoUrl), shown only when set. */
 function WorkspaceBadge() {
@@ -33,7 +34,8 @@ import { useUiMode, inSimple } from "@/hooks/use-ui-mode";
 /** Asked once after login (per user): Simple or Full PMS. Changeable later in Settings → Appearance. */
 function UiModeChooser() {
   const { mode, loaded, setMode, saving } = useUiMode();
-  if (!loaded || mode) return null;
+  useEffect(() => { if (INSTANCE.whiteLabel && loaded && !mode) setMode("full").catch(() => {}); }, [loaded, mode]);
+  if (!loaded || mode || INSTANCE.whiteLabel) return null;
   return (
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Choose your workspace">
       <div className="bg-background rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
@@ -133,6 +135,7 @@ function useVisibleItems(items: NavItem[]) {
   const { user } = useAuth();
   const { mode } = useUiMode();
   return items.filter(item => {
+    if (hiddenHref(item.href)) return false;
     if (mode === "simple" && !inSimple(item.href)) return false;
     if (item.ownerOnly && user?.email !== OWNER_EMAIL_NAV) return false;
     return !item.role || item.role.includes(user?.role ?? "");
@@ -165,7 +168,7 @@ function NavGroup({ group }: { group: typeof navGroups[0] }) {
         aria-expanded={group.collapsible ? open : undefined}
         className={`w-full flex items-center justify-between px-3 mb-1 group ${group.collapsible ? "cursor-pointer" : "cursor-default"}`}
       >
-        <p className="text-[10px] uppercase tracking-widest text-sidebar-foreground/50 font-semibold">{group.label}{group.collapsible && !open ? ` (${items.length})` : ""}</p>
+        <p className="text-[10px] uppercase tracking-widest text-sidebar-foreground/50 font-semibold">{term(group.label)}{group.collapsible && !open ? ` (${items.length})` : ""}</p>
         {group.collapsible && <ChevronDown className={`h-3 w-3 text-sidebar-foreground/40 group-hover:text-sidebar-foreground/70 transition-all duration-200 ${open ? "rotate-180" : ""}`} />}
       </button>
       {open && <div className="space-y-0.5">
@@ -175,7 +178,7 @@ function NavGroup({ group }: { group: typeof navGroups[0] }) {
             <Link key={item.label} href={item.href}>
               <div className={`flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer transition-colors text-sm ${active ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium shadow-sm" : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}>
                 <item.icon className="h-4 w-4 flex-shrink-0" />
-                <span>{item.label}</span>
+                <span>{term(item.label)}</span>
               </div>
             </Link>
           );
@@ -191,13 +194,13 @@ function MobileNavGroup({ group, onClose }: { group: typeof navGroups[0]; onClos
   if (!items.length) return null;
   return (
     <div className="mb-3">
-      <p className="text-xs uppercase tracking-widest text-muted-foreground px-2 mb-2 font-semibold">{group.label}</p>
+      <p className="text-xs uppercase tracking-widest text-muted-foreground px-2 mb-2 font-semibold">{term(group.label)}</p>
       <div className="grid grid-cols-2 gap-1">
         {items.map(item => (
           <Link key={item.label} href={item.href}>
             <div onClick={onClose} className={`flex items-center gap-2.5 p-3 rounded-lg transition-colors min-h-12 ${isActive(item.href) ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}>
               <item.icon className="h-5 w-5 flex-shrink-0" />
-              <span className="font-medium text-sm leading-tight">{item.label}</span>
+              <span className="font-medium text-sm leading-tight">{term(item.label)}</span>
             </div>
           </Link>
         ))}
@@ -313,11 +316,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="px-4 pt-5 pb-4 border-b border-sidebar-border/30">
           <Link href="/dashboard">
             <div className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity">
+              {INSTANCE.whiteLabel ? <div>
+                <div data-testid="sidebar-wordmark" className="font-bold text-base tracking-tight leading-tight">{INSTANCE.productName}</div>
+                <div className="text-[11px] text-sidebar-foreground/50 leading-tight">Powered by {BRAND}</div>
+              </div> : <>
               <img src={logoPath} alt={BRAND} className="h-10 w-10 flex-shrink-0" />
               <div>
                 <div data-testid="sidebar-wordmark" className="font-bold text-base tracking-tight leading-tight">{BRAND}</div>
                 <div className="text-[11px] text-sidebar-foreground/50 leading-tight">for Holiday Homes</div>
-              </div>
+              </div></>}
             </div>
           </Link>
           <WorkspaceBadge />
@@ -354,8 +361,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <header className="md:hidden flex items-center justify-between p-3 bg-sidebar text-sidebar-foreground sticky top-0 z-20 border-b border-sidebar-border/30">
           <Link href="/dashboard">
             <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
-              <img src={logoPath} alt={BRAND} className="h-7 w-auto" />
-              <span className="font-bold text-base tracking-tight">{BRAND}</span>
+              <img src={INSTANCE.whiteLabel && INSTANCE.logoUrl ? INSTANCE.logoUrl : logoPath} alt={INSTANCE.productName ?? BRAND} className="h-7 w-auto" />
+              <span className="font-bold text-base tracking-tight">{INSTANCE.productName ?? BRAND}</span>
             </div>
           </Link>
           <NotificationsBell />
@@ -375,7 +382,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <Link key={item.label} href={item.href}>
               <div className={`flex flex-col items-center justify-center gap-1 h-16 ${active ? "text-primary font-semibold" : "text-muted-foreground"}`}>
                 <item.icon className="h-6 w-6" />
-                <span className="text-[11px] leading-none">{item.label}</span>
+                <span className="text-[11px] leading-none">{term(item.label)}</span>
               </div>
             </Link>
           );

@@ -8,4 +8,5 @@ setAuthTokenGetter(() => {
   catch { return null; }
 });
 
-createRoot(document.getElementById("root")!).render(<App />);
+import { loadInstance } from "@/lib/instance";
+loadInstance().finally(() => createRoot(document.getElementById("root")!).render(<App />));

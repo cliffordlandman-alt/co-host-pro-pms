@@ -5,6 +5,7 @@ import { Loader2, Eye, EyeOff, LogIn, Mail, Lock, Shield, Building2, TrendingUp,
 import logoPath from "../assets/cohost-logo.svg";
 import { BRAND, PRODUCT_FULL } from "../../../../lib/brand.mjs";
 import dubaiSkyline from "../assets/dubai-skyline.png";
+import { INSTANCE } from "@/lib/instance";
 
 const FEATURES = [
   { icon: Building2,    label: "Centralize",  sub: "Everything" },
@@ -48,6 +49,36 @@ export default function Login() {
     }
   }
 
+  if (INSTANCE.whiteLabel) {
+    const brand = INSTANCE.brandColor || "#009EE3";
+    return (
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-white px-5 py-10" data-testid="wl-login">
+        <div className="w-full max-w-[380px]">
+          <div className="flex flex-col items-center text-center mb-8">
+            {INSTANCE.logoUrl && <img src={INSTANCE.logoUrl} alt={INSTANCE.workspaceName ?? INSTANCE.productName ?? ""} className="w-full max-w-[300px] h-auto mb-6" />}
+            <h1 className="text-2xl font-bold text-black">Welcome back</h1>
+            <p className="text-slate-500 text-sm mt-1">Sign in to {INSTANCE.productName}</p>
+          </div>
+          {successMsg && <div className="mb-4 text-sm rounded-lg px-4 py-3 bg-emerald-50 text-emerald-800 border border-emerald-200">{successMsg}</div>}
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div><label className="block text-sm font-semibold text-slate-700 mb-1.5">Email address</label>
+              <div className="relative"><Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full h-12 pl-10 pr-4 rounded-lg text-sm border border-slate-300 focus:outline-none focus:ring-2" style={{ ["--tw-ring-color" as any]: brand }} placeholder="you@company.com" required autoComplete="email" /></div></div>
+            <div><label className="block text-sm font-semibold text-slate-700 mb-1.5">Password</label>
+              <div className="relative"><Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} className="w-full h-12 pl-10 pr-11 rounded-lg text-sm border border-slate-300 focus:outline-none focus:ring-2" style={{ ["--tw-ring-color" as any]: brand }} placeholder="••••••••" required autoComplete="current-password" />
+                <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div></div>
+            <div className="flex justify-end"><a href="forgot-password" onClick={e => { e.preventDefault(); setLocation("/forgot-password"); }} className="text-xs font-medium" style={{ color: brand }}>Forgot password?</a></div>
+            {error && <div className="text-sm rounded-lg px-4 py-3 bg-red-50 text-red-700 border border-red-200">{error}</div>}
+            <button type="submit" disabled={loading} className="w-full h-12 rounded-lg font-bold text-sm text-white flex items-center justify-center gap-2 hover:opacity-90" style={{ background: brand, cursor: loading ? "wait" : "pointer" }}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Sign in</button>
+          </form>
+        </div>
+        <p className="mt-12 text-[11px] text-slate-400" data-testid="wl-powered">Powered by {BRAND}</p>
+        <div className="fixed inset-x-0 bottom-0 h-2 flex flex-col"><div className="flex-1" style={{ background: brand }} /><div className="flex-1" style={{ background: "#70CBF3" }} /></div>
+      </div>
+    );
+  }
   return (
     <>
       <style>{`
