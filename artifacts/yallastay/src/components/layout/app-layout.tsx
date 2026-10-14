@@ -13,6 +13,17 @@ import {
   PieChart, Receipt, FileBarChart, Link2, Tv2, MapPin, Smartphone, DollarSign, ListChecks, Scale,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+
+/** Client workspace: company name + logo (Settings company.workspaceName / company.logoUrl), shown only when set. */
+function WorkspaceBadge() {
+  const [b, setB] = useState<{ workspaceName?: string | null; logoUrl?: string | null } | null>(null);
+  useEffect(() => { fetch(import.meta.env.BASE_URL.replace(/\/$/, "") + "/api/brand").then(r => r.json()).then(setB).catch(() => {}); }, []);
+  if (!b?.workspaceName && !b?.logoUrl) return null;
+  return <div data-testid="workspace-badge" className="mt-3 rounded-lg bg-white px-3 py-2 flex flex-col items-center gap-1">
+    {b.logoUrl && <img src={b.logoUrl} alt={b.workspaceName ?? "Company logo"} className="max-h-12 w-auto object-contain" />}
+    {b.workspaceName && <div className="text-xs font-semibold text-slate-800">{b.workspaceName}</div>}
+  </div>;
+}
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { Button } from "@/components/ui/button";
 import { NotificationsBell } from "@/components/notifications-bell";
@@ -309,6 +320,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           </Link>
+          <WorkspaceBadge />
         </div>
 
         <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-4">

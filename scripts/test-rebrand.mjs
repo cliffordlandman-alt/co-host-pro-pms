@@ -105,7 +105,7 @@ async function api(route, method = 'GET', body, expected = 200, auth = true) {
 }
 try {
   for (let i = 0; i < 80; i++) { try { await api('/healthz'); break; } catch { await new Promise(r => setTimeout(r, 250)); } }
-  assert.deepEqual(await api('/brand', 'GET', null, 200, false), { appName: BRAND, documentName: PRODUCT_FULL }, 'public, default LaunchRiot');
+  assert.deepEqual(await api('/brand', 'GET', null, 200, false), { appName: BRAND, documentName: PRODUCT_FULL, workspaceName: null, logoUrl: null }, 'public, default LaunchRiot');
   await api('/settings', 'GET', null, 401, false);
   token = (await api('/auth/register', 'POST', { name: 'Brand Admin', email: 'brand@example.invalid', password: 'Test-only-6284!' }, 201)).token;
   const s0 = await api('/settings');

@@ -76,7 +76,9 @@ export async function documentCompanyName(): Promise<string> {
 
 // Public (no login): the product name and the company name on documents, for the login pages and the Owner Portal.
 router.get("/brand", async (_req, res) => {
-  res.json({ appName: BRAND, documentName: await documentCompanyName() });
+  let c: any = null; try { [c] = await db.select().from(appSettingsTable).where(eq(appSettingsTable.key, "company")); } catch { /* defaults */ }
+  const v = c?.value ?? {}, logo = typeof v.logoUrl === "string" && /^(data:image\/(png|jpeg|svg\+xml|webp);base64,|https:\/\/)/.test(v.logoUrl) ? v.logoUrl : null;
+  res.json({ appName: BRAND, documentName: await documentCompanyName(), workspaceName: typeof v.workspaceName === "string" && v.workspaceName.trim() ? v.workspaceName.trim().slice(0, 80) : null, logoUrl: logo });
 });
 
 router.put("/settings/:key", async (req, res) => {
