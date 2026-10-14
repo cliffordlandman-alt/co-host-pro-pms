@@ -14,9 +14,10 @@ async function call(path: string, method = "GET", body?: unknown) {
   const r = await apiFetch(API + path, { method, headers: { "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
   const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `Error ${r.status}`); return j;
 }
-const TABS = [...(INSTANCE.waApprovals ? [["whatsapp", "WhatsApp approvals"] as const] : []), ["chat", "Chat"], ["checks", "Bot checks"], ["escalations", "Needs a person"], ["checkins", "Staff check-ins"], ["reports", "Daily reports"], ["proposals", "Proposed changes"], ["setup", "Setup"]] as const;
+const BASE_TABS = [["chat", "Chat"], ["checks", "Bot checks"], ["escalations", "Needs a person"], ["checkins", "Staff check-ins"], ["reports", "Daily reports"], ["proposals", "Proposed changes"], ["setup", "Setup"]] as const;
 
 export default function AiStaffPage() {
+  const TABS: readonly (readonly [string, string])[] = INSTANCE.waApprovals ? [["whatsapp", "WhatsApp approvals"], ...BASE_TABS] : BASE_TABS;
   const [tab, setTab] = useState<string>(new URLSearchParams(location.search).get("tab") || "chat"); const [bot, setBot] = useState("bookings"); const [text, setText] = useState("");
   const [newKey, setNewKey] = useState<string | null>(null);
   const qc = useQueryClient(); const { toast } = useToast(); const { user } = useAuth();

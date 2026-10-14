@@ -26,7 +26,7 @@ import { useUiMode } from "@/hooks/use-ui-mode";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-const SECTIONS = [
+const BASE_SECTIONS = [
   { id: "company",     icon: Building2,    label: "Company",         group: "General" },
   { id: "theme",       icon: Palette,      label: "Appearance",      group: "General" },
   { id: "notifications",icon: Bell,        label: "Notifications",   group: "General" },
@@ -38,7 +38,6 @@ const SECTIONS = [
   { id: "users",       icon: Users,        label: "Users & Roles",   group: "People" },
   { id: "ai",          icon: Bot,          label: "AI Assistant",    group: "Automation" },
   { id: "automations", icon: Zap,          label: "Automations",     group: "Automation" },
-  ...(INSTANCE.waApprovals ? [{ id: "wa-rules", icon: Zap, label: "Auto-approve rules", group: "Automation" }] : []),
   { id: "templates",   icon: MessageSquare,label: "Templates",       group: "Automation" },
   { id: "integrations",icon: Plug,         label: "Integrations",    group: "Integrations" },
   { id: "documents",   icon: FileText,     label: "Documents",       group: "Integrations" },
@@ -614,6 +613,7 @@ function TemplatesSection() {
 
 // ─── Main Settings Page ────────────────────────────────────────────────────────
 export default function SettingsPage() {
+  const SECTIONS = INSTANCE.waApprovals ? [...BASE_SECTIONS, { id: "wa-rules", icon: Zap, label: "Auto-approve rules", group: "Automation" }] : BASE_SECTIONS;
   const [activeSection, setActiveSection] = useState("company");
   const { data: settings, isLoading } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
   const qc = useQueryClient();
