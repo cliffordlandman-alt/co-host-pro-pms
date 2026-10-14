@@ -39,6 +39,7 @@ import calendarSyncRouter from "./calendar-sync";
 import complianceRouter from "./compliance";
 import aiStaffRouter from "./ai-staff";
 import aiStaffOpsRouter from "./ai-staff-ops";
+import waApprovalsRouter from "./wa-approvals";
 import { scheduleDraftRefresh } from "../lib/owner-statements";
 
 const router: IRouter = Router();
@@ -51,6 +52,7 @@ router.use((req, res, next) => {
 });
 router.use(aiStaffRouter);
 router.use(aiStaffOpsRouter);
+router.use(waApprovalsRouter);
 router.use(taskCentreRouter);
 router.use(airbnbImportRouter);
 router.use(storageRouter);

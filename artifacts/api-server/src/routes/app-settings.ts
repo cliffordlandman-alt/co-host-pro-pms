@@ -79,7 +79,7 @@ router.get("/brand", async (_req, res) => {
   let c: any = null; try { [c] = await db.select().from(appSettingsTable).where(eq(appSettingsTable.key, "company")); } catch { /* defaults */ }
   const v = c?.value ?? {}, logo = typeof v.logoUrl === "string" && /^(data:image\/(png|jpeg|svg\+xml|webp);base64,|https:\/\/)/.test(v.logoUrl) ? v.logoUrl : null;
   res.json({ appName: BRAND, documentName: await documentCompanyName(), workspaceName: typeof v.workspaceName === "string" && v.workspaceName.trim() ? v.workspaceName.trim().slice(0, 80) : null, logoUrl: logo,
-    industry: process.env.INDUSTRY || "holiday_homes", productName: process.env.PRODUCT_NAME?.trim() || null, brandColor: /^#[0-9a-fA-F]{6}$/.test(process.env.BRAND_COLOR ?? "") ? process.env.BRAND_COLOR : null });
+    industry: process.env.INDUSTRY || "holiday_homes", productName: process.env.PRODUCT_NAME?.trim() || null, brandColor: /^#[0-9a-fA-F]{6}$/.test(process.env.BRAND_COLOR ?? "") ? process.env.BRAND_COLOR : null, waApprovals: String(process.env.WA_APPROVALS ?? "").trim().toLowerCase() === "on" });
 });
 
 router.put("/settings/:key", async (req, res) => {

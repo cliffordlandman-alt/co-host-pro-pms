@@ -6,13 +6,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
+import { INSTANCE } from "@/lib/instance";
+import { WaApprovalsQueue, WaRules, WaPromptEditor, WaAuditLog } from "@/components/wa-approvals";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api/ai-staff";
 async function call(path: string, method = "GET", body?: unknown) {
   const r = await apiFetch(API + path, { method, headers: { "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
   const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `Error ${r.status}`); return j;
 }
-const TABS = [["chat", "Chat"], ["checks", "Bot checks"], ["escalations", "Needs a person"], ["checkins", "Staff check-ins"], ["reports", "Daily reports"], ["proposals", "Proposed changes"], ["setup", "Setup"]] as const;
+const TABS = [...(INSTANCE.waApprovals ? [["whatsapp", "WhatsApp approvals"] as const] : []), ["chat", "Chat"], ["checks", "Bot checks"], ["escalations", "Needs a person"], ["checkins", "Staff check-ins"], ["reports", "Daily reports"], ["proposals", "Proposed changes"], ["setup", "Setup"]] as const;
 
 export default function AiStaffPage() {
   const [tab, setTab] = useState<string>(new URLSearchParams(location.search).get("tab") || "chat"); const [bot, setBot] = useState("bookings"); const [text, setText] = useState("");
@@ -34,6 +36,7 @@ export default function AiStaffPage() {
       <div><h1 className="text-2xl font-semibold">AI staff</h1>
         <p className="text-sm text-muted-foreground">Your own bots, connected to this system. Messages go to the bot you pick; its replies appear here. Bots read only what their role needs and every change they suggest waits for your approval. They never message guests or owners.</p></div>
       <div className="flex gap-2 flex-wrap">{TABS.map(([id, l]) => <Button key={id} size="sm" variant={tab === id ? "default" : "outline"} onClick={() => setTab(id)} data-testid={`ai-tab-${id}`}>{l}</Button>)}</div>
+      {tab === "whatsapp" && <div className="space-y-6"><WaApprovalsQueue /><WaAuditLog /><div className="rounded-2xl border p-4"><h3 className="font-semibold mb-2">Auto-approve rules</h3><WaRules /></div></div>}
       {tab === "chat" && <div className="grid md:grid-cols-[220px_1fr] gap-4">
         <div className="space-y-1">{list.map((b: any) => <button key={b.id} disabled={!b.enabled} onClick={() => setBot(b.id)} data-testid={`ai-bot-${b.id}`} className={`w-full text-left rounded-md border p-2 text-sm ${bot === b.id ? "border-primary bg-primary/5" : ""} ${b.enabled ? "" : "opacity-50"}`}><div className="font-medium">{b.name}</div><div className="text-xs text-muted-foreground">{b.enabled ? b.role : "Not in your plan / off"}</div></button>)}</div>
         <div className="border rounded-lg flex flex-col min-h-[420px]">
@@ -66,6 +69,7 @@ export default function AiStaffPage() {
           <pre className="text-xs bg-muted rounded p-2 overflow-x-auto">{p.method} {p.path}{"\n"}{JSON.stringify(p.body, null, 2)}</pre>
           {p.status === "pending" && <div className="flex gap-2"><Button size="sm" onClick={() => run(() => call(`/proposals/${p.id}/approve`, "POST"), "Change applied")}>Approve & apply</Button><Button size="sm" variant="outline" onClick={() => run(() => call(`/proposals/${p.id}/reject`, "POST"), "Rejected")}>Reject</Button></div>}
           {p.result?.error && <p className="text-xs text-red-600">{String(p.result.error)}</p>}</div>)}</div>}
+      {tab === "setup" && INSTANCE.waApprovals && admin && <div className="rounded-2xl border p-4"><WaPromptEditor /></div>}
       {tab === "setup" && <div className="space-y-3">
         {!admin && <p className="text-sm text-muted-foreground">Only admins can change bot setup.</p>}
         <div className="flex gap-2 items-center text-sm">Plan: {Object.keys(bots.data?.plans ?? {}).map(pl => <Button key={pl} size="sm" disabled={!admin} variant={bots.data?.plan === pl ? "default" : "outline"} onClick={() => run(() => call("/config", "PUT", { plan: pl }), "Plan saved")}>{pl === "full_ops" ? "Full Ops" : pl[0].toUpperCase() + pl.slice(1)}</Button>)}</div>

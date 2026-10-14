@@ -1,3 +1,5 @@
+import { INSTANCE } from "@/lib/instance";
+import { WaRules } from "@/components/wa-approvals";
 import { apiFetch } from "@/lib/api-fetch";
 import { BRAND, PRODUCT_FULL } from "../../../../lib/brand.mjs";
 import { useState, useEffect, useCallback } from "react";
@@ -36,6 +38,7 @@ const SECTIONS = [
   { id: "users",       icon: Users,        label: "Users & Roles",   group: "People" },
   { id: "ai",          icon: Bot,          label: "AI Assistant",    group: "Automation" },
   { id: "automations", icon: Zap,          label: "Automations",     group: "Automation" },
+  ...(INSTANCE.waApprovals ? [{ id: "wa-rules", icon: Zap, label: "Auto-approve rules", group: "Automation" }] : []),
   { id: "templates",   icon: MessageSquare,label: "Templates",       group: "Automation" },
   { id: "integrations",icon: Plug,         label: "Integrations",    group: "Integrations" },
   { id: "documents",   icon: FileText,     label: "Documents",       group: "Integrations" },
@@ -636,6 +639,7 @@ export default function SettingsPage() {
       case "users":        return <UsersSection />;
       case "ai":           return <AISection settings={settings} onSave={v => saveSection("ai", v)} />;
       case "automations":  return <AutomationsSection />;
+      case "wa-rules":     return <WaRules />;
       case "templates":    return <TemplatesSection />;
       case "integrations": return <IntegrationsSection />;
       case "documents":    return <DocumentsSection settings={settings} onSave={v => saveSection("documentsConfig", v)} />;
