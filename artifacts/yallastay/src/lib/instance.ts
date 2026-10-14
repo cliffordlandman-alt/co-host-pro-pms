@@ -31,3 +31,44 @@ const EQUIPMENT: Record<string, string> = {
 const EQUIPMENT_HIDE = new Set(["/calendar-sync", "/platforms", "/payout-check", "/airbnb-import", "/compliance", "/inbox", "/reviews", "/templates", "/devices", "/pricing"]);
 export const term = (s: string) => INSTANCE.industry === "equipment_service" ? (EQUIPMENT[s] ?? s) : s;
 export const hiddenHref = (href: string) => INSTANCE.industry === "equipment_service" && EQUIPMENT_HIDE.has(href.split("?")[0]);
+
+// ---- White-label wording rewriter (equipment service). Only active when INSTANCE.whiteLabel. ----
+const WL_RULES: [RegExp, string][] = [
+  [/\bHoliday Homes?\b/g, "Service"], [/\bholiday homes?\b/g, "service"], [/\bvacation rentals?\b/gi, "service jobs"], [/\bshort[- ]term rentals?\b/gi, "service work"],
+  [/\bAirbnb\s*(?:&|and|\/)\s*Booking\.com\b/g, "external systems"], [/\b(?:Airbnb|Booking\.com|VRBO|Vrbo)\b/g, "external system"],
+  [/\bproperty readiness\b/gi, "site readiness"], [/\bProperty readiness\b/g, "Site readiness"],
+  [/\bby property\b/g, "by customer site"], [/\bper property\b/g, "per customer site"], [/\bPer property\b/g, "Per customer site"],
+  [/\bBookings checking out\b/g, "Service jobs completed"], [/\bbookings? checks? out\b/g, "service jobs complete"],
+  [/\bChecking in\b/g, "Starting"], [/\bchecking in\b/g, "starting"], [/\bChecking out\b/g, "Finishing"], [/\bchecking out\b/g, "finishing"],
+  [/\bCheck-?ins?\b/g, "Job starts"], [/\bcheck-?ins?\b/g, "job starts"], [/\bCheck-?outs?\b/g, "Job finishes"], [/\bcheck-?outs?\b/g, "job finishes"],
+  [/\bCheck in\b/g, "Start"], [/\bcheck in\b/g, "start"], [/\bCheck out\b/g, "Finish"], [/\bcheck out\b/g, "finish"],
+  [/\bArrivals?\b/g, "Job starts"], [/\barrivals?\b/g, "job starts"], [/\bDepartures?\b/g, "Job finishes"], [/\bdepartures?\b/g, "job finishes"],
+  [/\bnights\b/g, "days"], [/\bNights\b/g, "Days"], [/\bnight\b/g, "day"], [/\bNight\b/g, "Day"], [/\bstays\b/g, "service jobs"], [/\bStays\b/g, "Service jobs"], [/\bstay\b/g, "service job"], [/\bStay\b/g, "Service job"],
+  [/\bReservations\b/g, "Service jobs"], [/\breservations\b/g, "service jobs"], [/\bReservation\b/g, "Service job"], [/\breservation\b/g, "service job"],
+  [/\bBookings\b/g, "Service jobs"], [/\bbookings\b/g, "service jobs"], [/\bBooking\b/g, "Service job"], [/\bbooking\b/g, "service job"],
+  [/\bGuests\b/g, "Customers"], [/\bguests\b/g, "customers"], [/\bGuest\b/g, "Customer"], [/\bguest\b/g, "customer"],
+  [/\bHousekeeping\b/g, "Technician visits"], [/\bhousekeeping\b/g, "technician visits"], [/\bCleanings\b/g, "Technician visits"], [/\bcleanings\b/g, "technician visits"],
+  [/\bCleaning\b/g, "Technician visit"], [/\bcleaning\b/g, "technician visit"], [/\bCleaners\b/g, "Technicians"], [/\bcleaners\b/g, "technicians"], [/\bCleaner\b/g, "Technician"], [/\bcleaner\b/g, "technician"],
+  [/\bMaintenance\b/g, "Repairs & parts"], [/\bmaintenance\b/g, "repairs"],
+  [/\bOwner statements?\b/g, "Customer statements"], [/\bowner statements?\b/g, "customer statements"], [/\bOwner payouts?\b/g, "Customer settlements"], [/\bowner payouts?\b/g, "customer settlements"],
+  [/\bOwners\b/g, "Account holders"], [/\bowners\b/g, "account holders"], [/\bOwner\b/g, "Account holder"], [/\bowner\b/g, "account holder"],
+  [/\bApartments\b/g, "Machines"], [/\bapartments\b/g, "machines"], [/\bApartment\b/g, "Machine"], [/\bapartment\b/g, "machine"], [/\bUnits\b/g, "Machines"], [/\bunits\b/g, "machines"],
+  [/\bProperties\b/g, "Customer sites"], [/\bproperties\b/g, "customer sites"], [/\bProperty\b/g, "Customer site"], [/\bproperty\b/g, "customer site"],
+  [/\bAmenities\b/g, "Parts"], [/\bamenities\b/g, "parts"], [/\bLinens?\b/g, "Parts"], [/\blinens?\b/g, "parts"],
+  [/\bOccupancy\b/g, "Utilisation"], [/\boccupancy\b/g, "utilisation"], [/\bOccupied\b/g, "In service"], [/\bVacant\b/g, "Idle"],
+  [/\bChannels?\b/g, "Integrations"], [/\bRERA\/DET\b/g, "trade"], [/\bDTCM\b/g, "trade"], [/\bhosts?\b/g, "service teams"], [/\bHosts?\b/g, "Service teams"], [/\bCo-hosts?\b/gi, "Partners"],
+];
+export function wlText(s: string): string { let o = s; for (const [r, t] of WL_RULES) o = o.replace(r, t); return o; }
+const SKIP = new Set(["SCRIPT", "STYLE", "TEXTAREA", "INPUT", "CODE", "PRE"]);
+function fix(node: Node) {
+  if (node.nodeType === 3) { const p = node.parentElement; if (!p || SKIP.has(p.tagName) || p.isContentEditable || p.closest("[data-wl-keep]")) return; const v = node.nodeValue || ""; if (/[A-Za-z]/.test(v)) { const n = wlText(v); if (n !== v) node.nodeValue = n; } return; }
+  if (node.nodeType !== 1) return; const el = node as Element; if (SKIP.has(el.tagName) && el.tagName !== "INPUT" && el.tagName !== "TEXTAREA") return;
+  for (const a of ["placeholder", "title", "aria-label"]) { const v = el.getAttribute(a); if (v) { const n = wlText(v); if (n !== v) el.setAttribute(a, n); } }
+  if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") return;
+  el.childNodes.forEach(fix);
+}
+export function startWlRewriter() {
+  if (!INSTANCE.whiteLabel || typeof MutationObserver === "undefined") return;
+  const run = () => { fix(document.body); new MutationObserver(ms => { for (const m of ms) { if (m.type === "characterData") fix(m.target); else if (m.type === "attributes") fix(m.target); else m.addedNodes.forEach(fix); } }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["placeholder", "title", "aria-label"] }); };
+  if (document.body) run(); else document.addEventListener("DOMContentLoaded", run);
+}
