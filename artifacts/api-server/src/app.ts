@@ -1,5 +1,6 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
+import { corsOrigins } from "./lib/frontend-url";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
@@ -27,7 +28,8 @@ app.use(
   }),
 );
 app.disable("x-powered-by");
-app.use(cors({origin:process.env.APP_ORIGIN || false}));
+const allowedOrigins = corsOrigins();
+app.use(cors({origin: allowedOrigins.length ? allowedOrigins : false}));
 app.use((_req,res,next)=>{res.setHeader("X-Content-Type-Options","nosniff");res.setHeader("Referrer-Policy","same-origin");next();});
 app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ extended: true, limit: "15mb" }));
