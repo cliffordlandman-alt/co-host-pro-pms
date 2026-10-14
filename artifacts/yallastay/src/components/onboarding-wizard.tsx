@@ -1,3 +1,4 @@
+import { INSTANCE } from "@/lib/instance";
 import { useUiMode } from "@/hooks/use-ui-mode";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -125,6 +126,7 @@ const STEPS = [
 ];
 
 export function OnboardingWizard() {
+  if (INSTANCE.whiteLabel) return null;
   const { mode: uiMode, loaded: uiModeLoaded } = useUiMode();
   const { user } = useAuth();
   const [location, setLocation] = useLocation();
