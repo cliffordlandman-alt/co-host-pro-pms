@@ -7,8 +7,8 @@ import { ExportIncome } from "@/components/ExportIncome";
 import { AirbnbSplitSummary } from "@/components/AirbnbSplit";
 import { estimateText, hasFigures, money, shortDate, periodFromSearch, periodLabel, periodQuery, useIncome, type IncomeProperty, type IncomeRow, type IncomeTotal, type Period } from "@/lib/income";
 
-// Income per property: every property for a month (default: this month) or a calendar year, each in its own
-// currency, totals per currency. All figures come from the server's owner-statement calculation.
+// Income per property: every property for a month (default: this month) or a calendar year.
+// The server folds every currency into one dirham total. Stored bookings stay in their own currency.
 
 export function statementChip(p: IncomeProperty) {
   const s: any = p.statement;
@@ -30,12 +30,12 @@ function TotalsCard({ t }: { t: IncomeTotal }) {
   return (
     <section data-testid={`income-total-${t.currency}`} className="rounded-2xl border bg-card p-4 sm:p-5">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="font-semibold">{t.currency} properties</h2>
+        <h2 className="font-semibold">In dirhams</h2>
         <span className="text-xs text-muted-foreground">{t.properties} with income · {t.bookings} booking{t.bookings === 1 ? "" : "s"} · {t.nights} nights</span>
       </div>
       {r && <p data-testid="box-range" className="mt-1 text-xs text-muted-foreground">Checkouts {shortDate(r.start)} – {shortDate(r.end)}{r.firstCheckIn ? ` · stays counted ${shortDate(r.firstCheckIn)} – ${shortDate(r.lastCheckOut)}` : ""}</p>}
       {t.propertyNames?.length > 0 && <p className="text-xs text-muted-foreground">{t.propertyNames.join(" · ")}</p>}
-      {t.properties === 0 ? <p className="mt-3 text-sm text-muted-foreground">No verified {t.currency} income in this period yet.</p> : <>
+      {t.properties === 0 ? <p className="mt-3 text-sm text-muted-foreground">No verified income in this period yet.</p> : <>
       <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Figure label="Gross booking income" value={money(t.gross, t.currency)} />
         <Figure label="Company management fee" value={money(t.managementFee, t.currency)} strong />
@@ -72,7 +72,7 @@ function PropertyCard({ p, href }: { p: IncomeProperty; href: string }) {
       <article data-testid="income-property" className="rounded-2xl border bg-card p-4 active:scale-[.99] transition-transform cursor-pointer">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0"><h3 className="font-semibold leading-snug line-clamp-2">{p.name}</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">{p.ownerName ? `Owner: ${p.ownerName}` : "No owner yet"} · {p.currency}</p></div>
+            <p className="text-xs text-muted-foreground mt-0.5">{p.ownerName ? `Owner: ${p.ownerName}` : "No owner yet"}</p></div>
           <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
         </div>
         <div className="flex flex-wrap gap-1.5 mt-2"><EstimateChip p={p} />{chip && <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${chip.cls}`}>{chip.text}</span>}</div>
@@ -84,7 +84,6 @@ function PropertyCard({ p, href }: { p: IncomeProperty; href: string }) {
             <Figure label="Owner share" value={money(r.ownerShare, r.currency)} />
             <Figure label="Net to company" value={money(r.companyNet, r.currency)} />
           </div>
-          {(r as any).aedEquivalent && <p className="text-xs text-sky-900 mt-2" data-testid="aed-equivalent">≈ AED {(r as any).aedEquivalent.gross.toFixed(2)} gross · owner AED {(r as any).aedEquivalent.ownerShare.toFixed(2)} (1 {r.currency} = {(r as any).aedEquivalent.rate} AED, {(r as any).aedEquivalent.source}, {String((r as any).aedEquivalent.asOf).slice(0, 10)}; display only)</p>}
           <p className="text-xs text-muted-foreground mt-2">{r.bookings} booking{r.bookings === 1 ? "" : "s"} · {r.nights} nights · {p.occupancy.percent}% occupied · channel fees {money(r.channelFees, r.currency)} · cleaning & expenses {money(r.cleaning + r.expenses, r.currency)}{r.taxes ? ` · VAT & tourism ${money(r.taxes, r.currency)}` : ""}</p>
         </div>)}
         {p.estimate && <p className="text-xs text-amber-900 mt-2">{p.unverified.count} booking{p.unverified.count === 1 ? "" : "s"} ({p.unverified.nights} nights) not verified{p.unverified.estimates.length ? `: Airbnb payouts ${estimateText(p.unverified)} (estimate)` : ""}.</p>}
@@ -164,7 +163,7 @@ export default function IncomePage() {
             <li><b>Company fee</b>: the management fee, the company's commission. <b>Owner share</b>: what the owner earns after all deductions (including any co-host payout Airbnb paid the owner directly).</li>
             <li><b>Net to company</b>: company income from the property (management fee, cleaning charged, Airbnb co-host income) minus company costs for it (cleaners, company-paid repairs), as on the company statement.</li>
             <li><b>Occupancy</b>: nights booked in the period ÷ nights in the period. <b>Estimate</b>: some bookings aren't verified yet, so their money isn't counted; verify them to complete the figures.</li>
-            <li>Each property is shown in its own currency. AED and ZAR are never added together and no exchange rate is used.</li>
+            <li>Every amount is shown in UAE dirhams. Saved records keep the currency they were entered in.</li>
           </ul></details>
       </>}
     </div>

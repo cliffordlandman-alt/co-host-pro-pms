@@ -9,7 +9,8 @@ import { apiJson, dubaiTime } from "@/lib/api-json";
 
 // Airbnb payout check: every payout in the imported Airbnb files matched to its YallaPMS booking, with problems
 // first. Currencies are never added together; USD transfers are compared only with AED payouts, at the fixed peg.
-const money = (n: number | null | undefined, c: string) => n == null ? "–" : `${c} ${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+import { formatAed } from "@/lib/aed-book";
+const money = (n: number | null | undefined, c: string, date?: string) => n == null ? "–" : formatAed(n, c, date);
 const STATE: Record<string, { label: string; cls: string }> = {
   matched: { label: "Matched", cls: "bg-emerald-50 text-emerald-800 border-emerald-200" },
   mismatch: { label: "Doesn't match", cls: "bg-amber-50 text-amber-900 border-amber-300" },

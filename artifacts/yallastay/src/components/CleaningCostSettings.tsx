@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { formatAed } from '@/lib/aed-book';
 
 const label = (n: number) => n === 0 ? 'Studio' : `${n}BR`;
 async function send(url: string, body?: unknown, method = 'POST') {
@@ -57,7 +58,7 @@ export function CleaningCostSettings() {
     finally { setBusy(false); }
   }
   const nextSize = rows.length ? Math.max(...rows.map(r => r.bedrooms)) + 1 : 0;
-  const money = (n: number | null, c: string | null) => n == null ? '—' : `${c || 'AED'} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const money = (n: number | null, c: string | null) => n == null ? '—' : formatAed(n, c || 'AED');
 
   return <Card><CardContent className="pt-4 pb-4 space-y-4">
     <div>

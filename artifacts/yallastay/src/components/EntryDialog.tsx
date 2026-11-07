@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { dubaiToday } from '@/lib/today-model';
+import { formatAed } from '@/lib/aed-book';
 
 /**
  * The one form for entering income or an expense by hand (used on the Company statement and the
@@ -103,8 +104,8 @@ export function EntryDialog({ open, onOpenChange, defaultDate, entry }: { open: 
           <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">Payment status<select aria-label="Payment status" className={sel} value={form.paymentStatus} onChange={e => edit('paymentStatus', e.target.value)}><option value="">Paid</option><option value="pending">Pending</option><option value="unpaid">Unpaid</option><option value="none">Blank in workbook</option><option value="void">Void (cancelled, kept for the record, counted nowhere)</option></select></label>
             {form.currency !== 'AED' && (
-              <label className="text-sm">Rate to AED<Input aria-label="Rate to AED" type="number" step="0.0001" min="0" value={form.currency === 'ZAR' ? '' : form.fxRate} disabled={form.currency === 'USD' || form.currency === 'ZAR'} placeholder={form.currency === 'ZAR' ? 'ZAR is kept separate' : ''} onChange={e => edit('fxRate', e.target.value)} />
-                <span className="block text-xs text-muted-foreground mt-1">{form.currency === 'USD' ? 'USD is fixed at 3.6725.' : form.currency === 'ZAR' ? 'Never converted to AED.' : 'Optional.'}</span></label>
+              <label className="text-sm">Rate to AED<Input aria-label="Rate to AED" type="number" step="0.0001" min="0" value={form.currency === 'ZAR' ? '' : form.fxRate} disabled={form.currency === 'USD' || form.currency === 'ZAR'} placeholder={form.currency === 'ZAR' ? 'Shown in dirhams' : ''} onChange={e => edit('fxRate', e.target.value)} />
+                <span className="block text-xs text-muted-foreground mt-1">{form.currency === 'USD' ? 'USD is stored at the 3.6725 peg.' : form.currency === 'ZAR' ? `Stored as rand. Screens show ${formatAed(form.amount || 0, 'ZAR', form.date)}.` : 'Optional. Screens show the dirham equivalent.'}</span></label>
             )}
           </div>
           {form.type === 'income' && (

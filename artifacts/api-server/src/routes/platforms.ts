@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { bookingCurrency } from "../../../../lib/booking-currency.mjs";
+import { aedCents } from "../../../../lib/fx.mjs";
+import { getFxBook } from "../lib/fx";
 import { db, reservationsTable, propertiesTable, ownersTable, importLogsTable, appSettingsTable } from "@workspace/db";
 import { eq, ne, sql, desc, inArray } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth-middleware";
@@ -18,16 +20,15 @@ const PLATFORM_META: Record<string, { label: string; color: string }> = {
 
 // Platform-level stats + property connections
 router.get("/platforms", async (_req, res) => {
-  // Aggregate from reservations. Revenue only counts bookings whose full breakdown is verified, in AED
-  // (net accommodation revenue, excluding VAT and Tourism Dirham); blocked dates are not bookings.
+  // Verified booking revenue, converted into dirhams. Blocked dates are not bookings.
   const [bookingRows, propertyRows] = await Promise.all([db.select().from(reservationsTable), db.select().from(propertiesTable)]);
+  const book = await getFxBook();
   const statMap: Record<string, { bookings: number; nights: number; revenue: number; unverified: number }> = {};
   for (const r of bookingRows) {
     if (["cancelled", "blocked"].includes(r.status)) continue;
     const s = statMap[r.platform] ??= { bookings: 0, nights: 0, revenue: 0, unverified: 0 };
     s.bookings++; s.nights += r.nights;
-    const currency = bookingCurrency(r, propertyRows.find(p => p.id === r.propertyId));
-    if (r.financeMode === "inclusive-v1" && currency === "AED") s.revenue += Math.round(Number(r.revenue || 0) * 100);
+    if (r.financeMode === "inclusive-v1") s.revenue += aedCents(r.revenue, bookingCurrency(r, propertyRows.find(p => p.id === r.propertyId)), r.checkOut, book);
     else s.unverified++;
   }
 

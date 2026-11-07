@@ -1,3 +1,4 @@
+import fxRouter from "./fx";
 import taskCentreRouter from "./task-centre";
 import { apiAccess } from "../lib/api-access";
 import airbnbImportRouter from "./airbnb-import";
@@ -44,6 +45,7 @@ import { scheduleDraftRefresh } from "../lib/owner-statements";
 
 const router: IRouter = Router();
 
+router.use(fxRouter);
 router.use(apiAccess);
 // Keep draft owner statements current after any successful change (see lib/owner-statements.ts).
 router.use((req, res, next) => {

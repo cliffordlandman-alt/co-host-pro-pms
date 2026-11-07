@@ -21,7 +21,8 @@ type History = {
   months: { month: string; statement: { id?: number; status: string } | null; held: string | null; figures: Fig | null; stays: any[] }[];
   years: (Fig & { year: string })[]; totals: Fig[]; held: number; sentInOtherCurrency: { currency: string; amount: number; transfers: number }[];
 };
-const money = (v: number | null | undefined, c: string) => v == null ? "–" : `${c} ${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+import { formatAed } from "@/lib/aed-book";
+const money = (v: number | null | undefined, c: string, date?: string) => v == null ? "–" : formatAed(v, c, date);
 const monthLabel = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 async function json(r: Response) { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `Request failed (${r.status})`); return d; }
@@ -42,11 +43,11 @@ function printHistory(h: History, company: string) {
   const L = labels(h);
   const row = (name: string, f: Fig) => `<tr><td>${esc(name)}</td><td class="r">${f.bookings}</td><td class="r">${esc(money(f.gross, f.currency))}</td><td class="r">${esc(money(f.channel, f.currency))}</td><td class="r">${esc(money(f.management, f.currency))}</td><td class="r">${esc(money(f.ownerShare, f.currency))}</td><td class="r">${esc(money(f.paidByAirbnb, f.currency))}</td><td class="r">${esc(money(f.balance, f.currency))}</td></tr>`;
   const head = `<tr><th></th><th class="r">Stays</th><th class="r">${L.gross}</th><th class="r">${L.channel}</th><th class="r">${L.fee}</th><th class="r">${L.share}</th><th class="r">${L.paid}</th><th class="r">${L.balance}</th></tr>`;
-  const stays = h.months.flatMap(m => m.stays.map(s => `<tr><td>${esc(s.code ?? "")}</td><td>${esc(s.checkIn)} → ${esc(s.checkOut)}</td><td class="r">${esc(money(s.grossAmount != null ? Number(s.grossAmount) : null, h.property.currency || "AED"))}</td><td class="r">${esc(money(s.ownerAmount != null ? Number(s.ownerAmount) : null, h.property.currency || "AED"))}</td><td>${(s.payouts ?? []).map((p: any) => `${esc(p.paidOn ?? "")}${p.paidTo ? ` · ${esc(p.paidTo)}` : ""}${p.sentAmount != null ? ` · sent as ${esc(p.sentCurrency)} ${esc(Number(p.sentAmount).toFixed(2))}` : ""}`).join("<br>")}</td></tr>`)).join("");
+  const stays = h.months.flatMap(m => m.stays.map(s => `<tr><td>${esc(s.code ?? "")}</td><td>${esc(s.checkIn)} → ${esc(s.checkOut)}</td><td class="r">${esc(money(s.grossAmount != null ? Number(s.grossAmount) : null, h.property.currency || "AED"))}</td><td class="r">${esc(money(s.ownerAmount != null ? Number(s.ownerAmount) : null, h.property.currency || "AED"))}</td><td>${(s.payouts ?? []).map((p: any) => `${esc(p.paidOn ?? "")}${p.paidTo ? ` · ${esc(p.paidTo)}` : ""}${p.sentAmount != null ? ` · transfer ${esc(money(Number(p.sentAmount), p.sentCurrency || h.property.currency || "AED", p.paidOn))} (not added again)` : ""}`).join("<br>")}</td></tr>`)).join("");
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Statement history · ${esc(h.property.name)}</title><style>body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827;margin:32px;font-size:12px}h1{font-size:20px;margin:0}h2{font-size:14px;margin:20px 0 6px}.muted{color:#4b5563}table{width:100%;border-collapse:collapse}td,th{padding:5px 4px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}.r{text-align:right;white-space:nowrap}tr.total td{font-weight:700;border-top:2px solid #111827}@media print{body{margin:12mm}}@media screen and (max-width:640px){body{margin:12px}table{display:block;overflow-x:auto}}</style></head><body>
 <h1>Statement history</h1><div class="muted">${esc(company)}</div><p><strong>${esc(h.property.name)}</strong><br>Owner: ${esc(h.owner?.name ?? "—")}<br><span class="muted">${esc(basisText(h))}</span></p>
 <h2>By year</h2><table>${head}${h.years.map(y => row(`${y.year}${h.totals.length > 1 ? ` (${y.currency})` : ""}`, y)).join("")}${h.totals.map(t => `<tbody class="total">${row(`Total ${t.currency}`, t).replace("<tr>", '<tr class="total">')}</tbody>`).join("")}</table>
-${h.sentInOtherCurrency.map(s => `<p class="muted">Airbnb sent ${s.transfers} payout${s.transfers === 1 ? "" : "s"} as ${esc(s.currency)} ${esc(s.amount.toFixed(2))} in total (PayPal). Reference only: not added to the totals above.</p>`).join("")}
+${h.sentInOtherCurrency.map(s => `<p class="muted">Airbnb transferred ${s.transfers} payout${s.transfers === 1 ? "" : "s"} totalling ${esc(money(s.amount, s.currency))} (PayPal). Reference only: not added again to the totals above.</p>`).join("")}
 <h2>Stays (by checkout month)</h2><table><tr><th>Code</th><th>Dates</th><th class="r">${L.gross}</th><th class="r">Owner</th><th>Paid by Airbnb</th></tr>${stays}</table></body></html>`;
   const w = window.open("", "_blank");
   if (!w) { window.alert("Allow pop-ups for this site to print or save the history as PDF."); return; }
@@ -77,7 +78,7 @@ export default function OwnerHistoryPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">Statement history</h1>
-          <p className="text-sm text-muted-foreground max-w-3xl">Every month with stays for one property, from the same calculation as the monthly owner statements. Totals per year, in the property's currency; amounts in other currencies are never added in.</p>
+          <p className="text-sm text-muted-foreground max-w-3xl">Every month with stays for one property, from the same calculation as the monthly owner statements. Totals are shown in dirhams.</p>
         </div>
         <Link href="/accounting" className="text-sm underline">Owner statements</Link>
       </div>
@@ -114,7 +115,7 @@ export default function OwnerHistoryPage() {
             <Figure label={L.paid} value={money(t.paidByAirbnb, t.currency)} />
             <Figure label={L.balance} value={money(t.balance, t.currency)} strong />
           </div>)}
-          {h.sentInOtherCurrency.map(s => <p key={s.currency} data-testid="sent-other-currency" className="rounded bg-muted/60 px-3 py-2 text-xs">Airbnb sent {s.transfers} payout{s.transfers === 1 ? "" : "s"} as <b>{money(s.amount, s.currency)}</b> in total (PayPal). Reference only: this is how those payouts were transferred, not added to the {h.totals.map(t => t.currency).join("/")} totals.</p>)}
+          {h.sentInOtherCurrency.map(s => <p key={s.currency} data-testid="sent-other-currency" className="rounded bg-muted/60 px-3 py-2 text-xs">Airbnb transferred {s.transfers} payout{s.transfers === 1 ? "" : "s"} totalling <b>{money(s.amount, s.currency)}</b> (PayPal). Reference only: not added again to the dirham totals.</p>)}
         </section>
         {h.years.length > 0 && <section className="space-y-2" aria-label="By year">
           <h2 className="font-semibold">By year</h2>
@@ -158,7 +159,7 @@ function MonthRow({ m, h }: { m: History["months"][number]; h: History }) {
         {m.figures && <p className="text-muted-foreground">Gross {money(m.figures.gross, c)} · fees {money(m.figures.channel, c)} · management {money(m.figures.management, c)} · owner share {money(m.figures.ownerShare, c)} · paid by Airbnb {money(m.figures.paidByAirbnb, c)} · balance {money(m.figures.balance, c)}</p>}
         <ul className="space-y-1">{m.stays.map((s: any) => <li key={s.id} className="break-words">
           <span className="font-medium">{s.code ?? s.guestName ?? "Stay"}</span> · {s.checkIn} → {s.checkOut}{s.grossAmount != null ? ` · ${money(Number(s.grossAmount), c)}` : ""}{s.ownerAmount != null ? ` · owner ${money(Number(s.ownerAmount), c)}` : ""}{s.verified === false ? " · not verified" : ""}
-          {(s.payouts ?? []).map((p: any, i: number) => <span key={i} className="block text-muted-foreground">Paid {p.paidOn ?? "date not known"}{s.payouts.length > 1 && p.amount != null ? ` · ${money(Number(p.amount), c)}` : ""}{p.paidTo ? ` · ${p.paidTo}` : ""}{p.sentAmount != null ? ` · sent as ${p.sentCurrency} ${Number(p.sentAmount).toFixed(2)} (reference only)` : ""}</span>)}
+          {(s.payouts ?? []).map((p: any, i: number) => <span key={i} className="block text-muted-foreground">Paid {p.paidOn ?? "date not known"}{s.payouts.length > 1 && p.amount != null ? ` · ${money(Number(p.amount), c, s.checkOut)}` : ""}{p.paidTo ? ` · ${p.paidTo}` : ""}{p.sentAmount != null ? ` · transfer ${money(Number(p.sentAmount), p.sentCurrency || c, p.paidOn)} (not added again)` : ""}</span>)}
         </li>)}</ul>
         <Link href={`/accounting?month=${m.month}`} className="inline-flex items-center gap-1 underline"><FileText className="h-3 w-3" />Open {monthLabel(m.month)} statements</Link>
       </div>}

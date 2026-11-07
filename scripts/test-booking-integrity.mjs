@@ -6,7 +6,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const data = await mkdtemp(path.join(tmpdir(), 'yallapms-integrity-'));
-const env = { ...process.env, NODE_ENV: 'development', PORT: '3006', LOCAL_DATA_DIR: data, MIGRATIONS_DIR: path.join(root, 'drizzle') };
+const env = { ...process.env, NODE_ENV: 'development', PORT: '3006', LOCAL_DATA_DIR: data, MIGRATIONS_DIR: path.join(root, 'drizzle'), FX_FIXED_RATES: JSON.stringify({ USD: 3.6725, ZAR: 0.2, EUR: 4, GBP: 4.8 }) };
 delete env.DATABASE_URL;
 const child = spawn(process.execPath, [path.join(root, 'artifacts/api-server/dist/index.mjs')], { env, cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = ''; child.stdout.on('data', d => logs += d); child.stderr.on('data', d => logs += d);
@@ -44,15 +44,21 @@ try {
   await api('/reservations', 'POST', { propertyId: p.id, guestName: 'Legacy amount', platform: 'direct', checkIn: '2030-03-01', checkOut: '2030-03-03', revenue: 5000, paymentStatus: 'unknown', status: 'confirmed' }, 201);
   await api('/reservations', 'POST', { propertyId: p.id, guestName: 'Owner block', platform: 'direct', checkIn: '2030-04-01', checkOut: '2030-04-03', revenue: 0, status: 'blocked', paymentStatus: 'unknown' }, 201);
   await api('/reservations', 'POST', { ...base, propertyId: zarProp.id, dubaiCharges: false, checkIn: '2030-01-01', checkOut: '2030-01-03' }, 201);
-  const verifiedAed = (await api('/reservations')).filter(r => r.financeMode === 'inclusive-v1' && r.propertyId === p.id && r.status !== 'cancelled').reduce((n, r) => n + Math.round(r.revenue * 100), 0) / 100;
+  const allBookings = await api('/reservations');
+  const verifiedAed = allBookings.filter(r => r.financeMode === 'inclusive-v1' && r.propertyId === p.id && r.status !== 'cancelled').reduce((n, r) => n + Math.round(r.revenue * 100), 0) / 100;
+  const zarBooking = allBookings.find(r => r.propertyId === zarProp.id && r.financeMode === 'inclusive-v1');
+  const zarShown = Math.round(Number(zarBooking.revenue) * 20) / 100;
   const direct = (await api('/platforms')).platforms.find(x => x.key === 'direct');
-  assert.equal(direct.revenue, verifiedAed); assert.equal(direct.unverifiedBookings, 2);
+  assert.equal(direct.revenue, Math.round((verifiedAed + zarShown) * 100) / 100); assert.equal(direct.unverifiedBookings, 1);
   assert.equal(direct.bookings, 4, 'blocked dates are not bookings');
   const split = (await api('/reports/platforms')).find(x => x.platform === 'direct');
-  assert.equal(split.revenue, verifiedAed); assert.equal(split.count, 4);
+  assert.equal(split.revenue, direct.revenue); assert.equal(split.currency, 'AED'); assert.equal(split.count, 4);
   const pnl = await api('/reports/pnl');
-  assert.equal(pnl.find(x => x.propertyId === p.id).revenue, verifiedAed); assert.equal(pnl.find(x => x.propertyId === zarProp.id).currency, 'ZAR');
-  passed.push('channel/P&L revenue = verified, per currency, no blocks');
+  assert.equal(pnl.find(x => x.propertyId === p.id).revenue, verifiedAed);
+  assert.equal(pnl.find(x => x.propertyId === zarProp.id).currency, 'AED');
+  assert.equal(pnl.find(x => x.propertyId === zarProp.id).revenue, zarShown);
+  assert.notEqual(Number(zarBooking.revenue), zarShown, 'stored booking amount is not rewritten');
+  passed.push('channel/P&L revenue = verified bookings in dirhams, no blocks');
 
   // History is never destroyed by deletes; empty records can still be removed.
   await api(`/properties/${p.id}`, 'DELETE', undefined, 409);

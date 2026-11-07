@@ -46,7 +46,7 @@ assert.deepEqual(autoStatementDecision({ today: '2026-10-06', owner: own(), stat
 assert.equal(autoStatementDecision({ today: '2026-10-20', owner: own(), statements: approved, outbound: true, lastRunMonth: '2026-09' }).run, false, 'once per month');
 
 const data = await mkdtemp(path.join(tmpdir(), 'yallapms-lakeside-'));
-const env = { ...process.env, NODE_ENV: 'development', PORT: '3032', LOCAL_DATA_DIR: data, MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_DELIVERY: 'off' };
+const env = { ...process.env, NODE_ENV: 'development', PORT: '3032', LOCAL_DATA_DIR: data, MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_DELIVERY: 'off', FX_FIXED_RATES: JSON.stringify({ USD: 3.6725, ZAR: 0.2, EUR: 4, GBP: 4.8 }) };
 delete env.DATABASE_URL;
 const child = spawn(process.execPath, [path.join(root, 'artifacts/api-server/dist/index.mjs')], { env, cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = ''; child.stdout.on('data', d => logs += d); child.stderr.on('data', d => logs += d);
@@ -144,7 +144,9 @@ try {
   const inc = await api('/reports/income?year=2025');
   const lk = inc.properties.find(p => p.propertyId === L.id);
   assert.equal(lk.unverified.count, 0, 'nothing unverified'); assert.equal(lk.rows.length, 1);
-  near(lk.rows[0].ownerShare, YEARS[2025], 'owner share 2025'); near(lk.rows[0].paidByAirbnb, YEARS[2025], 'paid by Airbnb 2025'); near(lk.rows[0].ownerBalance, 0); near(lk.rows[0].managementFee, 0);
+  const shown2025 = Math.round(YEARS[2025] * 20) / 100;
+  assert.equal(lk.rows[0].currency, 'AED');
+  near(lk.rows[0].ownerShare, shown2025, 'owner share 2025 in dirhams'); near(lk.rows[0].paidByAirbnb, shown2025, 'paid by Airbnb 2025 in dirhams'); near(lk.rows[0].ownerBalance, 0); near(lk.rows[0].managementFee, 0);
   assert.equal((inc.airbnbSplit || []).some(x => x.propertyId === L.id), false, 'not a co-host split property');
 
   // ── Monthly automatic statements ──

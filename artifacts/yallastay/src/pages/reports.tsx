@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { CompanyFinance } from "@/components/CompanyFinance";
+import { formatAed } from "@/lib/aed-book";
 import { apiFetch } from "@/lib/api-fetch";
 import { AirbnbIncome } from "@/components/AirbnbIncome";
 import { useQuery } from "@tanstack/react-query";
@@ -23,14 +23,13 @@ async function fetchJson(path: string) {
 
 // Channel slices use the shared channel colours (lib/channel-colors.ts), so Airbnb is red here too.
 
-function formatMoney(n: number, currency="AED") {
-  return `${currency} ${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+function formatMoney(n: number) {
+  return formatAed(n, "AED", null, 0);
 }
 
 export default function Reports() {
-  const [currency,setCurrency]=useState("AED");
-  const formatAED=(n:number)=>formatMoney(n,currency);
-  const { data: revenue, isLoading: loadingRev } = useQuery({ queryKey: ["reports-revenue",currency], queryFn: () => fetchJson(`/api/reports/revenue?currency=${currency}`) });
+  const formatAED=(n:number)=>formatMoney(n);
+  const { data: revenue, isLoading: loadingRev } = useQuery({ queryKey: ["reports-revenue"], queryFn: () => fetchJson("/api/reports/revenue") });
   const { data: occupancy, isLoading: loadingOcc } = useQuery({ queryKey: ["reports-occupancy"], queryFn: () => fetchJson("/api/reports/occupancy") });
   const { data: platforms, isLoading: loadingPlatforms } = useQuery({ queryKey: ["reports-platforms"], queryFn: () => fetchJson("/api/reports/platforms") });
 
@@ -44,7 +43,7 @@ export default function Reports() {
 
       <CompanyFinance/>
       <AirbnbIncome/>
-      <label className="block text-sm">Chart currency <select aria-label="Chart currency" className="border rounded p-2 bg-background" value={currency} onChange={e=>setCurrency(e.target.value)}>{['AED','ZAR','USD'].map(c=><option key={c}>{c}</option>)}</select></label><p className="text-sm text-muted-foreground">Airbnb paid earnings now appear in the monthly chart. They may be co-host shares, so they are shown separately from verified accommodation revenue and must not be added together. Booking counts include all currencies.</p>
+      <p className="text-sm text-muted-foreground">All amounts are in UAE dirhams. Airbnb paid earnings are shown separately from verified accommodation revenue and are not added to it.</p>
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[

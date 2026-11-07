@@ -26,7 +26,8 @@ type Form = { grossAmount: string; cleaningFee: string; channelCommissionPercent
 type Preview = { ok: true; feeBasis?: string; grossAmount: number; revenue: number; vatAmount: number; tourismFee: number; channelPercent: number; channelAmount: number; managementPercent: number; managementAmount: number; cleaningFee: number; cleaningDeducted: boolean; ownerAmount: number } | { ok: false; error: string };
 type State = { form: Form; preview?: Preview; previewKey?: string; checking?: boolean; saving?: boolean; saved?: boolean; error?: string };
 
-const money = (v: number | null | undefined, c: string) => v == null ? "–" : `${c} ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+import { formatAed } from "@/lib/aed-book";
+const money = (v: number | null | undefined, c: string, date?: string) => v == null ? "–" : formatAed(v, c, date);
 const keyOf = (f: Form, r: Row) => JSON.stringify(previewBody(f, r)); // what the finance preview depends on
 const cohostOk = (v: string) => /^\d+(\.\d{1,2})?$/.test(v.trim());
 const cents = (v: number) => Math.round(v * 100);
@@ -162,8 +163,8 @@ function VerifyRow({ row: r, form, st, canSave, update, onSave }: { row: Row; fo
           <Link href={`/reservations/${r.id}`} className="font-medium hover:underline">{r.guestName || "Guest"}</Link>
           <p className="text-muted-foreground">{r.propertyName}{r.ownerName ? ` · ${r.ownerName}` : " · no owner"}</p>
           <p className="flex flex-wrap items-center gap-1.5 text-muted-foreground">{r.checkIn} → {r.checkOut}<span data-testid="channel-badge" className="rounded border px-1.5 py-0.5 text-[11px] font-medium" style={badgeStyle(r.platform)}>{platformLabel(r.platform)}</span></p>
-          {r.channelEarnings.length > 0 && <p className="mt-1 text-xs">Airbnb expected earnings: <b>{r.channelEarnings.map(e => money(e.amount, e.currency)).join(" + ")}</b> <span className="text-muted-foreground">(reference only, not the guest total)</span></p>}
-          {r.cohostPayout != null && !r.cohostRequired && <p className="mt-1 text-xs text-muted-foreground">Co-host payout: <b>{money(r.cohostPayout, r.currency)}</b> (recorded; not deducted for this property)</p>}
+          {r.channelEarnings.length > 0 && <p className="mt-1 text-xs">Airbnb expected earnings: <b>{r.channelEarnings.map(e => money(e.amount, e.currency, r.checkOut)).join(" + ")}</b> <span className="text-muted-foreground">(reference only, not the guest total)</span></p>}
+          {r.cohostPayout != null && !r.cohostRequired && <p className="mt-1 text-xs text-muted-foreground">Co-host payout: <b>{money(r.cohostPayout, r.currency, r.checkOut)}</b> (recorded; not deducted for this property)</p>}
           {r.locked && <p className="mt-1 text-xs text-amber-700">This month's statement for this property was already sent or paid, so the booking can't be changed here.</p>}
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -195,16 +196,16 @@ function VerifyRow({ row: r, form, st, canSave, update, onSave }: { row: Row; fo
           {p && !p.ok && <p className="flex items-start gap-1 text-red-600"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />{p.error}</p>}
           {p && p.ok && <>
             <dl className="grid grid-cols-2 gap-x-3">
-              {p.tourismFee > 0 && <><dt className="text-muted-foreground">Tourism Dirham</dt><dd className="text-right">{money(p.tourismFee, c)}</dd></>}
-              {p.feeBasis !== "airbnb-payout" && <><dt className="text-muted-foreground">VAT</dt><dd className="text-right">{money(p.vatAmount, c)}</dd></>}
-              <dt className="text-muted-foreground">{p.feeBasis === "airbnb-payout" ? "Airbnb fees (gross − payout)" : p.feeBasis === "net-payout" ? "Channel fees (actual)" : `Channel ${p.channelPercent}%`}</dt><dd className="text-right">{money(p.channelAmount, c)}</dd>
-              {p.feeBasis === "airbnb-payout" && <><dt className="text-muted-foreground">Payout from Airbnb</dt><dd className="text-right">{money(p.grossAmount - p.channelAmount, c)}</dd></>}
-              {p.feeBasis === "net-payout" && <><dt className="text-muted-foreground">Net payout</dt><dd className="text-right">{money(p.grossAmount - p.channelAmount, c)}</dd></>}
-              <dt className="text-muted-foreground">Management {p.managementPercent}%{p.feeBasis === "net-payout" ? " of net payout" : p.feeBasis === "airbnb-payout" ? " of the payout" : ""}</dt><dd className="text-right">{money(p.managementAmount, c)}</dd>
-              <dt className="text-muted-foreground">Cleaning{p.cleaningDeducted ? "" : " (not deducted)"}</dt><dd className="text-right">{money(p.cleaningDeducted ? p.cleaningFee : 0, c)}</dd>
-              <dt className="font-medium">Owner</dt><dd className="text-right font-medium">{money(p.ownerAmount, c)}</dd>
+              {p.tourismFee > 0 && <><dt className="text-muted-foreground">Tourism Dirham</dt><dd className="text-right">{money(p.tourismFee, c, r.checkOut)}</dd></>}
+              {p.feeBasis !== "airbnb-payout" && <><dt className="text-muted-foreground">VAT</dt><dd className="text-right">{money(p.vatAmount, c, r.checkOut)}</dd></>}
+              <dt className="text-muted-foreground">{p.feeBasis === "airbnb-payout" ? "Airbnb fees (gross − payout)" : p.feeBasis === "net-payout" ? "Channel fees (actual)" : `Channel ${p.channelPercent}%`}</dt><dd className="text-right">{money(p.channelAmount, c, r.checkOut)}</dd>
+              {p.feeBasis === "airbnb-payout" && <><dt className="text-muted-foreground">Payout from Airbnb</dt><dd className="text-right">{money(p.grossAmount - p.channelAmount, c, r.checkOut)}</dd></>}
+              {p.feeBasis === "net-payout" && <><dt className="text-muted-foreground">Net payout</dt><dd className="text-right">{money(p.grossAmount - p.channelAmount, c, r.checkOut)}</dd></>}
+              <dt className="text-muted-foreground">Management {p.managementPercent}%{p.feeBasis === "net-payout" ? " of net payout" : p.feeBasis === "airbnb-payout" ? " of the payout" : ""}</dt><dd className="text-right">{money(p.managementAmount, c, r.checkOut)}</dd>
+              <dt className="text-muted-foreground">Cleaning{p.cleaningDeducted ? "" : " (not deducted)"}</dt><dd className="text-right">{money(p.cleaningDeducted ? p.cleaningFee : 0, c, r.checkOut)}</dd>
+              <dt className="font-medium">Owner</dt><dd className="text-right font-medium">{money(p.ownerAmount, c, r.checkOut)}</dd>
             </dl>
-            {reconciles(p) ? <p className="mt-1 flex items-center gap-1 text-emerald-700"><CheckCircle2 className="h-3 w-3" />Adds up to {money(p.grossAmount, c)}</p>
+            {reconciles(p) ? <p className="mt-1 flex items-center gap-1 text-emerald-700"><CheckCircle2 className="h-3 w-3" />Adds up to {money(p.grossAmount, c, r.checkOut)}</p>
               : <p className="mt-1 text-red-600">The breakdown does not add up to the {hostFigures ? "gross earnings" : "guest total"}. Not saved; please report this booking.</p>}
           </>}
         </div>

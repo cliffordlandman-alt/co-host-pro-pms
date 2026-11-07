@@ -17,6 +17,8 @@ import { reservationFinancials } from "../../../../lib/reservation-financials.mj
 import { dubaiToday } from "../lib/dubai-date";
 import { documentCompanyName } from "./app-settings";
 import { companyStatement } from "../../../../lib/company-statement.mjs";
+import { presentCompany, presentCompanyMonth } from "../../../../lib/fx-present.mjs";
+import { getFxBook } from "../lib/fx";
 
 const router = Router();
 const realDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(d + "T00:00:00Z").toISOString().slice(0, 10) === d;
@@ -316,7 +318,7 @@ router.put("/accounting/workbook-settings", asyncHandler(async (req, res) => {
 router.get("/accounting/company-month/:month", asyncHandler(async (req, res) => {
   const month = String(req.params.month);
   if (!MONTH.test(month)) return res.status(400).json({ error: "Month must look like 2026-09" });
-  res.json(companyMonthSummary(await workbookData(), month, await workbookOverrides(), { today: dubaiToday(), companyName: await documentCompanyName() }));
+  res.json(presentCompanyMonth(companyMonthSummary(await workbookData(), month, await workbookOverrides(), { today: dubaiToday(), companyName: await documentCompanyName() }), await getFxBook()));
 }));
 // GET /accounting/company-statement?start&end: same rows and rules as company-month / the YALLA export (13 Oct 2026:
 // the old booking-based statement disagreed: Sunrise Bay as fee + cleaning, no rent/DEWA, ZAR fees missing).
@@ -327,10 +329,11 @@ router.get("/accounting/company-statement", asyncHandler(async (req, res) => {
   const wb = companyStatementFromWorkbook(data, start, end, await workbookOverrides(), { today: dubaiToday(), companyName: await documentCompanyName() });
   // A company keeping its books from Airbnb's monthly reports (the YALLA workbook, like Clifford's) gets the workbook
   // rules, so this equals company-month. Without those reports the booking-based statement is the only data there is.
-  if (wb.lines.some((l: any) => l.kind === "airbnb-monthly") || (data.payouts ?? []).some((p: any) => p.currency === "USD")) return res.json(wb);
+  const book = await getFxBook();
+  if (wb.lines.some((l: any) => l.kind === "airbnb-monthly") || (data.payouts ?? []).some((p: any) => p.currency === "USD")) return res.json(presentCompany(wb, book));
   const [settings, maintenance] = await Promise.all([db.select().from(propertySettingsTable), db.select().from(maintenanceTicketsTable)]);
   const bookings = await db.select().from(reservationsTable);
-  res.json({ ...companyStatement({ earnings: data.earnings, bookings, transactions: data.transactions, properties: data.properties, maintenance, settings }, start, end), basis: "bookings" });
+  res.json({ ...presentCompany(companyStatement({ earnings: data.earnings, bookings, transactions: data.transactions, properties: data.properties, maintenance, settings }, start, end), book), basis: "bookings" });
 }));
 // GET /accounting/workbook/2026-09 (JSON) or .xlsx.
 router.get(/^\/accounting\/workbook\/(\d{4}-\d{2})(\.xlsx)?$/, asyncHandler(async (req, res) => {

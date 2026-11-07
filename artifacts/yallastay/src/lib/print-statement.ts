@@ -7,7 +7,8 @@ import { sortStatementBookings } from "../../../../lib/booking-currency.mjs";
 import { BRAND } from "../../../../lib/brand.mjs";
 
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-const money = (n: number, c: string) => `${c} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+import { formatAed } from "./aed-book.ts";
+const money = (n: number, c: string, date?: string) => formatAed(n, c, date);
 
 /** company = Settings → Company → "Company name on documents" (useDocumentName); defaults to the product name. */
 export function statementHtml(stmt: any, ownerLines: any[], company: string = BRAND) {
@@ -19,27 +20,28 @@ export function statementHtml(stmt: any, ownerLines: any[], company: string = BR
   bookings = sortStatementBookings(bookings);
   const bal = statementBalance(stmt);
   const fl = feeLabels(stmt);
-  const row = (label: string, value: number, minus = true, cls = "") => `<tr class="${cls}"><td>${esc(label)}</td><td class="r">${minus ? "− " : ""}${esc(money(value, c))}</td></tr>`;
+  const show = (n: number, cur: string, date?: string) => money(n, cur, date || stmt.month);
+  const row = (label: string, value: number, minus = true, cls = "") => `<tr class="${cls}"><td>${esc(label)}</td><td class="r">${minus ? "− " : ""}${esc(show(value, c))}</td></tr>`;
   const lines = [
     row(fl.gross, stmt.grossRevenue, false),
     stmt.platformFees > 0 ? row(fl.platform, stmt.platformFees) : "",
-    fl.net ? `<tr class="share"><td>${esc(fl.net)}</td><td class="r">${esc(money(stmt.grossRevenue - stmt.platformFees, c))}</td></tr>` : "",
+    fl.net ? `<tr class="share"><td>${esc(fl.net)}</td><td class="r">${esc(show(stmt.grossRevenue - stmt.platformFees, c))}</td></tr>` : "",
     row(fl.management, stmt.managementFee),
     stmt.cleaningCosts > 0 ? row("Cleaning", stmt.cleaningCosts) : "",
     stmt.maintenanceCosts > 0 ? row("Maintenance", stmt.maintenanceCosts) : "",
     stmt.otherExpenses > 0 ? row("Expenses charged to owner", stmt.otherExpenses) : "",
-    ...ownerLines.map(l => `<tr class="sub"><td>${esc(l.date)} · ${esc(l.description)} (${esc(l.category)})</td><td class="r">− ${esc(money(l.amount, l.currency || c))}</td></tr>`),
+    ...ownerLines.map(l => `<tr class="sub"><td>${esc(l.date)} · ${esc(l.description)} (${esc(l.category)})</td><td class="r">− ${esc(show(l.amount, l.currency || c, l.date))}</td></tr>`),
     stmt.tourismFee > 0 ? row("Tourism fee", stmt.tourismFee) : "",
     stmt.vatAmount > 0 ? row("VAT", stmt.vatAmount) : "",
-    bal.hasCohost ? `<tr class="share"><td>Owner share</td><td class="r">${esc(money(bal.ownerShare, c))}</td></tr>` : "",
+    bal.hasCohost ? `<tr class="share"><td>Owner share</td><td class="r">${esc(show(bal.ownerShare, c))}</td></tr>` : "",
     bal.hasCohost ? row(fl.paidByAirbnb, bal.paidByAirbnb) : "",
-    bal.settled ? `<tr class="total"><td>${esc(bal.label)}</td><td class="r">Nothing owed</td></tr>${bal.rounding ? `<tr class="sub"><td>Rounding difference, not paid either way</td><td class="r">${esc(money(bal.amount, c))}</td></tr>` : ""}`
-      : `<tr class="total"><td>${esc(bal.label)}</td><td class="r">${esc(money(bal.amount, c))}</td></tr>`,
+    bal.settled ? `<tr class="total"><td>${esc(bal.label)}</td><td class="r">Nothing owed</td></tr>${bal.rounding ? `<tr class="sub"><td>Rounding difference, not paid either way</td><td class="r">${esc(show(bal.amount, c))}</td></tr>` : ""}`
+      : `<tr class="total"><td>${esc(bal.label)}</td><td class="r">${esc(show(bal.amount, c))}</td></tr>`,
   ].join("");
   // What Airbnb paid the owner per stay: the co-host payout, or the whole payout (with dates, account, a USD transfer's own amount).
   const paidOf = (b: any) => b.paidToOwnerByAirbnb ? b.airbnbPayout : fl.wholePayout ? null : b.cohostPayout;
-  const paidInfo = (b: any) => (Array.isArray(b.payouts) ? b.payouts : []).map((p: any) => `${esc(p.paidOn ?? "")}${p.paidTo ? ` · ${esc(p.paidTo)}` : ""}${p.sentAmount != null ? ` · sent as ${esc(p.sentCurrency)} ${esc(Number(p.sentAmount).toFixed(2))}` : ""}`).join("<br>");
-  const bookingRows = bookings.map(b => `<tr><td>${esc(b.guestName)}${b.code ? `<div class="muted">${esc(b.code)}</div>` : ""}</td><td>${esc(b.checkIn)} → ${esc(b.checkOut)}</td><td>${esc(b.platform)}</td><td class="r">${esc(money(Number(b.grossAmount), c))}</td><td class="r">${esc(money(Number(b.ownerAmount), c))}</td>${bal.hasCohost ? `<td class="r">${paidOf(b) == null ? "–" : esc(money(Number(paidOf(b)), c))}${paidInfo(b) ? `<div class="muted" style="font-size:11px">${paidInfo(b)}</div>` : ""}</td>` : ""}</tr>`).join("");
+  const paidInfo = (b: any) => (Array.isArray(b.payouts) ? b.payouts : []).map((p: any) => `${esc(p.paidOn ?? "")}${p.paidTo ? ` · ${esc(p.paidTo)}` : ""}${p.sentAmount != null ? ` · transfer ${esc(show(Number(p.sentAmount), p.sentCurrency || c, p.paidOn))} (not added again)` : ""}`).join("<br>");
+  const bookingRows = bookings.map(b => `<tr><td>${esc(b.guestName)}${b.code ? `<div class="muted">${esc(b.code)}</div>` : ""}</td><td>${esc(b.checkIn)} → ${esc(b.checkOut)}</td><td>${esc(b.platform)}</td><td class="r">${esc(show(Number(b.grossAmount), b.currency || c, b.checkOut))}</td><td class="r">${esc(show(Number(b.ownerAmount), b.currency || c, b.checkOut))}</td>${bal.hasCohost ? `<td class="r">${paidOf(b) == null ? "–" : esc(show(Number(paidOf(b)), b.currency || c, b.checkOut))}${paidInfo(b) ? `<div class="muted" style="font-size:11px">${paidInfo(b)}</div>` : ""}</td>` : ""}</tr>`).join("");
   return `<!doctype html><html><head><meta charset="utf-8"><title>Owner statement · ${esc(stmt.propertyName)} · ${esc(monthLabel)}</title>
 <style>body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827;margin:32px;font-size:13px}h1{font-size:20px;margin:0}h2{font-size:14px;margin:24px 0 8px}
 .muted{color:#4b5563}table{width:100%;border-collapse:collapse}td,th{padding:6px 4px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}.r{text-align:right;white-space:nowrap}

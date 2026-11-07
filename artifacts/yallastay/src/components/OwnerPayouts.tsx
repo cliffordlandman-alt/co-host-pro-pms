@@ -8,12 +8,24 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiJson } from "@/lib/api-json";
+import { aedNumber, formatAed, getFxBook } from "@/lib/aed-book";
+import { rateOn } from "../../../../lib/fx.mjs";
 
 // Payouts to the owner against one statement: date, method and bank reference. The statement can only be marked
 // paid once these add up to its balance (the server enforces it).
 export type OwnerPayout = { id: number; amount: number; currency: string; paidOn: string; method: string; reference: string | null; notes?: string | null };
 export const METHOD_LABEL: Record<string, string> = { bank_transfer: "Bank transfer", cash: "Cash", cheque: "Cheque", other: "Other", not_recorded: "Not recorded" };
-const money = (n: number, c: string) => `${c} ${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (n: number, c: string, date?: string) => formatAed(n, c, date);
+/** The form is in dirhams. The server still stores the payout in the statement currency, and paying the full remainder must send that exact remainder. */
+function storedAmount(typed: number, remainingStored: number, currency: string, date?: string) {
+  if (!Number.isFinite(typed)) return typed;
+  if (currency === "AED") return typed;
+  const fullAed = aedNumber(remainingStored, currency, date);
+  if (fullAed != null && Math.abs(typed - fullAed) <= 0.02) return remainingStored;
+  const rate = rateOn(getFxBook(), currency, date);
+  if (!rate) return typed;
+  return Math.round((typed / rate) * 100) / 100;
+}
 const dubaiToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date());
 const cents = (n: number) => Math.round(n * 100);
 
@@ -41,7 +53,7 @@ export function OwnerPayouts({ stmt, balance, canRecord }: { stmt: any; balance:
   const [error, setError] = useState("");
   const done = () => qc.invalidateQueries({ queryKey: ["statements"] });
   const save = useMutation({
-    mutationFn: () => apiJson(`/api/accounting/statements/${stmt.id}/payouts`, "POST", { ...form, amount: Number(form.amount) }),
+    mutationFn: () => apiJson(`/api/accounting/statements/${stmt.id}/payouts`, "POST", { ...form, amount: storedAmount(Number(form.amount), remaining, cur, stmt.month) }),
     onSuccess: (r: any) => { done(); setOpen(false); toast({ title: "Payout recorded", description: r.remaining > 0 ? `${money(r.remaining, cur)} still to pay` : "The payouts now match the balance. You can mark the statement paid." }); },
     onError: (e: Error) => setError(e.message),
   });
@@ -58,15 +70,15 @@ export function OwnerPayouts({ stmt, balance, canRecord }: { stmt: any; balance:
       {payouts.length > 0 ? <ul className="space-y-1">{payouts.map(p => <PayoutLine key={p.id} p={p} onDelete={canRecord ? () => { if (confirm(`Remove the ${money(p.amount, p.currency)} payout record of ${p.paidOn}?`)) remove.mutate(p.id); } : undefined} />)}</ul>
         : <p className="text-xs text-muted-foreground">No payout recorded yet.</p>}
       {canRecord && <p data-testid="payout-progress" className={`text-xs ${remaining === 0 ? "text-emerald-700" : "text-amber-800"}`}>{remaining === 0 ? `Paid in full: ${money(paid / 100, cur)}` : `Recorded ${money(paid / 100, cur)} of ${money(balance, cur)} · ${money(remaining, cur)} to record`}</p>}
-      {canRecord && remaining > 0 && <Button size="sm" variant="outline" data-testid="record-payout" onClick={() => { setForm({ amount: remaining.toFixed(2), paidOn: dubaiToday(), method: "bank_transfer", reference: "", notes: "" }); setError(""); setOpen(true); }}>
+      {canRecord && remaining > 0 && <Button size="sm" variant="outline" data-testid="record-payout" onClick={() => { const shown = aedNumber(remaining, cur, stmt.month) ?? remaining; setForm({ amount: shown.toFixed(2), paidOn: dubaiToday(), method: "bank_transfer", reference: "", notes: "" }); setError(""); setOpen(true); }}>
         <Banknote className="h-3.5 w-3.5 mr-1" />Record payout</Button>}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Record payout · {stmt.propertyName} · {stmt.month}</DialogTitle></DialogHeader>
           <form className="space-y-3" onSubmit={e => { e.preventDefault(); setError(""); save.mutate(); }}>
-            <p className="text-xs text-muted-foreground">Balance {money(balance, cur)}{paid ? `, ${money(paid / 100, cur)} already recorded` : ""}. Record what actually left the account, as on the bank statement.</p>
+            <p className="text-xs text-muted-foreground">Balance {money(balance, cur, stmt.month)}{paid ? `, ${money(paid / 100, cur, stmt.month)} already recorded` : ""}. Enter the dirham amount that left the account. It is saved on the statement in {cur}.</p>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1"><Label htmlFor="po-amount">Amount ({cur})</Label><Input id="po-amount" data-testid="payout-amount" inputMode="decimal" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></div>
+              <div className="space-y-1"><Label htmlFor="po-amount">Amount (AED)</Label><Input id="po-amount" data-testid="payout-amount" inputMode="decimal" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></div>
               <div className="space-y-1"><Label htmlFor="po-date">Paid on</Label><Input id="po-date" data-testid="payout-date" type="date" max={dubaiToday()} value={form.paidOn} onChange={e => setForm(f => ({ ...f, paidOn: e.target.value }))} /></div>
             </div>
             <div className="space-y-1"><Label>Method</Label>
