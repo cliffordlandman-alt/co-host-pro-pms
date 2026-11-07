@@ -22,7 +22,7 @@ assert.throws(() => bookingFinance({ total: '100.00', managementPercent: 0, nigh
 // ── API ──
 const data = await mkdtemp(path.join(tmpdir(), 'yallapms-amountless-'));
 const outLog = path.join(data, 'outbound.log'); await writeFile(outLog, '');
-const env = { ...process.env, NODE_ENV: 'development', PORT: '3027', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog, RESEND_API_KEY: 're_test_only' };
+const env = { ...process.env, NODE_ENV: 'development', PORT: '3027', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog, RESEND_API_KEY: 're_test_only', FX_FIXED_RATES: JSON.stringify({ USD: 3.6725, ZAR: 0.2, EUR: 4, GBP: 4.8 }) };
 delete env.DATABASE_URL; delete env.OUTBOUND_DELIVERY;
 const child = spawn(process.execPath, ['--import', path.join(root, 'scripts/outbound-guard.mjs'), path.join(root, 'artifacts/api-server/dist/index.mjs')], { env, cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = ''; child.stdout.on('data', d => logs += d); child.stderr.on('data', d => logs += d);
@@ -81,8 +81,13 @@ try {
   assert.equal(again.rows.find(r => r.code === 'HMEMPTY001').action, 'none');
   // Income per property and the owner statement use the actual fees.
   const inc = await api('/reports/income?month=2026-09');
-  const zar = inc.properties.find(p => p.propertyId === GL.id).rows.find(r => r.currency === 'ZAR');
-  assert.equal(zar.channelFees, 453.43); assert.equal(zar.ownerShare, 2090.37);
+  const shown = inc.properties.find(p => p.propertyId === GL.id).rows[0];
+  assert.equal(shown.currency, 'AED');
+  const stay = (await api('/reservations')).filter(b => b.propertyId === GL.id && b.financeMode === 'inclusive-v1');
+  const asAed = (n, c) => Math.round(Number(n) * (c === 'ZAR' ? 0.2 : 1) * 100) / 100;
+  assert.equal(shown.channelFees, stay.reduce((n, b) => n + asAed(b.channelAmount, b.currency), 0));
+  assert.equal(shown.ownerShare, stay.reduce((n, b) => n + asAed(b.ownerAmount, b.currency), 0), 'dirham total of each booking, ZAR at 0.2');
+  assert.equal(Number((await api(`/reservations/${empty.id}`)).channelAmount), 453.43, 'stored ZAR fees are not rewritten');
   // Unverified bookings still get no figures (the estimate is only for them).
   const GR = await api('/properties', 'POST', { name: 'Garden Test', unitNumber: 'GT', city: 'Gqeberha', currency: 'AED', bedrooms: 1 }, 201);
   await api(`/accounting/settings/${GR.id}`, 'PUT', { managementFeePercent: 0, includeCleaning: false });

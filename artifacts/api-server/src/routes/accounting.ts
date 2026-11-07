@@ -1,4 +1,5 @@
-import { aedEquivalent, FX_DEFAULT } from "../../../../lib/fx-convert.mjs";
+import { toAed } from "../../../../lib/fx.mjs";
+import { getFxBook } from "../lib/fx";
 import { refreshOwnerStatements, duplicateOwnerStatements, awaitDraftRefresh } from "../lib/owner-statements";
 import { dubaiToday } from "../lib/dubai-date";
 import { companyStatement } from "../../../../lib/company-statement.mjs";
@@ -446,17 +447,27 @@ router.get("/accounting/statements", asyncHandler(async (req, res) => {
   const where = conds.length ? and(...conds) : undefined;
   let summary: unknown = null, total = 0;
   if (p) {
-    // Totals per currency over every statement that matches the filters, not just the visible page.
-    const cur = sql<string>`coalesce(${ownerStatementsTable.currency}, 'AED')`;
+    // Totals in dirhams over every statement that matches the filters, not just the visible page.
     const agg = await db.select({
-      currency: cur,
-      count: sql<number>`count(*)::int`,
-      grossRevenue: sql<string>`coalesce(sum(${ownerStatementsTable.grossRevenue}),0)`,
-      managementFee: sql<string>`coalesce(sum(${ownerStatementsTable.managementFee}),0)`,
-      ownerPayout: sql<string>`coalesce(sum(${ownerStatementsTable.ownerPayout}),0)`,
-    }).from(ownerStatementsTable).where(where).groupBy(cur).orderBy(cur);
-    total = agg.reduce((n, a) => n + a.count, 0);
-    summary = { total, currencies: agg.map(a => ({ currency: a.currency, count: a.count, grossRevenue: Number(a.grossRevenue), managementFee: Number(a.managementFee), ownerPayout: Number(a.ownerPayout) })) };
+      currency: ownerStatementsTable.currency,
+      month: ownerStatementsTable.month,
+      grossRevenue: ownerStatementsTable.grossRevenue,
+      managementFee: ownerStatementsTable.managementFee,
+      ownerPayout: ownerStatementsTable.ownerPayout,
+    }).from(ownerStatementsTable).where(where);
+    const book = await getFxBook();
+    const aed = { currency: "AED", count: agg.length, grossRevenue: 0, managementFee: 0, ownerPayout: 0 };
+    for (const row of agg) {
+      const currency = row.currency || "AED";
+      aed.grossRevenue += toAed(row.grossRevenue, currency, row.month, book) || 0;
+      aed.managementFee += toAed(row.managementFee, currency, row.month, book) || 0;
+      aed.ownerPayout += toAed(row.ownerPayout, currency, row.month, book) || 0;
+    }
+    aed.grossRevenue = Math.round(aed.grossRevenue * 100) / 100;
+    aed.managementFee = Math.round(aed.managementFee * 100) / 100;
+    aed.ownerPayout = Math.round(aed.ownerPayout * 100) / 100;
+    total = agg.length;
+    summary = { total, currencies: [aed] };
   }
 
   const query = db
@@ -513,9 +524,7 @@ router.get("/accounting/statements", asyncHandler(async (req, res) => {
   }));
   const payouts = await payoutsFor(items.map(i => i.id));
   const withPayouts = items.map(i => { const list = payouts.filter(x => x.statementId === i.id); return { ...i, payouts: list, paidTotal: list.reduce((n, x) => n + Math.round(x.amount * 100), 0) / 100 }; });
-  const fxIds = new Set(FX_DEFAULT.convertPropertyIds);
-  const withFx = withPayouts.map(i => fxIds.has(i.propertyId) && i.currency && i.currency !== "AED" ? { ...i, aedEquivalent: aedEquivalent(i) } : i);
-  res.json(p ? paged(withFx, total, p, summary) : withFx);
+  res.json(p ? paged(withPayouts, total, p, summary) : withPayouts);
 }));
 
 // Property/month pairs holding more than one statement (only possible in data from before the unique rule).

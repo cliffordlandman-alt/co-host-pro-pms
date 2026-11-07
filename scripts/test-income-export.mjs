@@ -29,9 +29,9 @@ const pdfText = file => execFileSync('pdftotext', ['-layout', file, '-']).toStri
   for (const t of report.totals) { const i = wb.Summary.findIndex(r => r[0] === `${t.currency} properties`); assert.ok(i > 0, t.currency);
     const val = l => wb.Summary.slice(i).find(r => r[0] === l)[2]; assert.equal(val('Gross booking income'), t.gross); assert.equal(val('Net payout'), t.netPayout); assert.equal(val('Management fee'), t.managementFee); assert.equal(val('Owner share'), t.ownerShare); assert.equal(val('Net to company'), t.companyNet); }
   assert.match(flat, /1 booking missing amounts/); assert.match(flat, /not verified yet/);
-  const gr = wb.Properties.find(r => r[0] === 'Garden Retreat'); assert.equal(gr[2], 'ZAR'); assert.equal(gr[13], 200); assert.match(gr[15], /1 ZAR = 0.2 AED \(Test rate, 2026-10-12; display only\)/);
+  const gr = wb.Properties.find(r => r[0] === 'Garden Retreat'); assert.equal(gr[2], 'ZAR'); assert.equal(gr[13], 200); assert.match(gr[15], /Display only: 1 ZAR = 0.2 AED as of 2026-10-12/); assert.doesNotMatch(gr[15], /Test rate|er-api|frankfurter/i);
   assert.ok(wb.Bookings.some(r => r[1] === 'HM1X' && r[9] === 1000 && r[15] === 722.5));
-  const text = pdfText(fp); assert.match(text, /LaunchRiot for Holiday Homes/); assert.match(text, /September 2026/); assert.match(text, /Gross booking income\s+AED\s+1,000\.00/); assert.match(text, /Garden Retreat/); assert.match(text, /display only/); assert.match(text, /missing amounts/);
+  const text = pdfText(fp); assert.match(text, /LaunchRiot for Holiday Homes/); assert.match(text, /September 2026/); assert.match(text, /Gross booking income\s+AED\s+1,000\.00/); assert.match(text, /Garden Retreat/); assert.match(text, /Display only: 1 ZAR = 0\.2 AED as of 2026-10-12/); assert.doesNotMatch(text, /Test rate|er-api|frankfurter/i); assert.match(text, /missing amounts/);
 }
 
 // ── API on a scratch DB ──

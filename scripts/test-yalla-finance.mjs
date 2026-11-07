@@ -265,7 +265,7 @@ console.log('OK pure: lease accruals, category map, pass-through, Airbnb monthly
 
 // ── API ──
 const data = await mkdtemp(path.join(tmpdir(), 'yallapms-yalla-'));
-const env = { ...process.env, NODE_ENV: 'development', PORT: '3031', LOCAL_DATA_DIR: data, MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off' };
+const env = { ...process.env, NODE_ENV: 'development', PORT: '3031', LOCAL_DATA_DIR: data, MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', FX_FIXED_RATES: JSON.stringify({ USD: 3.6725, ZAR: 0.2, EUR: 4, GBP: 4.8 }) };
 delete env.DATABASE_URL;
 const child = spawn(process.execPath, [path.join(root, 'artifacts/api-server/dist/index.mjs')], { env, cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = ''; child.stdout.on('data', d => logs += d); child.stderr.on('data', d => logs += d);
@@ -445,8 +445,14 @@ try {
   assert.ok(parts['xl/worksheets/sheet10.xml'].includes('<f>Dashboard!J13</f>'));
   // Company month cards: the API returns the export's figures for the month (owner/pass-through tagged, not counted).
   { const cm = await api('/accounting/company-month/2026-09'); const w = await api('/accounting/workbook/2026-09');
-    assert.equal(cm.revenue.total, w.totals.income); assert.equal(cm.expenses.total, w.totals.operatingExpenses); assert.equal(cm.expenses.passThrough, w.totals.passThrough);
-    assert.equal(cm.profit, Math.round((w.totals.income - w.totals.operatingExpenses) * 100) / 100);
+    const extraIn = (cm.otherCurrencies ?? []).reduce((n, o) => n + (o.countedInCurrency || 0) + (o.separate?.income || 0) + (o.separate?.airbnb || 0), 0);
+    const extraOut = (cm.otherCurrencies ?? []).reduce((n, o) => n + (o.separate?.expenses || 0), 0);
+    assert.equal(cm.revenue.total, Math.round((w.totals.income + extraIn) * 100) / 100);
+    assert.equal(cm.expenses.total, Math.round((w.totals.operatingExpenses + extraOut) * 100) / 100);
+    assert.equal(cm.expenses.passThrough, w.totals.passThrough);
+    assert.equal(cm.profit, Math.round((w.totals.income + extraIn - w.totals.operatingExpenses - extraOut) * 100) / 100);
+    assert.ok((cm.otherCurrencies ?? []).every(o => o.currency === 'AED'), 'month cards show the separate currencies in dirhams');
+    assert.ok(Math.abs((cm.otherCurrencies ?? []).reduce((n, o) => n + (o.separate?.expenses || 0), 0) - 100) < 0.02, 'ZAR 500 cleaning is AED 100 on the cards');
     await api('/accounting/company-month/2026-9', 'GET', null, 400); }
   // Round 3: the report title is a setting, used only in the export (audited).
   assert.equal((await api('/accounting/workbook-settings')).reportTitle, null, 'unset = WORKBOOK_DEFAULTS.reportTitle');

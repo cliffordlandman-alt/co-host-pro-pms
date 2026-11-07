@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
+import { FxProvider } from "@/lib/aed";
 import { ThemeProvider } from "@/contexts/theme-context";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/components/today/TodayDashboard";
@@ -205,6 +206,7 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <FxProvider>
       <ThemeProvider>
         <AuthProvider>
           <TooltipProvider>
@@ -215,6 +217,7 @@ function App() {
           </TooltipProvider>
         </AuthProvider>
       </ThemeProvider>
+      </FxProvider>
     </QueryClientProvider>
   );
 }

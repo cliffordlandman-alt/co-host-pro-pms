@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { toAed } from "../../../../lib/fx.mjs";
+import { getFxBook } from "../lib/fx";
 import { dubaiToday } from "../lib/dubai-date";
 import { db, paymentsTable, propertiesTable, ownersTable, insertPaymentSchema, reservationsTable } from "@workspace/db";
 import { eq, and, or, ilike, sql, desc } from "drizzle-orm";
@@ -23,12 +25,13 @@ router.get("/payments", async (req, res) => {
       .from(paymentsTable).leftJoin(propertiesTable, eq(paymentsTable.propertyId, propertiesTable.id)).leftJoin(ownersTable, eq(paymentsTable.ownerId, ownersTable.id)).leftJoin(reservationsTable, eq(paymentsTable.reservationId, reservationsTable.id))
       .where(where).groupBy(currency, paymentsTable.status);
     const total = groups.reduce((n, g) => n + g.count, 0);
-    const byCurrency: Record<string, { currency: string; count: number; byStatus: Record<string, number> }> = {};
-    for (const g of groups) { const c = byCurrency[g.currency] ??= { currency: g.currency, count: 0, byStatus: {} }; c.count += g.count; c.byStatus[g.status] = Math.round(Number(g.amount) * 100) / 100; }
+    const book = await getFxBook();
+    const aed = { currency: "AED", count: 0, byStatus: {} as Record<string, number> };
+    for (const g of groups) { aed.count += g.count; aed.byStatus[g.status] = Math.round(((aed.byStatus[g.status] || 0) + (toAed(g.amount, g.currency, null, book) || 0)) * 100) / 100; }
     const rows = await db.select({ id: paymentsTable.id, type: paymentsTable.type, propertyId: paymentsTable.propertyId, propertyName: propertiesTable.name, currency, reservationId: paymentsTable.reservationId, ownerId: paymentsTable.ownerId, ownerName: ownersTable.name, amount: paymentsTable.amount, status: paymentsTable.status, description: paymentsTable.description, dueDate: paymentsTable.dueDate, paidAt: paymentsTable.paidAt, createdAt: paymentsTable.createdAt })
       .from(paymentsTable).leftJoin(propertiesTable, eq(paymentsTable.propertyId, propertiesTable.id)).leftJoin(ownersTable, eq(paymentsTable.ownerId, ownersTable.id)).leftJoin(reservationsTable, eq(paymentsTable.reservationId, reservationsTable.id))
       .where(where).orderBy(desc(paymentsTable.createdAt), desc(paymentsTable.id)).limit(p.pageSize).offset(p.offset);
-    return res.json(paged(rows.map(r => ({ ...r, amount: parseFloat(r.amount || "0"), createdAt: r.createdAt.toISOString() })), total, p, { total, currencies: Object.values(byCurrency) }));
+    return res.json(paged(rows.map(r => ({ ...r, amount: parseFloat(r.amount || "0"), createdAt: r.createdAt.toISOString() })), total, p, { total, currencies: [aed] }));
   }
 
   const rows = await db

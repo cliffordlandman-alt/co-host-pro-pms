@@ -2,6 +2,7 @@
 // (GET /api/reports/income, the owner-statement calculation); nothing here recalculates money.
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-fetch";
+import { formatAed } from "@/lib/aed-book";
 
 export type IncomeRow = { currency: string; bookings: number; nights: number; gross: number; taxes: number; channelFees: number; cleaning: number; expenses: number; managementFee: number;
   ownerShare: number; paidByAirbnb: number; ownerBalance: number; companyIncome: number; companyCosts: number; companyNet: number };
@@ -23,9 +24,10 @@ export const monthLabel = (m: string) => new Intl.DateTimeFormat("en-GB", { mont
 export const shortMonth = (m: string) => new Intl.DateTimeFormat("en-GB", { month: "short", timeZone: "UTC" }).format(new Date(`${m}-01T00:00:00Z`));
 export const periodLabel = (p: Period) => "month" in p ? monthLabel(p.month) : `Year ${p.year}`;
 export const periodQuery = (p: Period) => "month" in p ? `month=${p.month}` : `year=${p.year}`;
-export function money(v: number | null | undefined, currency: string, decimals = 2) {
+export function money(v: number | null | undefined, currency: string, decimals = 2, date?: string | null) {
   if (v == null) return "–";
-  return `${currency} ${v.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+  const text = formatAed(v, currency, date, decimals);
+  return text === "—" ? "–" : text;
 }
 export const hasFigures = (r: IncomeRow) => r.bookings > 0 || [r.gross, r.cleaning, r.expenses, r.managementFee, r.ownerShare, r.companyIncome, r.companyCosts].some(v => v !== 0);
 export const estimateText = (u: Unverified) => u.estimates.map(e => money(e.amount, e.currency)).join(" + ");

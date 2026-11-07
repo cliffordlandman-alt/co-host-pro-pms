@@ -4,8 +4,10 @@ import { eq, and, inArray, ne, sql } from 'drizzle-orm';
 import { getTokenPayload } from './auth-middleware';
 import { verifyBotKey, getConfig } from './ai-staff-store';
 import { botEnabled, canRead } from '../../../../lib/ai-staff.mjs';
+import { toAed } from '../../../../lib/fx.mjs';
+import { getFxBook } from './fx';
 
-const publicPaths = new Set(['/healthz', '/auth/login', '/auth/register', '/owner-auth/send-code', '/owner-auth/verify', '/brand']);
+const publicPaths = new Set(['/healthz', '/auth/login', '/auth/register', '/owner-auth/send-code', '/owner-auth/verify', '/brand', '/fx']);
 const attempts = new Map<string, {count:number; until:number}>();
 // Outbound calendar feeds are read by Airbnb, Booking.com and Vrbo without a login: the 43-character token is the secret.
 const PUBLIC_FEED = /^\/ical\/[A-Za-z0-9_-]{43}\/(airbnb|booking_com|vrbo|all)\.ics$/;
@@ -39,14 +41,16 @@ export async function apiAccess(req: Request, res: Response, next: NextFunction)
   if (token.role === 'owner_portal') {
     const [owner] = await db.select({id:ownersTable.id}).from(ownersTable).where(eq(ownersTable.id,token.id));
     if (!owner || req.method !== 'GET') return res.status(403).json({error:'Owner access is read only'});
-    const properties = await db.select({id:propertiesTable.id,name:propertiesTable.name,unitNumber:propertiesTable.unitNumber,bedroomType:propertiesTable.bedroomType,building:propertiesTable.building,status:propertiesTable.status}).from(propertiesTable).where(eq(propertiesTable.ownerId,owner.id));
+    const properties = await db.select({id:propertiesTable.id,name:propertiesTable.name,unitNumber:propertiesTable.unitNumber,bedroomType:propertiesTable.bedroomType,building:propertiesTable.building,status:propertiesTable.status,currency:propertiesTable.currency}).from(propertiesTable).where(eq(propertiesTable.ownerId,owner.id));
     const ids = properties.map(p=>p.id);
-    if (req.path === '/properties') return res.json(properties);
+    if (req.path === '/properties') return res.json(properties.map(({ currency: _currency, ...p }) => p));
     if (req.path === '/reservations') {
       const propertyId = Number(req.query.propertyId);
       if (!ids.includes(propertyId)) return res.status(403).json({error:'Property access denied'});
-      const rows = await db.select({id:reservationsTable.id,propertyId:reservationsTable.propertyId,checkIn:reservationsTable.checkIn,checkOut:reservationsTable.checkOut,nights:reservationsTable.nights,status:reservationsTable.status,platform:reservationsTable.platform,revenue:reservationsTable.revenue}).from(reservationsTable).where(eq(reservationsTable.propertyId,propertyId));
-      return res.json(rows.map(r=>({...r,guestName:'Reserved',revenue:Number(r.revenue)})));
+      const rows = await db.select({id:reservationsTable.id,propertyId:reservationsTable.propertyId,checkIn:reservationsTable.checkIn,checkOut:reservationsTable.checkOut,nights:reservationsTable.nights,status:reservationsTable.status,platform:reservationsTable.platform,revenue:reservationsTable.revenue,currency:reservationsTable.currency}).from(reservationsTable).where(eq(reservationsTable.propertyId,propertyId));
+      const book = await getFxBook();
+      const home = properties.find(p => p.id === propertyId)?.currency || 'AED';
+      return res.json(rows.map(r=>({id:r.id,propertyId:r.propertyId,checkIn:r.checkIn,checkOut:r.checkOut,nights:r.nights,status:r.status,platform:r.platform,guestName:'Reserved',currency:'AED',revenue:toAed(r.revenue, r.currency || home, r.checkOut, book) || 0})));
     }
     if (req.path === '/accounting/statements') {
       const rows = await db.select().from(ownerStatementsTable).where(and(eq(ownerStatementsTable.ownerId,owner.id), ne(ownerStatementsTable.status,'draft'), req.query.month ? eq(ownerStatementsTable.month,String(req.query.month)) : undefined));

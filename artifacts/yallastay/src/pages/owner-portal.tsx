@@ -1,6 +1,7 @@
 import { PayoutLine } from "@/components/OwnerPayouts";
 import { apiFetch } from "@/lib/api-fetch";
 import { statementBalance, feeLabels } from "@/lib/statement-balance";
+import { aedNumber, formatAed } from "@/lib/aed-book";
 import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -33,8 +34,8 @@ const fj = async (url: string, opts?: RequestInit) => {
   return res.json();
 };
 
-function aed(n: number, currency="AED") {
-  return `${currency} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function aed(n: number, currency="AED", date?: string) {
+  return formatAed(n, currency, date);
 }
 
 
@@ -231,10 +232,10 @@ function OwnerStatements({ ownerId }: { ownerId: number }) {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["owner-statements"] }); toast({ title: "Statements refreshed" }); },
   });
 
-  const statementCurrencies=[...new Set((statements || []).map((s:any)=>s.currency || "AED"))];
-  const totalGross = statements?.reduce((s: number, st: any) => s + st.grossRevenue, 0) ?? 0;
-  const totalPayout = statements?.reduce((s: number, st: any) => s + st.ownerPayout, 0) ?? 0;
-  const totalDeductions = totalGross - totalPayout;
+  const sumAed = (pick: (s: any) => number) => (statements || []).reduce((n: number, s: any) => n + (aedNumber(pick(s), s.currency, s.month) || 0), 0);
+  const totalGross = sumAed(s => s.grossRevenue);
+  const totalPayout = sumAed(s => s.ownerPayout);
+  const totalDeductions = sumAed(s => Number(s.grossRevenue) - Number(s.ownerPayout) - Number(s.paidByAirbnb || 0));
 
   return (
     <div className="space-y-4">
@@ -262,7 +263,7 @@ function OwnerStatements({ ownerId }: { ownerId: number }) {
             <Card key={label} className="text-center">
               <CardContent className="pt-3 pb-3">
                 <div className="text-xs text-muted-foreground mb-1">{label}</div>
-                <div className={`text-base font-bold ${color}`}>{statementCurrencies.map((currency:any)=>{const rows=(statements||[]).filter((s:any)=>(s.currency||"AED")===currency);const total=rows.reduce((n:number,r:any)=>n+Number(label==="Gross Revenue"?r.grossRevenue:label==="Your Payout"?r.ownerPayout:r.grossRevenue-r.ownerPayout-Number(r.paidByAirbnb||0)),0);return <div key={currency}>{label==="Your Payout"&&Math.round(total*100)<0?`You owe ${aed(-total,currency)}`:aed(total,currency)}</div>;})}</div>
+                <div className={`text-base font-bold ${color}`}>{label==="Your Payout"&&value<0?`You owe ${aed(-value)}`:aed(value)}</div>
               </CardContent>
             </Card>
           ))}
@@ -300,48 +301,48 @@ function OwnerStatements({ ownerId }: { ownerId: number }) {
                   <div className="bg-muted/30 rounded-lg px-4 py-3 space-y-1.5 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{feeLabels(stmt, "owner").gross}</span>
-                      <span className="font-medium text-emerald-600">{aed(stmt.grossRevenue,stmt.currency || "AED")}</span>
+                      <span className="font-medium text-emerald-600">{aed(stmt.grossRevenue,stmt.currency || "AED", stmt.month)}</span>
                     </div>
                     {stmt.platformFees > 0 && (
                       <div className="flex justify-between text-muted-foreground">
                         <span>{feeLabels(stmt).platform}</span>
-                        <span className="text-red-400">− {aed(stmt.platformFees,stmt.currency || "AED")}</span>
+                        <span className="text-red-400">− {aed(stmt.platformFees,stmt.currency || "AED", stmt.month)}</span>
                       </div>
                     )}
-                    {feeLabels(stmt, "owner").net && <div className="flex justify-between text-muted-foreground"><span>{feeLabels(stmt, "owner").net}</span><span>{aed(stmt.grossRevenue - stmt.platformFees,stmt.currency || "AED")}</span></div>}
+                    {feeLabels(stmt, "owner").net && <div className="flex justify-between text-muted-foreground"><span>{feeLabels(stmt, "owner").net}</span><span>{aed(stmt.grossRevenue - stmt.platformFees,stmt.currency || "AED", stmt.month)}</span></div>}
                     <div className="flex justify-between text-muted-foreground">
                       <span>{feeLabels(stmt).management}</span>
-                      <span className="text-red-400">− {aed(stmt.managementFee,stmt.currency || "AED")}</span>
+                      <span className="text-red-400">− {aed(stmt.managementFee,stmt.currency || "AED", stmt.month)}</span>
                     </div>
                     {stmt.cleaningCosts > 0 && (
                       <div className="flex justify-between text-muted-foreground">
                         <span>Cleaning Costs</span>
-                        <span className="text-red-400">− {aed(stmt.cleaningCosts,stmt.currency || "AED")}</span>
+                        <span className="text-red-400">− {aed(stmt.cleaningCosts,stmt.currency || "AED", stmt.month)}</span>
                       </div>
                     )}
                     {stmt.maintenanceCosts > 0 && (
                       <div className="flex justify-between text-muted-foreground">
                         <span>Maintenance</span>
-                        <span className="text-red-400">− {aed(stmt.maintenanceCosts,stmt.currency || "AED")}</span>
+                        <span className="text-red-400">− {aed(stmt.maintenanceCosts,stmt.currency || "AED", stmt.month)}</span>
                       </div>
                     )}
-                    {stmt.tourismFee > 0 && <div className="flex justify-between"><span>Tourism fee</span><span>{stmt.currency || "AED"} {Number(stmt.tourismFee).toFixed(2)}</span></div>}
+                    {stmt.tourismFee > 0 && <div className="flex justify-between"><span>Tourism fee</span><span>{aed(stmt.tourismFee, stmt.currency || "AED", stmt.month)}</span></div>}
                     {stmt.vatAmount > 0 && (
                       <div className="flex justify-between text-muted-foreground">
                         <span>VAT</span>
-                        <span className="text-red-400">− {aed(stmt.vatAmount,stmt.currency || "AED")}</span>
+                        <span className="text-red-400">− {aed(stmt.vatAmount,stmt.currency || "AED", stmt.month)}</span>
                       </div>
                     )}
                     {(() => { const bal = statementBalance(stmt, "owner"); return <>
                       {bal.hasCohost && <>
-                        <div className="flex justify-between border-t pt-2"><span>Your share</span><span className="font-medium">{aed(bal.ownerShare,stmt.currency || "AED")}</span></div>
-                        <div className="flex justify-between text-muted-foreground"><span>{feeLabels(stmt, "owner").paidByAirbnb}</span><span className="text-red-400">− {aed(bal.paidByAirbnb,stmt.currency || "AED")}</span></div>
+                        <div className="flex justify-between border-t pt-2"><span>Your share</span><span className="font-medium">{aed(bal.ownerShare,stmt.currency || "AED", stmt.month)}</span></div>
+                        <div className="flex justify-between text-muted-foreground"><span>{feeLabels(stmt, "owner").paidByAirbnb}</span><span className="text-red-400">− {aed(bal.paidByAirbnb,stmt.currency || "AED", stmt.month)}</span></div>
                       </>}
                       <div className="flex justify-between font-semibold border-t pt-2 text-base mt-1">
                         <span>{bal.label}</span>
-                        <span className={bal.owes ? "text-red-600" : "text-emerald-600"}>{bal.settled ? "Nothing owed" : aed(bal.amount,stmt.currency || "AED")}</span>
+                        <span className={bal.owes ? "text-red-600" : "text-emerald-600"}>{bal.settled ? "Nothing owed" : aed(bal.amount,stmt.currency || "AED", stmt.month)}</span>
                       </div>
-                      {bal.rounding && <p className="text-xs text-muted-foreground">Airbnb already paid you your share; the {aed(bal.amount,stmt.currency || "AED")} difference is rounding.</p>}
+                      {bal.rounding && <p className="text-xs text-muted-foreground">Airbnb already paid you your share; the {aed(bal.amount,stmt.currency || "AED", stmt.month)} difference is rounding.</p>}
                       {bal.settled && !bal.rounding && <p className="text-xs text-muted-foreground">Airbnb paid you directly, so nothing is owed either way.</p>}
                     </>; })()}
                   </div>
@@ -392,19 +393,20 @@ function OwnerOverview({ properties, ownerId }: { properties: any[]; ownerId: nu
 
   const active = allReservations?.filter((r: any) => r.status !== "cancelled" && r.checkIn <= today && r.checkOut > today) ?? [];
   const upcoming = allReservations?.filter((r: any) => r.status !== "cancelled" && r.checkIn > today) ?? [];
-  const totalRevenue = allReservations?.filter((r: any) => r.status !== "cancelled").reduce((s: number, r: any) => s + parseFloat(r.revenue || "0"), 0) ?? 0;
-  const pendingPayout = statements?.filter((s: any) => s.status !== "paid").reduce((sum: number, s: any) => sum + s.ownerPayout, 0) ?? 0;
+  const pendingPayout = (statements || []).filter((s: any) => s.status !== "paid").reduce((sum: number, s: any) => sum + (aedNumber(s.ownerPayout, s.currency || "AED", s.month) || 0), 0);
+  const monthStatements = (statements || []).filter((s: any) => s.month === thisMonth);
+  const monthSum = (key: string) => monthStatements.reduce((n: number, s: any) => n + (aedNumber(s[key] || 0, s.currency || "AED", s.month) || 0), 0);
 
   const kpis = [
     { icon: Home,        label: "Your Properties",     value: properties.length, color: "text-primary" },
     { icon: BedDouble,   label: "Active Guests",        value: active.length,     color: "text-emerald-600" },
     { icon: CalendarRange, label: "Upcoming Bookings",  value: upcoming.length,   color: "text-blue-600" },
-    { icon: DollarSign,  label: "Pending Payout",       value: [...new Set((statements||[]).filter((s:any)=>s.status!=="paid").map((s:any)=>s.currency||"AED"))].map((currency:any)=>aed((statements||[]).filter((s:any)=>s.status!=="paid"&&(s.currency||"AED")===currency).reduce((n:number,s:any)=>n+Number(s.ownerPayout),0),currency)).join(" · ") || "None", color: pendingPayout > 0 ? "text-amber-600" : "text-muted-foreground" },
+    { icon: DollarSign,  label: "Pending Payout",       value: pendingPayout ? aed(pendingPayout) : "None", color: pendingPayout > 0 ? "text-amber-600" : "text-muted-foreground" },
   ];
 
   return (
     <div className="space-y-6">
-      <section className="today-panel mb-5"><p className="today-eyebrow">YOUR INVESTMENT · THIS MONTH</p><h2 className="text-2xl font-semibold mt-2">A clearer view of your returns.</h2><p className="text-sm text-muted-foreground mt-2">Published statements are shown below. Draft or unverified income is excluded.</p><div className="grid sm:grid-cols-2 gap-4 mt-5">{[...new Set((statements || []).filter((s:any)=>s.month===thisMonth).map((s:any)=>s.currency || 'AED'))].map((currency:any)=>{const rows=(statements || []).filter((s:any)=>s.month===thisMonth&&(s.currency || 'AED')===currency);return <div key={currency} className="border rounded-xl p-4"><p className="text-xs text-muted-foreground">{currency} · Published this month</p>{[['grossRevenue','Booking totals'],['managementFee','Management fees'],['otherExpenses','Other expenses'],['ownerPayout','Your payout']].map(([key,label])=><div key={key} className="flex justify-between text-sm mt-3"><span>{label}</span><strong>{currency} {rows.reduce((n:number,r:any)=>n+Number(r[key] || 0),0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong></div>)}</div>;})}</div>{!(statements || []).some((s:any)=>s.month===thisMonth)&&<p className="text-sm text-muted-foreground mt-4">Your operator hasn’t published this month’s statement yet.</p>}</section>
+      <section className="today-panel mb-5"><p className="today-eyebrow">YOUR INVESTMENT · THIS MONTH</p><h2 className="text-2xl font-semibold mt-2">A clearer view of your returns.</h2><p className="text-sm text-muted-foreground mt-2">Published statements, in dirhams. Draft or unverified income is excluded.</p>{monthStatements.length > 0 ? <div className="border rounded-xl p-4 mt-5"><p className="text-xs text-muted-foreground">Published this month</p>{[["grossRevenue", "Booking totals"], ["managementFee", "Management fees"], ["otherExpenses", "Other expenses"], ["ownerPayout", "Your payout"]].map(([key, label]) => <div key={key} className="flex justify-between text-sm mt-3"><span>{label}</span><strong>{aed(monthSum(key))}</strong></div>)}</div> : <p className="text-sm text-muted-foreground mt-4">Your operator hasn’t published this month’s statement yet.</p>}</section>
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {kpis.map(({ icon: Icon, label, value, color }) => (
@@ -469,7 +471,7 @@ function OwnerOverview({ properties, ownerId }: { properties: any[]; ownerId: nu
                     <div className="text-xs text-muted-foreground">{format(new Date(stmt.month + "-01"), "MMMM yyyy")}</div>
                   </div>
                   <div className="flex items-center gap-3">
-                    {(() => { const bal = statementBalance(stmt, "owner"); return <span className={`font-semibold text-sm ${bal.owes ? "text-red-600" : "text-emerald-600"}`}>{bal.settled ? "Settled" : <>{bal.owes ? "You owe " : ""}{aed(bal.amount,stmt.currency || "AED")}</>}</span>; })()}
+                    {(() => { const bal = statementBalance(stmt, "owner"); return <span className={`font-semibold text-sm ${bal.owes ? "text-red-600" : "text-emerald-600"}`}>{bal.settled ? "Settled" : <>{bal.owes ? "You owe " : ""}{aed(bal.amount,stmt.currency || "AED", stmt.month)}</>}</span>; })()}
                     <Badge className={`text-xs border ${s.color}`}>{s.label}</Badge>
                   </div>
                 </div>

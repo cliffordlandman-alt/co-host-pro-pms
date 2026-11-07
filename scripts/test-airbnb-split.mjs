@@ -51,7 +51,7 @@ const bk = (id, propertyId, code, checkIn, checkOut, extra = {}) => ({ id, prope
 
 // ── API ──
 const data = await mkdtemp(path.join(tmpdir(), 'yallapms-split-'));
-const env = { ...process.env, NODE_ENV: 'development', PORT: '3031', LOCAL_DATA_DIR: data, MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off' };
+const env = { ...process.env, NODE_ENV: 'development', PORT: '3031', LOCAL_DATA_DIR: data, MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', FX_FIXED_RATES: JSON.stringify({ USD: 3.6725, ZAR: 0.2, EUR: 4, GBP: 4.8 }) };
 delete env.DATABASE_URL;
 const child = spawn(process.execPath, [path.join(root, 'artifacts/api-server/dist/index.mjs')], { env, cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = ''; child.stdout.on('data', d => logs += d); child.stderr.on('data', d => logs += d);
@@ -75,13 +75,15 @@ try {
   const rep = await api('/reports/income?month=2026-09');
   assert.deepEqual(rep.airbnbSplit.map(s => s.name), ['Grey Test', 'Lawn Test'], 'Lakeside not shown');
   assert.ok(rep.airbnbSplit.every(s => s.rows === undefined), 'list page gets totals only');
-  const zar = rep.airbnbSplitTotals.find(t => t.currency === 'ZAR');
-  assert.deepEqual([zar.properties, zar.total, zar.cohostPaid, zar.cohostExpected, zar.company, zar.companyNotYet, zar.cohostUnknown], [2, 11610.29, 1942.83, 7925.9, 2092.79, 1085.14, 1]);
-  assert.ok(!rep.airbnbSplitTotals.some(t => t.currency === 'USD'), 'no USD in earnings totals');
+  const aed = rep.airbnbSplitTotals.find(t => t.currency === 'AED');
+  const dirham = n => Math.round(n * 20) / 100;
+  assert.deepEqual([aed.properties, aed.total, aed.cohostPaid, aed.cohostExpected, aed.company, aed.companyNotYet, aed.cohostUnknown], [2, dirham(11610.29), dirham(1942.83), dirham(7925.9), dirham(2092.79), dirham(1085.14), 1]);
+  assert.equal(rep.airbnbSplitTotals.length, 1);
   const det = await api(`/reports/income/${L.id}?month=2026-09`);
   assert.equal(det.airbnbSplit.settingOn, false); assert.ok(det.airbnbSplit.rows.some(r => r.code === 'HMLAWN0003' && !r.inYallaPMS && r.cohostPayout === null));
   assert.equal((await api(`/reports/income/${K.id}?month=2026-09`)).airbnbSplit, null);
   const year = await api(`/reports/income/${G.id}?year=2026`);
-  assert.equal(year.airbnbSplit.totals[0].company, 342.86, 'year view too');
+  assert.equal(year.airbnbSplit.totals[0].currency, 'AED');
+  assert.equal(year.airbnbSplit.totals[0].company, Math.round(342.86 * 20) / 100, 'year view in dirhams');
   console.log('OK full Airbnb earnings split on Income per property');
 } catch (e) { console.error(logs.slice(-3000)); throw e; } finally { child.kill('SIGTERM'); }

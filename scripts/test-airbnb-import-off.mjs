@@ -40,7 +40,7 @@ const fetchLog = path.join(data, 'fetches.log'); await writeFile(fetchLog, '');
 const recorder = path.join(data, 'record-fetch.mjs');
 await writeFile(recorder, `import { appendFileSync } from 'node:fs';\nconst f = globalThis.fetch;\nglobalThis.fetch = (input, init) => { appendFileSync(${JSON.stringify(fetchLog)}, (typeof input === 'string' ? input : input.url) + '\\n'); return f(input, init); };\n`);
 const outLog = path.join(data, 'outbound.log'); await writeFile(outLog, '');
-const env = { ...process.env, NODE_ENV: 'development', PORT: '3029', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog, ICAL_FIXTURE_DIR: feeds };
+const env = { ...process.env, NODE_ENV: 'development', PORT: '3029', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog, ICAL_FIXTURE_DIR: feeds, FX_FIXED_RATES: JSON.stringify({ USD: 3.6725, ZAR: 0.2, EUR: 4, GBP: 4.8 }) };
 delete env.DATABASE_URL; delete env.OUTBOUND_DELIVERY;
 let logs = '', token;
 const child = spawn(process.execPath, ['--import', path.join(root, 'scripts/outbound-guard.mjs'), '--import', path.join(root, 'scripts/fixtures/mock-channel-fetch.mjs'), '--import', recorder, path.join(root, 'artifacts/api-server/dist/index.mjs')], { env, cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });

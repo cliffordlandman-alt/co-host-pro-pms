@@ -64,7 +64,7 @@ const near = (a, b, msg) => assert.ok(Math.abs(Number(a) - Number(b)) < 0.005, `
 // ── API: real statements vs Income per property ──
 const data = await mkdtemp(path.join(tmpdir(), 'yallapms-income-'));
 const outLog = path.join(data, 'outbound.log'); await writeFile(outLog, '');
-const env = { ...process.env, NODE_ENV: 'development', PORT: '3026', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog, RESEND_API_KEY: 're_test_only' };
+const env = { ...process.env, NODE_ENV: 'development', PORT: '3026', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog, RESEND_API_KEY: 're_test_only', FX_FIXED_RATES: JSON.stringify({ USD: 3.6725, ZAR: 0.2, EUR: 4, GBP: 4.8 }) };
 delete env.DATABASE_URL; delete env.OUTBOUND_DELIVERY;
 const child = spawn(process.execPath, ['--import', path.join(root, 'scripts/outbound-guard.mjs'), path.join(root, 'artifacts/api-server/dist/index.mjs')], { env, cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = ''; child.stdout.on('data', d => logs += d); child.stderr.on('data', d => logs += d);
@@ -118,14 +118,17 @@ try {
   const report = await api(`/reports/income?month=${M}`);
   assert.equal(report.period.month, M);
   const byId = id => report.properties.find(p => p.propertyId === id);
+  const shown = (n, currency) => currency === 'ZAR' ? Math.round(Number(n) * 20) / 100 : Number(n);
   for (const s of statements) {
     const p = byId(s.propertyId); assert.ok(p, `property ${s.propertyId} listed`);
     assert.equal(p.rows.length, 1); const row = p.rows[0], exp = statementRow(s);
-    for (const k of Object.keys(exp)) k === 'currency' ? assert.equal(row[k], exp[k]) : near(row[k], exp[k], `${p.name} ${k} matches statement #${s.id}`);
+    for (const k of Object.keys(exp)) k === 'currency' ? assert.equal(row[k], 'AED') : (k === 'bookings' || k === 'nights') ? assert.equal(row[k], exp[k]) : near(row[k], shown(exp[k], s.currency), `${p.name} ${k} is the statement in dirhams #${s.id}`);
     assert.equal(p.estimate, false); assert.equal(p.statement.status, 'draft'); assert.equal(p.held, null);
   }
-  // The figures shown before generating were the same numbers (same calculation, live).
-  for (const s of statements) { const p0 = pre.properties.find(p => p.propertyId === s.propertyId); near(p0.rows[0].ownerBalance, s.ownerPayout, `${p0.name} live = generated`); }
+  const zaStmt = statements.find(s => s.propertyId === ZA.id);
+  assert.equal(zaStmt.currency, 'ZAR'); assert.equal(Number(zaStmt.grossRevenue), 4000, 'stored statement stays ZAR');
+  near(byId(ZA.id).rows[0].gross, 800, 'ZAR 4,000 displays as AED 800');
+  for (const s of statements) { const p0 = pre.properties.find(p => p.propertyId === s.propertyId); near(p0.rows[0].ownerBalance, shown(s.ownerPayout, s.currency), `${p0.name} live = generated`); }
   assert.deepEqual(statements.map(s => s.propertyId).sort(), [DXB.id, ZA.id].sort(), 'statements for the verified owned properties');
   const dx = byId(DXB.id).rows[0];
   near(dx.expenses, 120.50 + 75.25, 'owner expense + owner repair'); assert.ok(dx.taxes > 0, 'VAT and tourism shown');
@@ -138,21 +141,18 @@ try {
   // A property without an owner still shows its income (no statement).
   const no = byId(NO.id); assert.equal(no.hasOwner, false); near(no.rows[0].gross, 500, 'no-owner property gross'); assert.equal(no.statement.status, 'none');
 
-  // Currencies: AED and ZAR totals are separate and equal the sums of their rows.
-  assert.deepEqual(report.totals.map(t => t.currency), ['AED', 'ZAR']);
-  for (const tot of report.totals) for (const k of ['gross', 'managementFee', 'ownerShare', 'companyNet', 'channelFees']) {
-    const sum = report.properties.flatMap(p => p.rows).filter(r => r.currency === tot.currency).reduce((n, r) => n + Math.round(r[k] * 100), 0) / 100;
-    near(tot[k], sum, `${tot.currency} total ${k}`);
+  assert.deepEqual(report.totals.map(t => t.currency), ['AED']);
+  const tot = report.totals[0];
+  for (const k of ['gross', 'managementFee', 'ownerShare', 'companyNet', 'channelFees']) {
+    const sum = report.properties.flatMap(p => p.rows).reduce((n, r) => n + Math.round(r[k] * 100), 0) / 100;
+    near(tot[k], sum, `AED total ${k}`);
   }
-  near(report.totals.find(t => t.currency === 'ZAR').gross, 4000, 'ZAR never mixed with AED');
-  assert.equal(report.totals.find(t => t.currency === 'AED').unverifiedBookings, 1);
-  // Net to YallaStay adds up to the company statement (property rows + company items not tied to a property).
+  assert.equal(tot.unverifiedBookings, 1);
   const cs = await api(`/accounting/company-statement?start=${M}-01&end=${report.period.end}`);
-  for (const ct of cs.totals) {
-    const rows = report.properties.flatMap(p => p.rows).filter(r => r.currency === ct.currency).reduce((n, r) => n + Math.round(r.companyNet * 100), 0);
-    const other = Math.round((report.companyOther.find(o => o.currency === ct.currency)?.net || 0) * 100);
-    near((rows + other) / 100, ct.net, `${ct.currency} net to YallaStay = company statement net`);
-  }
+  assert.deepEqual(cs.totals.map(t => t.currency), ['AED']);
+  const rowsNet = report.properties.flatMap(p => p.rows).reduce((n, r) => n + Math.round(r.companyNet * 100), 0);
+  const other = Math.round((report.companyOther[0]?.net || 0) * 100);
+  near((rowsNet + other) / 100, cs.totals[0].net, 'net to company = company statement in dirhams');
   near(report.companyOther.find(o => o.currency === 'AED').net, -10, 'company cost not tied to a property shown separately');
 
   // Drill-in: bookings and entries for the month add up to the row; the unverified booking is an estimate.

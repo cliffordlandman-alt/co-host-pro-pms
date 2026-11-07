@@ -51,7 +51,7 @@ const req = createRequire(path.join(root, 'lib/db/package.json'));
 const data = await mkdtemp(path.join(tmpdir(), 'yallapms-calexp-'));
 const feeds = await mkdtemp(path.join(tmpdir(), 'yallapms-calexp-feeds-'));
 const outLog = path.join(data, 'outbound.log'); await writeFile(outLog, '');
-const env = { ...process.env, NODE_ENV: 'development', PORT: '3027', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog, ICAL_FIXTURE_DIR: feeds, WHATSAPP_TOKEN: 'test-only', WHATSAPP_PHONE_ID: '1' };
+const env = { ...process.env, NODE_ENV: 'development', PORT: '3027', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog, ICAL_FIXTURE_DIR: feeds, WHATSAPP_TOKEN: 'test-only', WHATSAPP_PHONE_ID: '1', FX_FIXED_RATES: JSON.stringify({ USD: 3.6725, ZAR: 0.2, EUR: 4, GBP: 4.8 }) };
 delete env.DATABASE_URL; delete env.OUTBOUND_DELIVERY; delete env.PUBLIC_APP_URL;
 let child, logs = '', token;
 function start() {

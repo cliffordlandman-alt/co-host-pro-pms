@@ -2,6 +2,7 @@ import { CompanyFinance } from "@/components/CompanyFinance";
 import { EntryDialog, isAutomaticEntry } from "@/components/EntryDialog";
 import { printStatement } from "@/lib/print-statement";
 import { statementBalance, feeLabels } from "@/lib/statement-balance";
+import { formatAed } from "@/lib/aed-book";
 import { sortStatementBookings } from "../../../../lib/booking-currency.mjs";
 import { CleaningCostSettings } from "@/components/CleaningCostSettings";
 import { apiFetch } from "@/lib/api-fetch";
@@ -40,8 +41,8 @@ const f = async (path: string, opts?: RequestInit) => {
   return res.json();
 };
 
-function aed(n: number,currency="AED") {
-  return `${currency} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function aed(n: number, currency="AED", date?: string) {
+  return formatAed(n, currency, date);
 }
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => {
@@ -63,14 +64,14 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 function StatementBookings({ stmt, fl, hasCohost }: { stmt: any; fl: ReturnType<typeof feeLabels>; hasCohost: boolean }) {
   const c = stmt.currency || "AED";
   const rows = sortStatementBookings(JSON.parse(stmt.bookingDetails));
-  const cell = (v: unknown) => v == null ? "–" : aed(Number(v), c);
+  const cell = (v: unknown, date?: string) => v == null ? "–" : aed(Number(v), c, date || stmt.month);
   if (fl.payoutBasis) return (
     <table className="w-full text-xs"><thead><tr>{["Guest", "Dates", "Gross earnings", "Airbnb fees", "Fee", "Owner payout", "Paid by Airbnb"].map(h => <th className="text-left p-2" key={h}>{h}</th>)}</tr></thead>
       <tbody>{rows.map((r: any) => <tr key={r.id} className="border-t align-top">
         <td className="p-2">{r.guestName}{r.code && <div className="text-muted-foreground">{r.code}</div>}</td><td className="p-2 whitespace-nowrap">{r.checkIn} → {r.checkOut}</td>
         <td className="p-2 whitespace-nowrap">{cell(r.grossAmount)}</td><td className="p-2 whitespace-nowrap">{cell(r.channelAmount)}</td><td className="p-2 whitespace-nowrap">{cell(r.managementAmount)}</td><td className="p-2 whitespace-nowrap">{cell(r.ownerAmount)}</td>
         <td className="p-2">{r.paidToOwnerByAirbnb ? <span className="whitespace-nowrap">{cell(r.airbnbPayout)}</span> : "–"}
-          {(r.payouts ?? []).map((p: any, i: number) => <div key={i} data-testid="payout-part" className="text-[11px] text-muted-foreground">{p.paidOn ?? "date not known"}{r.payouts.length > 1 && p.amount != null ? ` · ${aed(Number(p.amount), c)}` : ""}{p.paidTo ? ` · ${p.paidTo}` : ""}{p.sentAmount != null ? ` · sent as ${p.sentCurrency} ${Number(p.sentAmount).toFixed(2)} (reference only)` : ""}</div>)}</td>
+          {(r.payouts ?? []).map((p: any, i: number) => <div key={i} data-testid="payout-part" className="text-[11px] text-muted-foreground">{p.paidOn ?? "date not known"}{r.payouts.length > 1 && p.amount != null ? ` · ${aed(Number(p.amount), c)}` : ""}{p.paidTo ? ` · ${p.paidTo}` : ""}{p.sentAmount != null ? ` · transfer ${aed(Number(p.sentAmount), p.sentCurrency, p.paidOn)} (not added)` : ""}</div>)}</td>
       </tr>)}</tbody></table>);
   const keys = ["grossAmount", "vatAmount", "tourismFee", ...(fl.netBasis ? ["channelAmount"] : []), "managementAmount", "ownerAmount", ...(hasCohost ? ["paid"] : [])];
   return (
@@ -111,11 +112,11 @@ function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id
         <div className="flex items-center gap-3 flex-shrink-0">
           <div className="text-right hidden sm:block">
             <div className="text-xs text-muted-foreground">Gross</div>
-            <div className="text-sm font-medium">{aed(stmt.grossRevenue,stmt.currency || "AED")}</div>
+            <div className="text-sm font-medium">{aed(stmt.grossRevenue,stmt.currency || "AED", stmt.month)}</div>
           </div>
           <div className="text-right">
             <div className="text-xs text-muted-foreground">{bal.short}</div>
-            <div data-testid="statement-balance" className={`text-sm font-bold ${bal.owes ? "text-red-600" : "text-emerald-600"}`}>{bal.settled ? "Nothing owed" : aed(bal.amount,stmt.currency || "AED")}</div>
+            <div data-testid="statement-balance" className={`text-sm font-bold ${bal.owes ? "text-red-600" : "text-emerald-600"}`}>{bal.settled ? "Nothing owed" : aed(bal.amount,stmt.currency || "AED", stmt.month)}</div>
           </div>
           <Badge className={`text-xs border ${s.color} hidden sm:flex`}>{s.label}</Badge>
           {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
@@ -132,65 +133,65 @@ function StatementRow({ stmt, onStatusChange }: { stmt: any; onStatusChange: (id
               </div>
               <div className="flex justify-between">
                 <span className="text-foreground">{fl.gross}</span>
-                <span className="font-medium text-emerald-600">{aed(stmt.grossRevenue,stmt.currency || "AED")}</span>
+                <span className="font-medium text-emerald-600">{aed(stmt.grossRevenue,stmt.currency || "AED", stmt.month)}</span>
               </div>
               {stmt.platformFees > 0 && (
                 <div className="flex justify-between text-muted-foreground">
                   <span>{fl.platform}</span>
-                  <span className="text-red-500">− {aed(stmt.platformFees,stmt.currency || "AED")}</span>
+                  <span className="text-red-500">− {aed(stmt.platformFees,stmt.currency || "AED", stmt.month)}</span>
                 </div>
               )}
-              {fl.net && <div className="flex justify-between text-muted-foreground"><span>{fl.net}</span><span>{aed(stmt.grossRevenue - stmt.platformFees,stmt.currency || "AED")}</span></div>}
+              {fl.net && <div className="flex justify-between text-muted-foreground"><span>{fl.net}</span><span>{aed(stmt.grossRevenue - stmt.platformFees,stmt.currency || "AED", stmt.month)}</span></div>}
               <div className="flex justify-between text-muted-foreground">
                 <span>{fl.management}</span>
-                <span className="text-red-500">− {aed(stmt.managementFee,stmt.currency || "AED")}</span>
+                <span className="text-red-500">− {aed(stmt.managementFee,stmt.currency || "AED", stmt.month)}</span>
               </div>
               {stmt.cleaningCosts > 0 && (
                 <div className="flex justify-between text-muted-foreground">
                   <span>Cleaning Costs</span>
-                  <span className="text-red-500">− {aed(stmt.cleaningCosts,stmt.currency || "AED")}</span>
+                  <span className="text-red-500">− {aed(stmt.cleaningCosts,stmt.currency || "AED", stmt.month)}</span>
                 </div>
               )}
               {stmt.maintenanceCosts > 0 && (
                 <div className="flex justify-between text-muted-foreground">
                   <span>Maintenance</span>
-                  <span className="text-red-500">− {aed(stmt.maintenanceCosts,stmt.currency || "AED")}</span>
+                  <span className="text-red-500">− {aed(stmt.maintenanceCosts,stmt.currency || "AED", stmt.month)}</span>
                 </div>
               )}
               {stmt.otherExpenses > 0 && (
                 <>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Expenses charged to owner</span>
-                    <span className="text-red-500">− {aed(stmt.otherExpenses,stmt.currency || "AED")}</span>
+                    <span className="text-red-500">− {aed(stmt.otherExpenses,stmt.currency || "AED", stmt.month)}</span>
                   </div>
                   {ownerLines?.map((l: any) => (
                     <div key={l.id} className="flex justify-between gap-3 pl-3 text-xs text-muted-foreground">
                       <span className="min-w-0">{l.date} · {l.description} <span className="opacity-70">({l.category})</span></span>
-                      <span className="whitespace-nowrap">− {aed(l.amount, l.currency || stmt.currency || "AED")}</span>
+                      <span className="whitespace-nowrap">− {aed(l.amount, l.currency || stmt.currency || "AED", stmt.month)}</span>
                     </div>
                   ))}
                 </>
               )}
-              {stmt.tourismFee > 0 && <div className="flex justify-between text-muted-foreground"><span>Tourism fee</span><span>− {aed(stmt.tourismFee,stmt.currency || "AED")}</span></div>}
+              {stmt.tourismFee > 0 && <div className="flex justify-between text-muted-foreground"><span>Tourism fee</span><span>− {aed(stmt.tourismFee,stmt.currency || "AED", stmt.month)}</span></div>}
               {stmt.vatAmount > 0 && (
                 <div className="flex justify-between text-muted-foreground">
                   <span>VAT</span>
-                  <span className="text-red-500">− {aed(stmt.vatAmount,stmt.currency || "AED")}</span>
+                  <span className="text-red-500">− {aed(stmt.vatAmount,stmt.currency || "AED", stmt.month)}</span>
                 </div>
               )}
               {bal.hasCohost && <>
                 <div className="flex justify-between border-t pt-2">
                   <span>Owner share</span>
-                  <span className="font-medium">{aed(bal.ownerShare,stmt.currency || "AED")}</span>
+                  <span className="font-medium">{aed(bal.ownerShare,stmt.currency || "AED", stmt.month)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
                   <span>{fl.paidByAirbnb}</span>
-                  <span className="text-red-500">− {aed(bal.paidByAirbnb,stmt.currency || "AED")}</span>
+                  <span className="text-red-500">− {aed(bal.paidByAirbnb,stmt.currency || "AED", stmt.month)}</span>
                 </div>
               </>}
               <div className="flex justify-between font-semibold border-t pt-2 text-base">
                 <span>{bal.label}</span>
-                <span className={bal.owes ? "text-red-600" : "text-emerald-600"}>{bal.rounding ? <span title="Rounding difference, not paid either way" className="text-xs font-normal text-muted-foreground">difference {aed(bal.amount,stmt.currency || "AED")}</span> : bal.settled ? "Nothing owed" : aed(bal.amount,stmt.currency || "AED")}</span>
+                <span className={bal.owes ? "text-red-600" : "text-emerald-600"}>{bal.rounding ? <span title="Rounding difference, not paid either way" className="text-xs font-normal text-muted-foreground">difference {aed(bal.amount,stmt.currency || "AED", stmt.month)}</span> : bal.settled ? "Nothing owed" : aed(bal.amount,stmt.currency || "AED", stmt.month)}</span>
               </div>
               {bal.rounding && <p className="text-xs text-muted-foreground">Airbnb already paid the owner their share; the difference under 1.00 is rounding, so nothing is owed either way.</p>}
               {bal.settled && !bal.rounding && <p className="text-xs text-muted-foreground">Airbnb already paid the owner {fl.wholePayout ? "the whole payout" : "their share"} directly, so nothing is owed either way.</p>}
@@ -474,10 +475,10 @@ function TransactionsTab() {
           </div>
           {company.otherCurrencies.map((o: any) => (
             <p key={o.currency} className="text-xs text-muted-foreground" data-testid={`company-${o.currency}`}>
-              <span className="font-medium text-foreground">{o.currency} (not converted):</span>{" "}
-              {o.airbnbInAedRevenue ? <>company Airbnb fees {aed(o.airbnbInAedRevenue, o.currency)}, paid through {o.usdPayouts} USD payout{o.usdPayouts === 1 ? "" : "s"} and already in Airbnb revenue at the USD paid (not added again)</> : null}
-              {o.countedInCurrency ? <>{o.airbnbInAedRevenue ? "; " : ""}company fees {aed(o.countedInCurrency, o.currency)} counted once, in {o.currency} (the USD-paid part is taken out of the AED revenue)</> : null}
-              {o.separate.income || o.separate.expenses ? <>{o.airbnbInAedRevenue || o.countedInCurrency ? "; " : ""}separate from the AED totals: income {aed(o.separate.income, o.currency)}, expenses {aed(o.separate.expenses, o.currency)}, net {aed(o.separate.net, o.currency)}</> : null}
+              <span className="font-medium text-foreground">Also in the dirham total:</span>{" "}
+              {o.airbnbInAedRevenue ? <>Airbnb fees {aed(o.airbnbInAedRevenue, "AED")} already included via the payout (not added again)</> : null}
+              {o.countedInCurrency ? <>{o.airbnbInAedRevenue ? "; " : ""}company fees {aed(o.countedInCurrency, "AED")} included once</> : null}
+              {o.separate.income || o.separate.expenses ? <>{o.airbnbInAedRevenue || o.countedInCurrency ? "; " : ""}other entries included: income {aed(o.separate.income, "AED")}, expenses {aed(o.separate.expenses, "AED")}, net {aed(o.separate.net, "AED")}</> : null}
             </p>
           ))}
           {filterProp !== "all" && <p className="text-xs text-muted-foreground">These cards are for the whole company; the list below is filtered to one property.</p>}
@@ -523,14 +524,14 @@ function TransactionsTab() {
                   </td>
                   <td className="px-4 py-3 text-xs whitespace-nowrap hidden sm:table-cell">{tx.allocation === "owner" ? "Owner" : "Company"}</td>
                   <td className={`px-4 py-3 text-right font-semibold whitespace-nowrap ${tags[tx.id] ? "text-muted-foreground" : tx.type === "income" ? "text-emerald-600" : "text-red-500"}`}>
-                    {tx.type === "income" ? "+" : "−"} {aed(tx.amount,tx.currency || "AED")}
+                    {tx.type === "income" ? "+" : "−"} {aed(tx.amount,tx.currency || "AED", stmt.month)}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     {isAutomaticEntry(tx) ? <span className="mr-1 text-[11px] text-muted-foreground" title="Recorded automatically from cleaning or maintenance; change it there">Automatic</span> : (
                     <button aria-label={`Edit ${tx.description}`} onClick={() => setEditing(tx)} className="text-muted-foreground hover:text-foreground transition-colors p-2 sm:p-1">
                       <Pencil className="h-3.5 w-3.5" />
                     </button>)}
-                    <button aria-label={`Delete ${tx.description}`} onClick={() => { if (window.confirm(`Delete "${tx.description}" (${aed(tx.amount, tx.currency || "AED")})? This cannot be undone.`)) deleteMutation.mutate(tx.id); }} className="text-muted-foreground hover:text-red-500 transition-colors p-2 sm:p-1">
+                    <button aria-label={`Delete ${tx.description}`} onClick={() => { if (window.confirm(`Delete "${tx.description}" (${aed(tx.amount, tx.currency || "AED", stmt.month)})? This cannot be undone.`)) deleteMutation.mutate(tx.id); }} className="text-muted-foreground hover:text-red-500 transition-colors p-2 sm:p-1">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </td>
@@ -577,7 +578,7 @@ function CurrencyChange({ s, onDone }: { s: any; onDone: () => void }) {
         <Input aria-label="New currency" className="h-8 w-20 uppercase" maxLength={3} value={to} onChange={e => setTo(e.target.value.trim().toUpperCase())} />
       </label>
       {changed && <>
-        <p role="note" className="rounded bg-amber-50 p-2 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">Nothing is converted. Bookings, entries and statements already recorded keep {current} (a booking of {current} 1,727 stays {current} 1,727). New bookings and imports use {to}. A month with amounts in both currencies can't be added up without an exchange rate, so its statement is held with a "mixed currency" item. Rates (%) are unchanged.</p>
+        <p role="note" className="rounded bg-amber-50 p-2 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">Stored records stay as they are. A booking of {current} 1,727 stays {current} 1,727 in the database; screens show it in dirhams. New bookings and imports use {to}. One stored statement is still a single currency, so a month with both is held until each currency can be stated on its own. Rates (%) are unchanged.</p>
         {s.cleaningFee != null && <label className="block">Cleaning fee per booking in {to} (now {current} {s.cleaningFee}; blank = none)
           <Input aria-label={`Cleaning fee in ${to}`} type="number" min="0" step="0.5" className="mt-1 h-8 w-32" value={cleaning} onChange={e => setCleaning(e.target.value)} />
         </label>}

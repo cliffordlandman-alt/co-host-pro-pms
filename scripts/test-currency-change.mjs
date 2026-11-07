@@ -27,7 +27,7 @@ assert.ok(ph.indexOf('First') < ph.indexOf('Second') && ph.indexOf('Second') < p
 // ── API ──
 const data = await mkdtemp(path.join(tmpdir(), 'yallapms-currency-'));
 const outLog = path.join(data, 'outbound.log'); await writeFile(outLog, '');
-const env = { ...process.env, NODE_ENV: 'development', PORT: '3023', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog, RESEND_API_KEY: 're_test_only' };
+const env = { ...process.env, NODE_ENV: 'development', PORT: '3023', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog, RESEND_API_KEY: 're_test_only', FX_FIXED_RATES: JSON.stringify({ USD: 3.6725, ZAR: 0.2, EUR: 4, GBP: 4.8 }) };
 delete env.DATABASE_URL; delete env.OUTBOUND_DELIVERY;
 const child = spawn(process.execPath, ['--import', path.join(root, 'scripts/outbound-guard.mjs'), path.join(root, 'artifacts/api-server/dist/index.mjs')], { env, cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = ''; child.stdout.on('data', d => logs += d); child.stderr.on('data', d => logs += d);
@@ -122,9 +122,11 @@ try {
   const e2 = await api('/accounting/transactions', 'POST', { type: 'expense', amount: '20', date: '2026-09-04', category: 'Supplies', description: 'Linen', propertyId: GR.id, reservationId: sepA.id, allocation: 'owner' }, 201);
   assert.equal(e2.currency, 'AED');
   await api('/accounting/transactions', 'POST', { type: 'expense', amount: '20', date: '2026-09-04', category: 'Supplies', description: 'X', propertyId: GR.id, allocation: 'owner', currency: 'USD' }, 400);
-  // P&L: one row per currency, never added together.
+  // P&L is one dirham row. Stored bookings stay AED or ZAR; 2,500 and 3,000 rand display at 0.2.
   const pnl = (await api('/reports/pnl')).filter(r => r.propertyId === GR.id);
-  assert.deepEqual(pnl.map(r => r.currency).sort(), ['AED', 'ZAR']);
+  assert.deepEqual(pnl.map(r => r.currency), ['AED']);
+  assert.equal(pnl[0].revenue, 5027);
+  assert.equal(pnl[0].expenses, 74);
   // Moving an AED booking to a ZAR property would relabel it: refused.
   await api(`/reservations/${aug.id}`, 'PATCH', { propertyId: ZP.id }, 400);
 

@@ -201,7 +201,7 @@ function TaxTab({ initialMonth }: { initialMonth: string }) {
       {d && d.unverified > 0 && <p className="rounded-xl border border-amber-200 bg-amber-50/60 p-2 text-xs text-amber-950">{d.unverified} booking{d.unverified === 1 ? "" : "s"} not verified yet: not in these figures. <Link href="/verify-bookings" className="underline">Verify bookings</Link></p>}
       {d && <div className="grid gap-2 sm:grid-cols-2">{d.totals.length === 0 ? <p className="text-sm text-muted-foreground">No verified bookings checked out in {monthLabel(month)} at these properties.</p> : d.totals.map((t: any) => (
         <section key={t.currency} data-testid={`tax-total-${t.currency}`} className="rounded-2xl border bg-card p-3">
-          <h3 className="font-semibold">{t.currency} total</h3>
+          <h3 className="font-semibold">In dirhams</h3>
           <div className="mt-1 grid grid-cols-2 gap-2 text-sm"><div><div className="text-xs text-muted-foreground">Tourism Dirham</div><div className="text-lg font-bold">{money(t.tourismFee, t.currency)}</div></div><div><div className="text-xs text-muted-foreground">VAT</div><div className="text-lg font-bold">{money(t.vat, t.currency)}</div></div>
             <div className="text-xs text-muted-foreground">{t.bookings} bookings · {t.roomNights} room-nights</div><div className="text-xs text-muted-foreground">Accommodation {money(t.accommodation, t.currency)}</div></div>
         </section>))}</div>}

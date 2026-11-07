@@ -17,6 +17,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, differenceInCalendarDays } from "date-fns";
+import { formatAed } from "@/lib/aed-book";
 
 const directBookingSchema = z
   .object({
@@ -115,7 +116,7 @@ export function DirectBookingDialog({
       vatRate: rates.vatRate, tourismRate: rates.tourismRate, tourismEnabled: rates.tourismEnabled, channelPercent: rates.channelPercent, deductCleaning: rates.includeCleaning !== false,
       feeBasis: rates.feeBasis === "net-payout" ? "net-payout" : "gross", channelFees: 0 }); // direct: no channel fees
   } catch (error) { calculationError = (error as Error).message; }
-  const money = (n: number) => `${property?.currency || "AED"} ${n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+  const money = (n: number) => formatAed(n, property?.currency || "AED", watched.checkOut);
 
   function onSubmit(values: DirectBookingForm) {
     if (!breakdown) { toast({title: calculationError, variant: "destructive"}); return; }

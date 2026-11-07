@@ -4,6 +4,7 @@ import { startAutoStatements } from "./lib/auto-statements";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startSyncScheduler } from "./lib/sync-scheduler";
+import { getFxBook } from "./lib/fx";
 import { pool, initializeDatabase } from "@workspace/db";
 
 const rawPort = process.env["PORT"] || "3001";
@@ -50,6 +51,7 @@ initializeDatabase().then(runMigrations).then(() => {
     }
 
     logger.info({ port }, "Server listening");
+    void getFxBook().catch(err => logger.warn({ err }, "Dirham rates not refreshed; using the last saved rates"));
     // SYNC_SCHEDULER=off: no scheduled channel (iCal) sync, for restore tests and throwaway copies of real data.
     if (process.env.SYNC_SCHEDULER === "off") logger.info("Scheduled channel sync is off (SYNC_SCHEDULER=off)");
     else { startSyncScheduler(); startAiStaffChecks(); startAiStaffSchedule(); }

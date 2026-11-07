@@ -43,13 +43,14 @@ assert.equal(netPayoutCheck({ guestTotal: '1000.00', channelFees: '100.00', host
 const pst = { propertyName: 'P', ownerName: 'O', month: '2026-09', currency: 'ZAR', status: 'draft', bookingsCount: 2, nightsOccupied: 6, grossRevenue: 6082, platformFees: 989.85, managementFee: 763.82,
   cleaningCosts: 0, maintenanceCosts: 0, otherExpenses: 0, tourismFee: 0, vatAmount: 0, ownerPayout: 0.01, paidByAirbnb: 4328.32, feeBasis: 'net-payout', bookingDetails: JSON.stringify([{ guestName: 'G', managementPercent: '15.00', grossAmount: '2730.00', ownerAmount: '1942.84', cohostPayout: '1942.83' }]) };
 const ph = statementHtml(pst, []);
-assert.match(ph, /Channel fees \(actual\)<\/td><td class="r">− ZAR 989\.85/); assert.match(ph, /Net payout \(guest total − channel fees\)<\/td><td class="r">ZAR 5,092\.15/);
-assert.match(ph, /Management fee \(15% of net payout\)<\/td><td class="r">− ZAR 763\.82/); assert.match(ph, /Settled \(rounding\)<\/td><td class="r">Nothing owed/);
+assert.match(ph, /Channel fees \(actual\)<\/td><td class="r">− AED 220\.14/); assert.match(ph, /Net payout \(guest total − channel fees\)<\/td><td class="r">AED 1,132\.49/);
+assert.match(ph, /Management fee \(15% of net payout\)<\/td><td class="r">− AED 169\.87/); assert.match(ph, /Settled \(rounding\)<\/td><td class="r">Nothing owed/);
+assert.doesNotMatch(ph, /ZAR /, 'the printed statement is in dirhams');
 
 // ── API ──
 const data = await mkdtemp(path.join(tmpdir(), 'yallapms-netbasis-'));
 const outLog = path.join(data, 'outbound.log'); await writeFile(outLog, '');
-const env = { ...process.env, NODE_ENV: 'development', PORT: '3021', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog, RESEND_API_KEY: 're_test_only' };
+const env = { ...process.env, NODE_ENV: 'development', PORT: '3021', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog, RESEND_API_KEY: 're_test_only', FX_FIXED_RATES: JSON.stringify({ USD: 3.6725, ZAR: 0.2, EUR: 4, GBP: 4.8 }) };
 delete env.DATABASE_URL; delete env.OUTBOUND_DELIVERY;
 const child = spawn(process.execPath, ['--import', path.join(root, 'scripts/outbound-guard.mjs'), path.join(root, 'artifacts/api-server/dist/index.mjs')], { env, cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = ''; child.stdout.on('data', d => logs += d); child.stderr.on('data', d => logs += d);

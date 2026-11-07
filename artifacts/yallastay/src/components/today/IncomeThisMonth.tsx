@@ -13,12 +13,12 @@ export function IncomeThisMonth() {
     <section className="today-panel" data-testid="dashboard-income">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div><p className="today-eyebrow">INCOME THIS MONTH</p><h2 className="text-xl font-semibold mt-1">{monthLabel(month)} by property</h2>
-          <p className="text-xs text-muted-foreground mt-1">Bookings checking out this month. Each property in its own currency.</p></div>
+          <p className="text-xs text-muted-foreground mt-1">Bookings checking out this month. Every amount is in UAE dirhams.</p></div>
         <Link href={`/income?month=${month}`} className="text-sm text-primary whitespace-nowrap inline-flex items-center gap-1 min-h-10">See all <ArrowRight className="h-4 w-4" /></Link>
       </div>
       {isLoading || !data ? <Skeleton className="h-28" /> : <>
         <div className="flex flex-wrap gap-x-6 gap-y-3 mb-4">{data.totals.filter(t => t.properties).map(t => <div key={t.currency}>
-          <p className="text-[11px] text-muted-foreground">{t.currency} · Company fee</p><p className="text-2xl font-bold tabular-nums text-primary">{money(t.managementFee, t.currency)}</p>
+          <p className="text-[11px] text-muted-foreground">Company fee</p><p className="text-2xl font-bold tabular-nums text-primary">{money(t.managementFee, t.currency, 2, data.period?.end)}</p>
           <p className="text-xs text-muted-foreground">Gross {money(t.gross, t.currency)} · owners {money(t.ownerShare, t.currency)}</p></div>)}
           {!data.totals.some(t => t.properties) && <p className="text-sm text-muted-foreground">No verified income yet this month.</p>}</div>
         {props.length ? <div className="divide-y">{props.slice(0, 8).map(p => { const rows = p.rows.filter(hasFigures); return (

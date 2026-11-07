@@ -14,7 +14,7 @@ const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 const data = await mkdtemp(path.join(tmpdir(), 'yallapms-suggested-'));
 const outLog = path.join(data, 'outbound.log'); await writeFile(outLog, '');
 const env = { ...process.env, NODE_ENV: 'development', PORT: '3019', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog,
-  RESEND_API_KEY: 're_test_only', WHATSAPP_API_TOKEN: 'test-only', WHATSAPP_PHONE_NUMBER_ID: '123456789' };
+  RESEND_API_KEY: 're_test_only', WHATSAPP_API_TOKEN: 'test-only', WHATSAPP_PHONE_NUMBER_ID: '123456789', FX_FIXED_RATES: JSON.stringify({ USD: 3.6725, ZAR: 0.2, EUR: 4, GBP: 4.8 }) };
 delete env.DATABASE_URL; delete env.OUTBOUND_DELIVERY;
 const child = spawn(process.execPath, ['--import', path.join(root, 'scripts/outbound-guard.mjs'), path.join(root, 'artifacts/api-server/dist/index.mjs')], { env, cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = ''; child.stdout.on('data', d => logs += d); child.stderr.on('data', d => logs += d);

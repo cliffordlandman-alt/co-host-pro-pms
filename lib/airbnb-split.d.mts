@@ -4,3 +4,4 @@ export interface SplitTotal { currency: string; bookings: number; total: number;
 export interface Split { settingOn: boolean; fileHasCohost: boolean; rows: SplitRow[]; totals: SplitTotal[]; withoutFigures: number }
 export declare function airbnbSplit(input: { property: any; rules: any; bookings: any[]; lines: any[]; period: { start: string; end: string }; paidTo?: Record<string, string> }): Split | null;
 export declare function addSplitTotals(splits: (Split | null)[]): (SplitTotal & { properties: number })[];
+export declare function presentSplit(split: Split | null, fx: unknown, date: string): Split | null;
