@@ -36,9 +36,11 @@ import pricingRouter from "./pricing";
 import ownerAnalyticsRouter from "./owner-analytics";
 import calendarSyncRouter from "./calendar-sync";
 import complianceRouter from "./compliance";
+import fxRouter from "./fx";
 
 const router: IRouter = Router();
 
+router.use(fxRouter);
 router.use(apiAccess);
 router.use(taskCentreRouter);
 router.use(airbnbImportRouter);

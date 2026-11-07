@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
 import { Link } from 'wouter';
-const fmt=(n:number,c:string)=>new Intl.NumberFormat('en',{style:'currency',currency:c}).format(n);
+import { aedNumber, formatAed } from '@/lib/aed-book';
+const fmt=(n:number,c:string,date?:string)=>formatAed(n,c,date);
 export async function airbnbRequest(path:string,token:string|null,body?:any){
  const r=await apiFetch(`/api/airbnb-data${path}`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
  const data=await r.json();if(!r.ok)throw new Error(data.error||'Unable to load Airbnb data');return data;
@@ -13,16 +14,16 @@ export function AirbnbIncome(){
  const {token}=useAuth();const [expanded,setExpanded]=useState(false);
  const {data,error}=useQuery({queryKey:['airbnb-income'],queryFn:()=>airbnbRequest('',token),enabled:!!token});
  const totals:Record<string,number>={};
- for(const r of data?.rows||[]){const key=`${r.status} ${r.currency}`;totals[key]=(totals[key]||0)+Math.round(r.amount*100);}
- const paid:Record<string,number>={};for(const p of data?.payouts||[])paid[p.currency]=(paid[p.currency]||0)+Math.round(p.amount*100);
+ for(const r of data?.rows||[]){totals[r.status]=(totals[r.status]||0)+Math.round((aedNumber(r.amount,r.currency,r.checkOut)||0)*100);}
+ const paidCents=(data?.payouts||[]).reduce((n:number,p:any)=>n+Math.round((aedNumber(p.amount,p.currency,p.sourceDate)||0)*100),0);
  return <section className="rounded-xl border bg-white p-5 space-y-3">
-  <div className="flex justify-between gap-4"><div><h2 className="font-semibold">Airbnb income</h2><p className="text-sm text-muted-foreground">Actual earnings and co-host shares from imported records. Currencies stay separate.</p></div><Link href="/airbnb-import"><Button variant="outline">Import Airbnb data</Button></Link></div>
+  <div className="flex justify-between gap-4"><div><h2 className="font-semibold">Airbnb income</h2><p className="text-sm text-muted-foreground">Actual earnings and co-host shares from imported records, shown in dirhams.</p></div><Link href="/airbnb-import"><Button variant="outline">Import Airbnb data</Button></Link></div>
   {error?<p role="alert">{error.message}</p>:!data?.rows.length?<p className="text-sm">No earnings imported yet. Import your Airbnb earnings CSV to add bookings and income.</p>:<>
-  <div className="flex flex-wrap gap-6">{Object.entries(totals).map(([key,cents])=><div key={key}><div className="text-xs text-muted-foreground capitalize">{key.split(' ')[0]} income ({key.split(' ')[1]})</div><strong className="text-xl">{fmt(cents/100,key.split(' ')[1])}</strong></div>)}</div>
-  {Object.entries(paid).map(([c,n])=><p key={c} className="text-sm">Airbnb paid payouts: <strong>{fmt(n/100,c)}</strong>. This is the converted settlement total, not additional income.</p>)}
+  <div className="flex flex-wrap gap-6">{Object.entries(totals).map(([status,cents])=><div key={status}><div className="text-xs text-muted-foreground capitalize">{status} income</div><strong className="text-xl">{fmt(cents/100,'AED')}</strong></div>)}</div>
+  {paidCents?<p className="text-sm">Airbnb payout transfers: <strong>{fmt(paidCents/100,'AED')}</strong>. This is the same money as the earnings above, not additional income.</p>:null}
   <p className="text-xs text-muted-foreground">{new Set(data.rows.map((r:any)=>r.confirmationCode)).size} bookings · {data.rows.length} earnings entries. Covers imported records only. Full property revenue is unavailable for co-host-only records.</p>
   <Button variant="outline" onClick={()=>setExpanded(!expanded)}>{expanded?'Hide':'View'} earnings entries</Button>
-  {expanded&&<div className="overflow-auto max-h-96"><table className="w-full text-sm"><thead><tr className="text-left"><th>Guest / booking</th><th>Stay</th><th>Type</th><th>Status</th><th className="text-right">Amount</th></tr></thead><tbody>{data.rows.map((r:any)=><tr key={r.id} className="border-t"><td className="p-2">{r.guestName}<div className="text-xs text-muted-foreground">{r.confirmationCode}</div></td><td>{r.checkIn} → {r.checkOut}</td><td>{r.kind==='home'?'Home earnings':r.amount<0?'Co-host deduction':'Co-host income'}</td><td>{r.status}</td><td className="text-right">{fmt(r.amount,r.currency)}</td></tr>)}</tbody></table></div>}
+  {expanded&&<div className="overflow-auto max-h-96"><table className="w-full text-sm"><thead><tr className="text-left"><th>Guest / booking</th><th>Stay</th><th>Type</th><th>Status</th><th className="text-right">Amount</th></tr></thead><tbody>{data.rows.map((r:any)=><tr key={r.id} className="border-t"><td className="p-2">{r.guestName}<div className="text-xs text-muted-foreground">{r.confirmationCode}</div></td><td>{r.checkIn} → {r.checkOut}</td><td>{r.kind==='home'?'Home earnings':r.amount<0?'Co-host deduction':'Co-host income'}</td><td>{r.status}</td><td className="text-right">{fmt(r.amount,r.currency,r.checkOut)}</td></tr>)}</tbody></table></div>}
   </>}
  </section>;
 }

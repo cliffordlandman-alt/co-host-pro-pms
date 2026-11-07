@@ -27,7 +27,7 @@ assert.ok(ph.indexOf('First') < ph.indexOf('Second') && ph.indexOf('Second') < p
 // ── API ──
 const data = await mkdtemp(path.join(tmpdir(), 'yallapms-currency-'));
 const outLog = path.join(data, 'outbound.log'); await writeFile(outLog, '');
-const env = { ...process.env, NODE_ENV: 'development', PORT: '3023', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog, RESEND_API_KEY: 're_test_only' };
+const env = { ...process.env, NODE_ENV: 'development', PORT: '3023', LOCAL_DATA_DIR: path.join(data, 'db'), MIGRATIONS_DIR: path.join(root, 'drizzle'), SYNC_SCHEDULER: 'off', OUTBOUND_LOG: outLog, RESEND_API_KEY: 're_test_only', FX_FIXED_RATES: JSON.stringify({ USD: 3.6725, ZAR: 0.2, EUR: 4, GBP: 4.8 }) };
 delete env.DATABASE_URL; delete env.OUTBOUND_DELIVERY;
 const child = spawn(process.execPath, ['--import', path.join(root, 'scripts/outbound-guard.mjs'), path.join(root, 'artifacts/api-server/dist/index.mjs')], { env, cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = ''; child.stdout.on('data', d => logs += d); child.stderr.on('data', d => logs += d);
@@ -99,7 +99,7 @@ try {
   const octGen = await api('/accounting/statements/generate', 'POST', { month: '2026-10' });
   const mixed = octGen.skipped.find(s => s.propertyId === GR.id);
   assert.ok(mixed?.mixedCurrency, 'mixed month held');
-  assert.match(mixed.reason, /Mixed currency: 1 booking in AED, 1 booking in ZAR\. Adding them needs an exchange rate/);
+  assert.match(mixed.reason, /Mixed currency: 1 booking, 1 booking\. One stored statement isn't created/);
   assert.deepEqual(mixed.mixedCurrency.map(g => [g.currency, g.bookings.length]), [['AED', 1], ['ZAR', 1]]);
   assert.ok(!(await api('/accounting/statements?month=2026-10')).some(s => s.propertyId === GR.id), 'no October statement');
 
@@ -122,9 +122,14 @@ try {
   const e2 = await api('/accounting/transactions', 'POST', { type: 'expense', amount: '20', date: '2026-09-04', category: 'Supplies', description: 'Linen', propertyId: GR.id, reservationId: sepA.id, allocation: 'owner' }, 201);
   assert.equal(e2.currency, 'AED');
   await api('/accounting/transactions', 'POST', { type: 'expense', amount: '20', date: '2026-09-04', category: 'Supplies', description: 'X', propertyId: GR.id, allocation: 'owner', currency: 'USD' }, 400);
-  // P&L: one row per currency, never added together.
+  // P&L is one dirham row. Stored booking currencies are unchanged.
   const pnl = (await api('/reports/pnl')).filter(r => r.propertyId === GR.id);
-  assert.deepEqual(pnl.map(r => r.currency).sort(), ['AED', 'ZAR']);
+  assert.deepEqual(pnl.map(r => r.currency), ['AED']);
+  const own = (await api('/reservations')).filter(r => r.propertyId === GR.id && r.financeMode === 'inclusive-v1' && !['cancelled', 'blocked'].includes(r.status));
+  const curOf = r => r.currency || 'ZAR';
+  const expected = own.reduce((n, r) => n + Math.round(Number(r.revenue) * (curOf(r) === 'ZAR' ? 20 : 100)), 0) / 100;
+  assert.equal(pnl[0].revenue, expected);
+  assert.ok(own.some(r => curOf(r) === 'ZAR') && own.some(r => curOf(r) === 'AED'), 'both stored currencies are still on the bookings');
   // Moving an AED booking to a ZAR property would relabel it: refused.
   await api(`/reservations/${aug.id}`, 'PATCH', { propertyId: ZP.id }, 400);
 

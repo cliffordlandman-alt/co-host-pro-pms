@@ -1,0 +1,19 @@
+export const DISPLAY_CURRENCY: string;
+export const USD_AED_PEG: number;
+export const FALLBACK_AED_PER_UNIT: Record<string, number>;
+export function round2(n: number): number;
+export function monthEnd(month: string): string | null;
+export function asDate(date: unknown): string | null;
+export function fallbackBook(): {
+  displayCurrency: string;
+  updatedAt: null;
+  stale: boolean;
+  pegUsdAed: number;
+  latest: Record<string, number>;
+  byDate: Record<string, Record<string, number>>;
+};
+export function aedPerUnitFromUsdCross(cross: Record<string, number> | null | undefined, peg?: number): Record<string, number>;
+export function aedPerUnitFromUsdQuote(rates: Record<string, number> | null | undefined): Record<string, number> | null;
+export function rateOn(book: unknown, currency: string | null | undefined, date: unknown): number | null;
+export function toAed(amount: unknown, currency?: string | null, date?: unknown, book?: unknown): number | null;
+export function aedCents(amount: unknown, currency?: string | null, date?: unknown, book?: unknown): number;

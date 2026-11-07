@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { dubaiToday } from '@/lib/today-model';
+import { formatAed } from '@/lib/aed-book';
 
 /**
  * The one form for entering income or an expense by hand (used on the Company statement and the
@@ -74,8 +75,9 @@ export function EntryDialog({ open, onOpenChange, defaultDate, entry }: { open: 
             <span className="block text-xs text-muted-foreground mt-1">{form.type === 'income' ? 'Income entered here is company income.' : !form.propertyId ? 'Pick a property to charge its owner.' : form.allocation === 'owner' ? 'Deducted from the owner\u2019s payout on that month\u2019s statement.' : 'A company cost for this property; the owner is not charged.'}</span></label>
           <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">Amount<Input aria-label="Amount" required type="number" min="0.01" step="0.01" inputMode="decimal" value={form.amount} onChange={e => edit('amount', e.target.value)} /></label>
-            <label className="text-sm">Currency<select aria-label="Currency" className={sel} value={form.currency} disabled={form.allocation === 'owner'} onChange={e => edit('currency', e.target.value)}>{CURRENCIES.map(c => <option key={c}>{c}</option>)}</select></label>
+            <label className="text-sm">Saved currency<select aria-label="Currency" className={sel} value={form.currency} disabled={form.allocation === 'owner'} onChange={e => edit('currency', e.target.value)}>{CURRENCIES.map(c => <option key={c}>{c}</option>)}</select></label>
           </div>
+          {form.amount && form.currency !== 'AED' && <p className="text-xs text-muted-foreground">Reports show this as {formatAed(Number(form.amount), form.currency, form.date)}. The saved record is left in its original currency.</p>}
           {form.type === 'expense' && (
             <label className="block text-sm">Revenue stream?<select aria-label="Revenue stream" className={sel} value={form.revenueStream} onChange={e => edit('revenueStream', e.target.value)}><option value="">Not tagged</option><option value="yes">Yes</option><option value="no">No</option></select></label>
           )}

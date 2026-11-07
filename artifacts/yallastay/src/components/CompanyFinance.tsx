@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EntryDialog } from '@/components/EntryDialog';
 import { dubaiToday } from '@/lib/today-model';
-const money=(n:number,c:string)=>`${c} ${n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+import { formatAed } from '@/lib/aed-book';
+const money=(n:number,c:string,date?:string)=>formatAed(n,c,date);
 async function read(url:string){const r=await apiFetch(url);if(!r.ok)throw new Error('Could not load company finance');return r.json();}
 export function CompanyFinance(){
  const today=dubaiToday();const [period,setPeriod]=useState('month'),[month,setMonth]=useState(today.slice(0,7)),[open,setOpen]=useState(false);

@@ -6,8 +6,8 @@ import { IncomePeriodControls } from "@/components/IncomePeriodControls";
 import { AirbnbSplitSummary } from "@/components/AirbnbSplit";
 import { estimateText, hasFigures, money, periodFromSearch, periodLabel, periodQuery, useIncome, type IncomeProperty, type IncomeRow, type IncomeTotal, type Period } from "@/lib/income";
 
-// Income per property: every property for a month (default: this month) or a calendar year, each in its own
-// currency, totals per currency. All figures come from the server's owner-statement calculation.
+// Income per property: every property for a month (default: this month) or a calendar year, in dirhams.
+// All figures come from the server's owner-statement calculation, converted for display.
 
 export function statementChip(p: IncomeProperty) {
   const s: any = p.statement;
@@ -54,7 +54,7 @@ function PropertyCard({ p, href }: { p: IncomeProperty; href: string }) {
       <article data-testid="income-property" className="rounded-2xl border bg-card p-4 active:scale-[.99] transition-transform cursor-pointer">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0"><h3 className="font-semibold leading-snug line-clamp-2">{p.name}</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">{p.ownerName ? `Owner: ${p.ownerName}` : "No owner yet"} · {p.currency}</p></div>
+            <p className="text-xs text-muted-foreground mt-0.5">{p.ownerName ? `Owner: ${p.ownerName}` : "No owner yet"}</p></div>
           <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
         </div>
         <div className="flex flex-wrap gap-1.5 mt-2"><EstimateChip p={p} />{chip && <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${chip.cls}`}>{chip.text}</span>}</div>

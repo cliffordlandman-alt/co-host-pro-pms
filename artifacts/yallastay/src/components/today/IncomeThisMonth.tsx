@@ -13,7 +13,7 @@ export function IncomeThisMonth() {
     <section className="today-panel" data-testid="dashboard-income">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div><p className="today-eyebrow">INCOME THIS MONTH</p><h2 className="text-xl font-semibold mt-1">{monthLabel(month)} by property</h2>
-          <p className="text-xs text-muted-foreground mt-1">Bookings checking out this month. Each property in its own currency.</p></div>
+          <p className="text-xs text-muted-foreground mt-1">Bookings checking out this month. All amounts are in UAE dirhams.</p></div>
         <Link href={`/income?month=${month}`} className="text-sm text-primary whitespace-nowrap inline-flex items-center gap-1 min-h-10">See all <ArrowRight className="h-4 w-4" /></Link>
       </div>
       {isLoading || !data ? <Skeleton className="h-28" /> : <>
