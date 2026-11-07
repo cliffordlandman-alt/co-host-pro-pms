@@ -1,6 +1,7 @@
 import { PayoutLine } from "@/components/OwnerPayouts";
 import { apiFetch } from "@/lib/api-fetch";
 import { statementBalance, feeLabels } from "@/lib/statement-balance";
+import { aedNumber, formatAed } from "@/lib/aed-book";
 import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -33,8 +34,8 @@ const fj = async (url: string, opts?: RequestInit) => {
   return res.json();
 };
 
-function aed(n: number, currency="AED") {
-  return `${currency} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function aed(n: number, currency="AED", date?: string) {
+  return formatAed(n, currency, date);
 }
 
 
@@ -231,10 +232,10 @@ function OwnerStatements({ ownerId }: { ownerId: number }) {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["owner-statements"] }); toast({ title: "Statements refreshed" }); },
   });
 
-  const statementCurrencies=[...new Set((statements || []).map((s:any)=>s.currency || "AED"))];
-  const totalGross = statements?.reduce((s: number, st: any) => s + st.grossRevenue, 0) ?? 0;
-  const totalPayout = statements?.reduce((s: number, st: any) => s + st.ownerPayout, 0) ?? 0;
-  const totalDeductions = totalGross - totalPayout;
+  const sumAed = (pick: (s: any) => number) => (statements || []).reduce((n: number, s: any) => n + (aedNumber(pick(s), s.currency, s.month) || 0), 0);
+  const totalGross = sumAed(s => s.grossRevenue);
+  const totalPayout = sumAed(s => s.ownerPayout);
+  const totalDeductions = sumAed(s => Number(s.grossRevenue) - Number(s.ownerPayout) - Number(s.paidByAirbnb || 0));
 
   return (
     <div className="space-y-4">
@@ -262,7 +263,7 @@ function OwnerStatements({ ownerId }: { ownerId: number }) {
             <Card key={label} className="text-center">
               <CardContent className="pt-3 pb-3">
                 <div className="text-xs text-muted-foreground mb-1">{label}</div>
-                <div className={`text-base font-bold ${color}`}>{statementCurrencies.map((currency:any)=>{const rows=(statements||[]).filter((s:any)=>(s.currency||"AED")===currency);const total=rows.reduce((n:number,r:any)=>n+Number(label==="Gross Revenue"?r.grossRevenue:label==="Your Payout"?r.ownerPayout:r.grossRevenue-r.ownerPayout-Number(r.paidByAirbnb||0)),0);return <div key={currency}>{label==="Your Payout"&&Math.round(total*100)<0?`You owe ${aed(-total,currency)}`:aed(total,currency)}</div>;})}</div>
+                <div className={`text-base font-bold ${color}`}>{label==="Your Payout"&&Math.round(value*100)<0?`You owe ${aed(-value)}`:aed(value)}</div>
               </CardContent>
             </Card>
           ))}
@@ -300,48 +301,48 @@ function OwnerStatements({ ownerId }: { ownerId: number }) {
                   <div className="bg-muted/30 rounded-lg px-4 py-3 space-y-1.5 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{feeLabels(stmt, "owner").gross}</span>
-                      <span className="font-medium text-emerald-600">{aed(stmt.grossRevenue,stmt.currency || "AED")}</span>
+                      <span className="font-medium text-emerald-600">{aed(stmt.grossRevenue,stmt.currency || "AED", stmt.month)}</span>
                     </div>
                     {stmt.platformFees > 0 && (
                       <div className="flex justify-between text-muted-foreground">
                         <span>{feeLabels(stmt).platform}</span>
-                        <span className="text-red-400">− {aed(stmt.platformFees,stmt.currency || "AED")}</span>
+                        <span className="text-red-400">− {aed(stmt.platformFees,stmt.currency || "AED", stmt.month)}</span>
                       </div>
                     )}
-                    {feeLabels(stmt, "owner").net && <div className="flex justify-between text-muted-foreground"><span>{feeLabels(stmt, "owner").net}</span><span>{aed(stmt.grossRevenue - stmt.platformFees,stmt.currency || "AED")}</span></div>}
+                    {feeLabels(stmt, "owner").net && <div className="flex justify-between text-muted-foreground"><span>{feeLabels(stmt, "owner").net}</span><span>{aed(stmt.grossRevenue - stmt.platformFees,stmt.currency || "AED", stmt.month)}</span></div>}
                     <div className="flex justify-between text-muted-foreground">
                       <span>{feeLabels(stmt).management}</span>
-                      <span className="text-red-400">− {aed(stmt.managementFee,stmt.currency || "AED")}</span>
+                      <span className="text-red-400">− {aed(stmt.managementFee,stmt.currency || "AED", stmt.month)}</span>
                     </div>
                     {stmt.cleaningCosts > 0 && (
                       <div className="flex justify-between text-muted-foreground">
                         <span>Cleaning Costs</span>
-                        <span className="text-red-400">− {aed(stmt.cleaningCosts,stmt.currency || "AED")}</span>
+                        <span className="text-red-400">− {aed(stmt.cleaningCosts,stmt.currency || "AED", stmt.month)}</span>
                       </div>
                     )}
                     {stmt.maintenanceCosts > 0 && (
                       <div className="flex justify-between text-muted-foreground">
                         <span>Maintenance</span>
-                        <span className="text-red-400">− {aed(stmt.maintenanceCosts,stmt.currency || "AED")}</span>
+                        <span className="text-red-400">− {aed(stmt.maintenanceCosts,stmt.currency || "AED", stmt.month)}</span>
                       </div>
                     )}
-                    {stmt.tourismFee > 0 && <div className="flex justify-between"><span>Tourism fee</span><span>{stmt.currency || "AED"} {Number(stmt.tourismFee).toFixed(2)}</span></div>}
+                    {stmt.tourismFee > 0 && <div className="flex justify-between"><span>Tourism fee</span><span>{aed(stmt.tourismFee, stmt.currency || "AED", stmt.month)}</span></div>}
                     {stmt.vatAmount > 0 && (
                       <div className="flex justify-between text-muted-foreground">
                         <span>VAT</span>
-                        <span className="text-red-400">− {aed(stmt.vatAmount,stmt.currency || "AED")}</span>
+                        <span className="text-red-400">− {aed(stmt.vatAmount,stmt.currency || "AED", stmt.month)}</span>
                       </div>
                     )}
                     {(() => { const bal = statementBalance(stmt, "owner"); return <>
                       {bal.hasCohost && <>
-                        <div className="flex justify-between border-t pt-2"><span>Your share</span><span className="font-medium">{aed(bal.ownerShare,stmt.currency || "AED")}</span></div>
-                        <div className="flex justify-between text-muted-foreground"><span>{feeLabels(stmt, "owner").paidByAirbnb}</span><span className="text-red-400">− {aed(bal.paidByAirbnb,stmt.currency || "AED")}</span></div>
+                        <div className="flex justify-between border-t pt-2"><span>Your share</span><span className="font-medium">{aed(bal.ownerShare,stmt.currency || "AED", stmt.month)}</span></div>
+                        <div className="flex justify-between text-muted-foreground"><span>{feeLabels(stmt, "owner").paidByAirbnb}</span><span className="text-red-400">− {aed(bal.paidByAirbnb,stmt.currency || "AED", stmt.month)}</span></div>
                       </>}
                       <div className="flex justify-between font-semibold border-t pt-2 text-base mt-1">
                         <span>{bal.label}</span>
-                        <span className={bal.owes ? "text-red-600" : "text-emerald-600"}>{bal.settled ? "Nothing owed" : aed(bal.amount,stmt.currency || "AED")}</span>
+                        <span className={bal.owes ? "text-red-600" : "text-emerald-600"}>{bal.settled ? "Nothing owed" : aed(bal.amount,stmt.currency || "AED", stmt.month)}</span>
                       </div>
-                      {bal.rounding && <p className="text-xs text-muted-foreground">Airbnb already paid you your share; the {aed(bal.amount,stmt.currency || "AED")} difference is rounding.</p>}
+                      {bal.rounding && <p className="text-xs text-muted-foreground">Airbnb already paid you your share; the {aed(bal.amount,stmt.currency || "AED", stmt.month)} difference is rounding.</p>}
                       {bal.settled && !bal.rounding && <p className="text-xs text-muted-foreground">Airbnb paid you directly, so nothing is owed either way.</p>}
                     </>; })()}
                   </div>
@@ -469,7 +470,7 @@ function OwnerOverview({ properties, ownerId }: { properties: any[]; ownerId: nu
                     <div className="text-xs text-muted-foreground">{format(new Date(stmt.month + "-01"), "MMMM yyyy")}</div>
                   </div>
                   <div className="flex items-center gap-3">
-                    {(() => { const bal = statementBalance(stmt, "owner"); return <span className={`font-semibold text-sm ${bal.owes ? "text-red-600" : "text-emerald-600"}`}>{bal.settled ? "Settled" : <>{bal.owes ? "You owe " : ""}{aed(bal.amount,stmt.currency || "AED")}</>}</span>; })()}
+                    {(() => { const bal = statementBalance(stmt, "owner"); return <span className={`font-semibold text-sm ${bal.owes ? "text-red-600" : "text-emerald-600"}`}>{bal.settled ? "Settled" : <>{bal.owes ? "You owe " : ""}{aed(bal.amount,stmt.currency || "AED", stmt.month)}</>}</span>; })()}
                     <Badge className={`text-xs border ${s.color}`}>{s.label}</Badge>
                   </div>
                 </div>

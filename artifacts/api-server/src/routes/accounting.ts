@@ -1,6 +1,8 @@
 import { refreshOwnerStatements, duplicateOwnerStatements } from "../lib/owner-statements";
 import { dubaiToday } from "../lib/dubai-date";
 import { companyStatement } from "../../../../lib/company-statement.mjs";
+import { toAed } from "../../../../lib/fx.mjs";
+import { getFxBook } from "../lib/fx";
 import { airbnbEarningsTable } from "@workspace/db";
 import { Router } from "express";
 import { z } from "zod";
@@ -358,7 +360,7 @@ router.get('/accounting/company-statement',asyncHandler(async(req,res)=>{
  const end=String(req.query.end || dubaiToday());const start=String(req.query.start || '0001-01-01');
  if(![start,end].every(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d))&&new Date(d).toISOString().slice(0,10)===d)||start>end)return res.status(400).json({error:'Invalid statement date range'});
  const [settings,earnings,bookings,transactions,properties,maintenance]=await Promise.all([db.select().from(propertySettingsTable),db.select().from(airbnbEarningsTable),db.select().from(reservationsTable),db.select().from(accountingTransactionsTable),db.select().from(propertiesTable),db.select().from(maintenanceTicketsTable)]);
- res.json(companyStatement({earnings,bookings,transactions,properties,maintenance,settings},start,end));
+ res.json(companyStatement({earnings,bookings,transactions,properties,maintenance,settings},start,end,await getFxBook()));
 }));
 
 // ── Owner Statements ───────────────────────────────────────────────────────────
@@ -377,16 +379,26 @@ router.get("/accounting/statements", asyncHandler(async (req, res) => {
   let summary: unknown = null, total = 0;
   if (p) {
     // Totals per currency over every statement that matches the filters, not just the visible page.
-    const cur = sql<string>`coalesce(${ownerStatementsTable.currency}, 'AED')`;
     const agg = await db.select({
-      currency: cur,
-      count: sql<number>`count(*)::int`,
-      grossRevenue: sql<string>`coalesce(sum(${ownerStatementsTable.grossRevenue}),0)`,
-      managementFee: sql<string>`coalesce(sum(${ownerStatementsTable.managementFee}),0)`,
-      ownerPayout: sql<string>`coalesce(sum(${ownerStatementsTable.ownerPayout}),0)`,
-    }).from(ownerStatementsTable).where(where).groupBy(cur).orderBy(cur);
-    total = agg.reduce((n, a) => n + a.count, 0);
-    summary = { total, currencies: agg.map(a => ({ currency: a.currency, count: a.count, grossRevenue: Number(a.grossRevenue), managementFee: Number(a.managementFee), ownerPayout: Number(a.ownerPayout) })) };
+      currency: ownerStatementsTable.currency,
+      month: ownerStatementsTable.month,
+      grossRevenue: ownerStatementsTable.grossRevenue,
+      managementFee: ownerStatementsTable.managementFee,
+      ownerPayout: ownerStatementsTable.ownerPayout,
+    }).from(ownerStatementsTable).where(where);
+    const book = await getFxBook();
+    const aed = { currency: "AED", count: agg.length, grossRevenue: 0, managementFee: 0, ownerPayout: 0 };
+    for (const row of agg) {
+      const currency = row.currency || "AED";
+      aed.grossRevenue += toAed(row.grossRevenue, currency, row.month, book) || 0;
+      aed.managementFee += toAed(row.managementFee, currency, row.month, book) || 0;
+      aed.ownerPayout += toAed(row.ownerPayout, currency, row.month, book) || 0;
+    }
+    aed.grossRevenue = Math.round(aed.grossRevenue * 100) / 100;
+    aed.managementFee = Math.round(aed.managementFee * 100) / 100;
+    aed.ownerPayout = Math.round(aed.ownerPayout * 100) / 100;
+    total = agg.length;
+    summary = { total, currencies: [aed] };
   }
 
   const query = db

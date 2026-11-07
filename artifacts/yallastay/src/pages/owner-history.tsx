@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api-fetch";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDocumentName } from "@/lib/use-brand";
+import { formatAed } from "@/lib/aed-book";
 import { ChevronDown, ChevronUp, FileText, Printer, RefreshCw } from "lucide-react";
 
 // Statement history: every month with stays for one property, from the same owner-statement calculation as the
@@ -21,7 +22,7 @@ type History = {
   months: { month: string; statement: { id?: number; status: string } | null; held: string | null; figures: Fig | null; stays: any[] }[];
   years: (Fig & { year: string })[]; totals: Fig[]; held: number; sentInOtherCurrency: { currency: string; amount: number; transfers: number }[];
 };
-const money = (v: number | null | undefined, c: string) => v == null ? "–" : `${c} ${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (v: number | null | undefined, c: string, date?: string) => v == null ? "–" : formatAed(v, c, date);
 const monthLabel = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 async function json(r: Response) { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `Request failed (${r.status})`); return d; }
@@ -77,7 +78,7 @@ export default function OwnerHistoryPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">Statement history</h1>
-          <p className="text-sm text-muted-foreground max-w-3xl">Every month with stays for one property, from the same calculation as the monthly owner statements. Totals per year, in the property's currency; amounts in other currencies are never added in.</p>
+          <p className="text-sm text-muted-foreground max-w-3xl">Every month with stays for one property, from the same calculation as the monthly owner statements. Totals are in UAE dirhams.</p>
         </div>
         <Link href="/accounting" className="text-sm underline">Owner statements</Link>
       </div>
@@ -114,14 +115,14 @@ export default function OwnerHistoryPage() {
             <Figure label={L.paid} value={money(t.paidByAirbnb, t.currency)} />
             <Figure label={L.balance} value={money(t.balance, t.currency)} strong />
           </div>)}
-          {h.sentInOtherCurrency.map(s => <p key={s.currency} data-testid="sent-other-currency" className="rounded bg-muted/60 px-3 py-2 text-xs">Airbnb sent {s.transfers} payout{s.transfers === 1 ? "" : "s"} as <b>{money(s.amount, s.currency)}</b> in total (PayPal). Reference only: this is how those payouts were transferred, not added to the {h.totals.map(t => t.currency).join("/")} totals.</p>)}
+          {h.sentInOtherCurrency.map(s => <p key={s.currency} data-testid="sent-other-currency" className="rounded bg-muted/60 px-3 py-2 text-xs">Airbnb transferred {s.transfers} payout{s.transfers === 1 ? "" : "s"} as <b>{money(s.amount, s.currency)}</b>. Reference only: that transfer is not added to the totals above.</p>)}
         </section>
         {h.years.length > 0 && <section className="space-y-2" aria-label="By year">
           <h2 className="font-semibold">By year</h2>
           <div className="hidden overflow-x-auto rounded-lg border md:block">
             <table className="w-full text-sm">
               <thead><tr className="bg-muted/40 text-xs text-muted-foreground">{["Year", "Stays", L.gross, L.channel, L.fee, "Costs", L.share, L.paid, L.balance].map(x => <th key={x} className="p-2 text-right first:text-left">{x}</th>)}</tr></thead>
-              <tbody>{[...h.years.map(y => ({ ...y, name: `${y.year}${h.totals.length > 1 ? ` · ${y.currency}` : ""}`, total: false })), ...h.totals.map(t => ({ ...t, name: `Total ${t.currency}`, total: true }))].map(y => <tr key={y.name} data-testid={y.total ? undefined : `history-year-${y.name}`} className={`border-t ${y.total ? "font-semibold" : ""}`}>
+              <tbody>{[...h.years.map(y => ({ ...y, name: y.year, total: false })), ...h.totals.map(t => ({ ...t, name: "Total", total: true }))].map(y => <tr key={`${y.name}-${y.currency}`} data-testid={y.total ? undefined : `history-year-${y.name}`} className={`border-t ${y.total ? "font-semibold" : ""}`}>
                 <td className="p-2">{y.name}</td><td className="p-2 text-right">{y.bookings}</td>{[y.gross, y.channel, y.management, y.cleaning + y.expenses + y.taxes, y.ownerShare, y.paidByAirbnb, y.balance].map((v, i) => <td key={i} className="p-2 text-right whitespace-nowrap">{money(v, y.currency)}</td>)}</tr>)}</tbody>
             </table>
           </div>

@@ -1,4 +1,5 @@
 import { reservationFinancials, financialTotals } from "../../../../lib/reservation-financials.mjs";
+import { getFxBook } from "../lib/fx";
 import { pageParams, paged, likeTerm } from "../lib/paging";
 import { dubaiToday } from "../lib/dubai-date";
 import { airbnbEarningsTable, airbnbBookingPayoutsTable } from "@workspace/db";
@@ -179,7 +180,7 @@ router.get("/reservations", asyncHandler(async (req, res) => {
     const allCodes = [...new Set(all.map(r => r.externalId).filter((x): x is string => !!x && x.startsWith("airbnb:")).map(x => x.slice(7)))];
     const allEarnings = allCodes.length ? await db.select().from(airbnbEarningsTable).where(inArray(airbnbEarningsTable.confirmationCode, allCodes)) : [];
     const formatted = all.map(r => formatReservation(r, allEarnings));
-    const finance = financialTotals(formatted);
+    const finance = financialTotals(formatted, [], [], "0001-01-01", "9999-12-31", await getFxBook());
     const byId = new Map(all.map((r, i) => [r.id, formatted[i]]));
     const pageRows = await db.select({ id: reservationsTable.id }).from(reservationsTable).leftJoin(propertiesTable, eq(reservationsTable.propertyId, propertiesTable.id)).where(where)
       .orderBy(desc(reservationsTable.checkIn), desc(reservationsTable.id)).limit(p.pageSize).offset(p.offset);

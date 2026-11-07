@@ -1,4 +1,6 @@
 import { financialTotals } from "../../../../lib/reservation-financials.mjs";
+import { toAed } from "../../../../lib/fx.mjs";
+import { getFxBook } from "../lib/fx";
 import { dubaiToday, addDays } from "../lib/dubai-date";
 import { Router } from "express";
 import {
@@ -12,10 +14,11 @@ const router = Router();
 router.get("/dashboard/summary", async (_req, res) => {
   const today = dubaiToday();
   const monthStart = today.slice(0, 7) + "-01";
+  const book = await getFxBook();
 
   const [financialBookings,financialProperties]=await Promise.all([db.select().from(reservationsTable),db.select().from(propertiesTable)]);
-  const allFinance=financialTotals(financialBookings,[],financialProperties);
-  const monthFinance=financialTotals(financialBookings,[],financialProperties,monthStart,today.slice(0,7)+"-31");
+  const allFinance=financialTotals(financialBookings,[],financialProperties,'0001-01-01','9999-12-31',book);
+  const monthFinance=financialTotals(financialBookings,[],financialProperties,monthStart,today.slice(0,7)+"-31",book);
 
   // Counts
   const [[totalProps], [cleaningPending], [maintenanceOpen], [urgentIssues], [paymentsPending], [revenueAll], [revenueMonth]] = await Promise.all([
@@ -38,6 +41,9 @@ router.get("/dashboard/summary", async (_req, res) => {
       unitNumber: propertiesTable.unitNumber,
       nights: reservationsTable.nights,
       revenue: reservationsTable.revenue,
+      currency: reservationsTable.currency,
+      propertyCurrency: propertiesTable.currency,
+      checkOut: reservationsTable.checkOut,
       paymentStatus: reservationsTable.paymentStatus,
     })
     .from(reservationsTable)
@@ -54,6 +60,9 @@ router.get("/dashboard/summary", async (_req, res) => {
       unitNumber: propertiesTable.unitNumber,
       nights: reservationsTable.nights,
       revenue: reservationsTable.revenue,
+      currency: reservationsTable.currency,
+      propertyCurrency: propertiesTable.currency,
+      checkOut: reservationsTable.checkOut,
       paymentStatus: reservationsTable.paymentStatus,
     })
     .from(reservationsTable)
@@ -136,8 +145,8 @@ router.get("/dashboard/summary", async (_req, res) => {
     monthRevenue: monthFinance.totals.find((t:any)=>t.currency==="AED")?.accommodationRevenue || 0,
     monthFinancialTotals:monthFinance,
     totalProperties: totalPropsCount,
-    todayArrivals: todayArrivals.map(r => ({ ...r, revenue: parseFloat(r.revenue || "0") })),
-    todayDepartures: todayDepartures.map(r => ({ ...r, revenue: parseFloat(r.revenue || "0") })),
+    todayArrivals: todayArrivals.map(r => ({ id: r.id, guestName: r.guestName, platform: r.platform, propertyName: r.propertyName, unitNumber: r.unitNumber, nights: r.nights, paymentStatus: r.paymentStatus, revenue: toAed(r.revenue, r.currency || r.propertyCurrency, r.checkOut, book) || 0 })),
+    todayDepartures: todayDepartures.map(r => ({ id: r.id, guestName: r.guestName, platform: r.platform, propertyName: r.propertyName, unitNumber: r.unitNumber, nights: r.nights, paymentStatus: r.paymentStatus, revenue: toAed(r.revenue, r.currency || r.propertyCurrency, r.checkOut, book) || 0 })),
     upcomingArrivals: upcomingArrivals,
     propertyGrid,
     urgentCleaning,
